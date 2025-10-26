@@ -57,17 +57,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .single();
 
       if (error) {
-        console.error('Error fetching user profile:', error);
-        setUser(null);
-        setLoading(false);
-        return;
-      }
+        // If profile doesn't exist, create one with default role
+        if (error.code === 'PGRST116') {
+          const { error: insertError } = await supabase
+            .from('user_profiles')
+            .insert({
+              id: supabaseUser.id,
+              email: supabaseUser.email,
+              role: 'artist'
+            });
 
-      setUser({
-        id: supabaseUser.id,
-        email: supabaseUser.email || '',
-        role: profile.role as UserRole
-      });
+          if (insertError) {
+            console.error('Error creating user profile:', insertError);
+            setUser(null);
+            setLoading(false);
+            return;
+          }
+
+          // Set user with default role
+          setUser({
+            id: supabaseUser.id,
+            email: supabaseUser.email || '',
+            role: 'artist' as UserRole
+          });
+        } else {
+          console.error('Error fetching user profile:', error);
+          setUser(null);
+        }
+      } else {
+        setUser({
+          id: supabaseUser.id,
+          email: supabaseUser.email || '',
+          role: profile.role as UserRole
+        });
+      }
       setLoading(false);
     } catch (error) {
       console.error('Error fetching user profile:', error);

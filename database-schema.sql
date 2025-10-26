@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
 );
 
 -- Create tracks table
-CREATE TABLE IF NOT EXISTS tracks (
+CREATE TABLE IF NOT EXISTS tracks (   
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
   isrc TEXT NOT NULL,

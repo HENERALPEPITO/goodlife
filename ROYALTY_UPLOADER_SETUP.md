@@ -2,7 +2,17 @@
 
 ## Database Setup
 
-1. **Create the royalties table in Supabase:**
+1. **Create the user_profiles table first:**
+   ```sql
+   create table user_profiles (
+     id uuid primary key references auth.users(id) on delete cascade,
+     email text,
+     role text not null default 'artist',
+     created_at timestamp default now()
+   );
+   ```
+
+2. **Create the royalties table:**
    ```sql
    create table royalties (
      id uuid primary key default uuid_generate_v4(),
@@ -21,12 +31,28 @@
    );
    ```
 
-2. **Enable Row Level Security:**
+3. **Enable Row Level Security:**
    ```sql
+   alter table user_profiles enable row level security;
    alter table royalties enable row level security;
    ```
 
-3. **Create RLS policies:**
+4. **Create RLS policies for user_profiles:**
+   ```sql
+   create policy "Users can view their own profile"
+   on user_profiles for select
+   using (auth.uid() = id);
+
+   create policy "Users can insert their own profile"
+   on user_profiles for insert
+   with check (auth.uid() = id);
+
+   create policy "Users can update their own profile"
+   on user_profiles for update
+   using (auth.uid() = id);
+   ```
+
+5. **Create RLS policies for royalties:**
    ```sql
    create policy "Users can view their own data"
    on royalties for select

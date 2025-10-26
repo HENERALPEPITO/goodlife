@@ -1,19 +1,85 @@
-import { Suspense } from "react";
+"use client";
+import { useEffect, useState } from "react";
 import { ArrowUpRight, Music2 } from "lucide-react";
+import { supabase } from "@/lib/supabaseClient";
 
 export default function Home() {
+  const [stats, setStats] = useState({
+    totalRevenue: 0,
+    totalStreams: 0,
+    activeTracks: 0,
+    pendingPayouts: 0,
+    pendingCount: 0
+  });
+
+  const fetchStats = async () => {
+    try {
+      // Get total revenue and streams
+      const { data: royalties, error: royaltiesError } = await supabase
+        .from('royalty_statements')
+        .select('revenue_usd, streams');
+      
+      console.log('Royalties data:', royalties);
+      
+      if (royaltiesError) {
+        console.error('Error fetching royalties:', royaltiesError);
+      }
+      
+      const totalRevenue = royalties?.reduce((sum, r) => sum + Number(r.revenue_usd || 0), 0) || 0;
+      const totalStreams = royalties?.reduce((sum, r) => sum + Number(r.streams || 0), 0) || 0;
+
+      console.log('Total Revenue:', totalRevenue);
+      console.log('Total Streams:', totalStreams);
+
+      // Get active tracks count
+      const { count: tracksCount } = await supabase
+        .from('tracks')
+        .select('*', { count: 'exact', head: true });
+
+      // Get pending payouts
+      const { data: pending } = await supabase
+        .from('royalty_statements')
+        .select('revenue_usd')
+        .eq('status', 'pending');
+      
+      const pendingPayouts = pending?.reduce((sum, r) => sum + Number(r.revenue_usd || 0), 0) || 0;
+
+      setStats({
+        totalRevenue,
+        totalStreams,
+        activeTracks: tracksCount || 0,
+        pendingPayouts,
+        pendingCount: pending?.length || 0
+      });
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+    }
+  };
+
+  useEffect(() => {
+    fetchStats();
+  }, []);
+
+  const kpis = [
+    { label: "Total Revenue", value: `$${stats.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, sub: "All time" },
+    { label: "Total Streams", value: stats.totalStreams.toLocaleString(), sub: "All platforms" },
+    { label: "Active Tracks", value: stats.activeTracks.toString(), sub: "In catalog" },
+    { label: "Pending Payouts", value: `$${stats.pendingPayouts.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, sub: `${stats.pendingCount} requests` },
+  ];
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Overview</h1>
+        <button 
+          onClick={fetchStats}
+          className="px-3 py-2 text-sm rounded border hover:bg-zinc-100 dark:hover:bg-zinc-900"
+        >
+          Refresh Stats
+        </button>
       </div>
       <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        {[
-          { label: "Total Revenue", value: "$124,320", sub: "+8.2% QoQ" },
-          { label: "Active Tracks", value: "238", sub: "+12 this month" },
-          { label: "Quarterly Growth", value: "18.4%", sub: "vs last quarter" },
-          { label: "Pending Payouts", value: "$6,730", sub: "12 requests" },
-        ].map((kpi) => (
+        {kpis.map((kpi) => (
           <div key={kpi.label} className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-4 bg-white dark:bg-zinc-950">
             <div className="text-sm text-zinc-500">{kpi.label}</div>
             <div className="mt-2 text-2xl font-semibold">{kpi.value}</div>

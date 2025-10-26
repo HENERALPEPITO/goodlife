@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,7 +26,6 @@ interface RoyaltyRecord {
 }
 
 export default function RoyaltyUploaderPage() {
-  const { user, signOut } = useAuth();
   const { toast } = useToast();
   const [royalties, setRoyalties] = useState<RoyaltyRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,22 +33,52 @@ export default function RoyaltyUploaderPage() {
   const [editingRecord, setEditingRecord] = useState<RoyaltyRecord | null>(null);
   const [deleteRecord, setDeleteRecord] = useState<RoyaltyRecord | null>(null);
   const [editForm, setEditForm] = useState<Partial<RoyaltyRecord>>({});
+  const [currentUser, setCurrentUser] = useState<any>(null);
 
   useEffect(() => {
-    if (user) {
+    // Get current user
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setCurrentUser(user);
       fetchRoyalties();
-    }
-  }, [user]);
+    });
+  }, []);
 
   const fetchRoyalties = async () => {
     try {
+      setLoading(true);
       const { data, error } = await supabase
-        .from('royalties')
-        .select('*')
+        .from('royalty_statements')
+        .select(`
+          *,
+          tracks!inner(*)
+        `)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setRoyalties(data || []);
+      if (error) {
+        console.error('Error fetching royalties:', error);
+        toast({
+          title: "Error",
+          description: "Failed to fetch royalty data. Make sure the database tables are created.",
+          variant: "destructive",
+        });
+      } else {
+        // Transform the data to match our interface
+        const transformedData = (data || []).map((item: any) => ({
+          id: item.id,
+          song_title: item.track_title,
+          iswc: item.tracks?.isrc || '',
+          song_composers: item.tracks?.composers || '',
+          broadcast_date: item.tracks?.release_date || '',
+          territory: item.tracks?.territory || '',
+          exploitation_source_name: item.platform,
+          usage_count: item.streams,
+          gross_amount: item.revenue_usd,
+          administration_percent: 0,
+          net_amount: item.revenue_usd,
+          created_at: item.created_at
+        }));
+        setRoyalties(transformedData);
+      }
     } catch (error) {
       console.error('Error fetching royalties:', error);
       toast({
@@ -95,38 +123,69 @@ export default function RoyaltyUploaderPage() {
         throw new Error('CSV parsing failed');
       }
 
-      // Transform data for database
-      const records = results.data.map((row: any) => ({
-        user_id: user?.id,
-        song_title: row.song_title || '',
-        iswc: row.iswc || '',
-        song_composers: row.song_composers || '',
-        broadcast_date: row.broadcast_date ? new Date(row.broadcast_date).toISOString().split('T')[0] : null,
-        territory: row.territory || '',
-        exploitation_source_name: row.exploitation_source_name || '',
-        usage_count: parseInt(row.usage_count) || 0,
-        gross_amount: parseFloat(row.gross_amount) || 0,
-        administration_percent: parseFloat(row.administration_percent) || 0,
-        net_amount: parseFloat(row.net_amount) || 0,
-      }));
+      // Transform data for database insertion
+      const tracksToInsert: any[] = [];
+      const royaltyStatementsToInsert: any[] = [];
 
-      const { error } = await supabase
-        .from('royalties')
-        .insert(records);
+      results.data.forEach((row: any) => {
+        const trackId = `track-${row.iswc || Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        
+        // Create track entry
+        tracksToInsert.push({
+          id: trackId,
+          title: row.song_title || '',
+          isrc: row.iswc || '',
+          composers: row.song_composers || '',
+          release_date: row.broadcast_date ? new Date(row.broadcast_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+          platform: row.exploitation_source_name || 'Unknown',
+          territory: row.territory || 'Unknown'
+        });
 
-      if (error) throw error;
+        // Create royalty statement entry
+        royaltyStatementsToInsert.push({
+          id: `royalty-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          track_id: trackId,
+          track_title: row.song_title || '',
+          platform: row.exploitation_source_name || 'Unknown',
+          period: row.broadcast_date ? new Date(row.broadcast_date).getFullYear() + '-Q' + (Math.floor(new Date(row.broadcast_date).getMonth() / 3) + 1) : new Date().getFullYear() + '-Q1',
+          streams: parseInt(row.usage_count) || 0,
+          revenue_usd: parseFloat(row.net_amount) || 0,
+          status: 'pending'
+        });
+      });
+
+      // Insert tracks first
+      const { error: tracksError } = await supabase
+        .from('tracks')
+        .insert(tracksToInsert);
+
+      if (tracksError) {
+        console.error('Database error (tracks):', tracksError);
+        throw tracksError;
+      }
+
+      // Insert royalty statements
+      const { error: royaltiesError } = await supabase
+        .from('royalty_statements')
+        .insert(royaltyStatementsToInsert);
+
+      if (royaltiesError) {
+        console.error('Database error (royalty_statements):', royaltiesError);
+        throw royaltiesError;
+      }
 
       toast({
         title: "Success",
-        description: `Successfully uploaded ${records.length} royalty records`,
+        description: `Successfully uploaded ${tracksToInsert.length} royalty records`,
       });
 
+      // Refresh the list
       fetchRoyalties();
     } catch (error) {
       console.error('Upload error:', error);
       toast({
         title: "Upload Failed",
-        description: "Failed to upload CSV file",
+        description: "Failed to upload CSV file. Make sure the database tables are created.",
         variant: "destructive",
       });
     } finally {
@@ -143,12 +202,21 @@ export default function RoyaltyUploaderPage() {
     if (!editingRecord) return;
 
     try {
+      // Update royalty_statements table
       const { error } = await supabase
-        .from('royalties')
-        .update(editForm)
+        .from('royalty_statements')
+        .update({
+          track_title: editForm.song_title,
+          platform: editForm.exploitation_source_name,
+          streams: editForm.usage_count,
+          revenue_usd: editForm.net_amount
+        })
         .eq('id', editingRecord.id);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Database error:', error);
+        throw error;
+      }
 
       toast({
         title: "Success",
@@ -162,7 +230,7 @@ export default function RoyaltyUploaderPage() {
       console.error('Update error:', error);
       toast({
         title: "Update Failed",
-        description: "Failed to update record",
+        description: "Failed to update record. Make sure the database tables are created.",
         variant: "destructive",
       });
     }
@@ -173,11 +241,14 @@ export default function RoyaltyUploaderPage() {
 
     try {
       const { error } = await supabase
-        .from('royalties')
+        .from('royalty_statements')
         .delete()
         .eq('id', deleteRecord.id);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Database error:', error);
+        throw error;
+      }
 
       toast({
         title: "Success",
@@ -190,7 +261,7 @@ export default function RoyaltyUploaderPage() {
       console.error('Delete error:', error);
       toast({
         title: "Delete Failed",
-        description: "Failed to delete record",
+        description: "Failed to delete record. Make sure the database tables are created.",
         variant: "destructive",
       });
     }
@@ -210,7 +281,10 @@ export default function RoyaltyUploaderPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-lg">Loading...</div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading royalty data...</p>
+        </div>
       </div>
     );
   }
@@ -228,14 +302,16 @@ export default function RoyaltyUploaderPage() {
               <p className="text-sm text-gray-600">Upload and manage royalty data securely by account.</p>
             </div>
             <div className="flex items-center gap-4">
-              <span className="text-sm text-gray-600">Welcome, {user?.email}</span>
+              <span className="text-sm text-gray-600">
+                Welcome, {currentUser?.email || 'Guest'}
+              </span>
               <Button
                 variant="outline"
-                onClick={() => signOut()}
+                onClick={() => window.location.href = '/login'}
                 className="flex items-center gap-2"
               >
                 <LogOut className="h-4 w-4" />
-                Logout
+                {currentUser ? 'Logout' : 'Login'}
               </Button>
             </div>
           </div>

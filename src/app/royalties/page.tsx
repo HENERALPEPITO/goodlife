@@ -72,18 +72,26 @@ export default function RoyaltiesPage() {
             ) : data.length === 0 ? (
               <tr><td className="p-3" colSpan={6}>No data</td></tr>
             ) : (
-              data.map((r) => (
-                <tr key={r.id} className="border-t border-zinc-100 dark:border-zinc-800">
-                  <td className="p-3">{r.trackTitle}</td>
-                  <td className="p-3">{r.platform}</td>
-                  <td className="p-3">{r.period}</td>
-                  <td className="p-3">{r.streams.toLocaleString()}</td>
-                  <td className="p-3">${r.revenueUsd.toLocaleString()}</td>
-                  <td className="p-3">
-                    <span className={`px-2 py-1 rounded text-xs ${r.status === "paid" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"}`}>{r.status}</span>
-                  </td>
+              <>
+                {data.map((r) => (
+                  <tr key={r.id} className="border-t border-zinc-100 dark:border-zinc-800">
+                    <td className="p-3">{r.trackTitle}</td>
+                    <td className="p-3">{r.platform}</td>
+                    <td className="p-3">{r.period}</td>
+                    <td className="p-3">{r.streams.toLocaleString()}</td>
+                    <td className="p-3">${r.revenueUsd.toLocaleString()}</td>
+                    <td className="p-3">
+                      <span className={`px-2 py-1 rounded text-xs ${r.status === "paid" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"}`}>{r.status}</span>
+                    </td>
+                  </tr>
+                ))}
+                <tr className="border-t-2 border-zinc-300 dark:border-zinc-700 font-semibold bg-zinc-50 dark:bg-zinc-900">
+                  <td className="p-3" colSpan={3}>Total</td>
+                  <td className="p-3">{data.reduce((sum, r) => sum + r.streams, 0).toLocaleString()}</td>
+                  <td className="p-3">${data.reduce((sum, r) => sum + r.revenueUsd, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td className="p-3"></td>
                 </tr>
-              ))
+              </>
             )}
           </tbody>
         </table>
