@@ -174,3 +174,4 @@ The application now uses:
 
 Your authentication is now fully integrated with Supabase! 🎉
 
+

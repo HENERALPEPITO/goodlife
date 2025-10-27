@@ -149,3 +149,4 @@ BEGIN
       ON public.royalty_statements FOR DELETE USING (true);
   END IF;
 END $$;
+

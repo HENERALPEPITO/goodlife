@@ -2,190 +2,211 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { useAuth } from "@/lib/auth";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
-import { Toaster } from "@/components/ui/toaster";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import Papa from "papaparse";
-import { Upload, Edit, Trash2, LogOut } from "lucide-react";
+import { Upload, AlertCircle } from "lucide-react";
+import type { UserProfile } from "@/types";
 
-interface RoyaltyRecord {
-  id: string;
-  song_title: string;
+interface ParsedRoyaltyData {
+  songTitle: string;
   iswc: string;
-  song_composers: string;
-  broadcast_date: string;
+  composer: string;
+  date: string;
   territory: string;
-  exploitation_source_name: string;
-  usage_count: number;
-  gross_amount: number;
-  administration_percent: number;
-  net_amount: number;
-  created_at: string;
+  source: string;
+  usageCount: number;
+  gross: number;
+  adminPercent: number;
+  net: number;
 }
 
 export default function RoyaltyUploaderPage() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
   const { toast } = useToast();
-  const [royalties, setRoyalties] = useState<RoyaltyRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  
+  const [artists, setArtists] = useState<UserProfile[]>([]);
+  const [selectedArtist, setSelectedArtist] = useState<string>("");
+  const [parsedData, setParsedData] = useState<ParsedRoyaltyData[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [editingRecord, setEditingRecord] = useState<RoyaltyRecord | null>(null);
-  const [deleteRecord, setDeleteRecord] = useState<RoyaltyRecord | null>(null);
-  const [editForm, setEditForm] = useState<Partial<RoyaltyRecord>>({});
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [loadingArtists, setLoadingArtists] = useState(true);
 
   useEffect(() => {
-    // Get current user
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setCurrentUser(user);
-      fetchRoyalties();
-    });
-  }, []);
+    if (!loading && (!user || user.role !== "admin")) {
+      router.push("/");
+    } else if (user && user.role === "admin") {
+      fetchArtists();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, loading, router]);
 
-  const fetchRoyalties = async () => {
+  const fetchArtists = async () => {
     try {
-      setLoading(true);
       const { data, error } = await supabase
-        .from('royalty_statements')
-        .select(`
-          *,
-          tracks!inner(*)
-        `)
-        .order('created_at', { ascending: false });
+        .from("user_profiles")
+        .select("*")
+        .eq("role", "artist")
+        .order("email");
 
-      if (error) {
-        console.error('Error fetching royalties:', error);
-        toast({
-          title: "Error",
-          description: "Failed to fetch royalty data. Make sure the database tables are created.",
-          variant: "destructive",
-        });
-      } else {
-        // Transform the data to match our interface
-        const transformedData = (data || []).map((item: any) => ({
-          id: item.id,
-          song_title: item.track_title,
-          iswc: item.tracks?.isrc || '',
-          song_composers: item.tracks?.composers || '',
-          broadcast_date: item.tracks?.release_date || '',
-          territory: item.tracks?.territory || '',
-          exploitation_source_name: item.platform,
-          usage_count: item.streams,
-          gross_amount: item.revenue_usd,
-          administration_percent: 0,
-          net_amount: item.revenue_usd,
-          created_at: item.created_at
-        }));
-        setRoyalties(transformedData);
-      }
+      if (error) throw error;
+      setArtists(data || []);
     } catch (error) {
-      console.error('Error fetching royalties:', error);
+      console.error("Error fetching artists:", error);
       toast({
         title: "Error",
-        description: "Failed to fetch royalty data",
+        description: "Failed to fetch artists list",
         variant: "destructive",
       });
     } finally {
-      setLoading(false);
+      setLoadingArtists(false);
     }
   };
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    setUploading(true);
-    try {
-      const text = await file.text();
-      const results = Papa.parse(text, { 
+    Papa.parse(file, {
         header: true, 
         skipEmptyLines: true,
-        transformHeader: (header) => {
-          // Map CSV headers to database columns
-          const headerMap: { [key: string]: string } = {
-            'Song Title': 'song_title',
-            'ISWC': 'iswc',
-            'Song Composer(s)': 'song_composers',
-            'Broadcast Date': 'broadcast_date',
-            'Territory': 'territory',
-            'Exploitation Source Name': 'exploitation_source_name',
-            'Usage Count': 'usage_count',
-            'Gross Amount': 'gross_amount',
-            'Administration %': 'administration_percent',
-            'Net Amount': 'net_amount'
-          };
-          return headerMap[header] || header.toLowerCase().replace(/\s+/g, '_');
+      complete: (results) => {
+        try {
+          const parsed = (results.data as Record<string, string>[]).map((row) => ({
+            songTitle: row["Song Title"] || "",
+            iswc: row["ISWC"] || "",
+            composer: row["Composer"] || "",
+            date: row["Date"] || "",
+            territory: row["Territory"] || "",
+            source: row["Source"] || "",
+            usageCount: parseInt(row["Usage Count"]) || 0,
+            gross: parseFloat(row["Gross"]) || 0,
+            adminPercent: parseFloat(row["Admin %"]) || 0,
+            net: parseFloat(row["Net"]) || 0,
+          }));
+
+          setParsedData(parsed);
+          toast({
+            title: "CSV Parsed",
+            description: `Successfully parsed ${parsed.length} rows`,
+          });
+        } catch (error) {
+          console.error("Error parsing CSV:", error);
+          toast({
+            title: "Parse Error",
+            description: "Failed to parse CSV file. Check the format.",
+            variant: "destructive",
+          });
         }
-      });
+      },
+      error: (error) => {
+        console.error("Papa parse error:", error);
+        toast({
+          title: "Parse Error",
+          description: "Failed to read CSV file",
+          variant: "destructive",
+        });
+      },
+    });
+  };
 
-      if (results.errors.length > 0) {
-        throw new Error('CSV parsing failed');
+  const handleUpload = async () => {
+    if (!selectedArtist) {
+      toast({
+        title: "No Artist Selected",
+        description: "Please select an artist to associate these royalties with",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (parsedData.length === 0) {
+      toast({
+        title: "No Data",
+        description: "Please upload a CSV file first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setUploading(true);
+
+    try {
+      // Group by song title to create/find tracks
+      const tracksByTitle = new Map<string, string>();
+
+      for (const row of parsedData) {
+        // Check if track exists or create new one
+        let trackId: string;
+
+        const { data: existingTrack } = await supabase
+          .from("tracks")
+          .select("id")
+          .eq("title", row.songTitle)
+          .eq("artist_id", selectedArtist)
+          .single();
+
+        if (existingTrack) {
+          trackId = existingTrack.id;
+        } else {
+          // Create new track
+          const { data: newTrack, error: trackError } = await supabase
+            .from("tracks")
+            .insert({
+              artist_id: selectedArtist,
+              title: row.songTitle,
+              iswc: row.iswc,
+              composers: row.composer,
+              release_date: row.date || null,
+              territory: row.territory,
+              platform: row.source,
+            })
+            .select()
+            .single();
+
+          if (trackError) throw trackError;
+          trackId = newTrack.id;
+        }
+
+        tracksByTitle.set(row.songTitle, trackId);
       }
 
-      // Transform data for database insertion
-      const tracksToInsert: any[] = [];
-      const royaltyStatementsToInsert: any[] = [];
+      // Now insert royalties
+      const royaltiesToInsert = parsedData.map((row) => ({
+        track_id: tracksByTitle.get(row.songTitle),
+        artist_id: selectedArtist,
+        usage_count: row.usageCount,
+        gross_amount: row.gross,
+        admin_percent: row.adminPercent,
+        net_amount: row.net,
+        broadcast_date: row.date || null,
+        exploitation_source_name: row.source,
+        territory: row.territory,
+      }));
 
-      results.data.forEach((row: any) => {
-        const trackId = `track-${row.iswc || Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        
-        // Create track entry
-        tracksToInsert.push({
-          id: trackId,
-          title: row.song_title || '',
-          isrc: row.iswc || '',
-          composers: row.song_composers || '',
-          release_date: row.broadcast_date ? new Date(row.broadcast_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-          platform: row.exploitation_source_name || 'Unknown',
-          territory: row.territory || 'Unknown'
-        });
-
-        // Create royalty statement entry
-        royaltyStatementsToInsert.push({
-          id: `royalty-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          track_id: trackId,
-          track_title: row.song_title || '',
-          platform: row.exploitation_source_name || 'Unknown',
-          period: row.broadcast_date ? new Date(row.broadcast_date).getFullYear() + '-Q' + (Math.floor(new Date(row.broadcast_date).getMonth() / 3) + 1) : new Date().getFullYear() + '-Q1',
-          streams: parseInt(row.usage_count) || 0,
-          revenue_usd: parseFloat(row.net_amount) || 0,
-          status: 'pending'
-        });
-      });
-
-      // Insert tracks first
-      const { error: tracksError } = await supabase
-        .from('tracks')
-        .insert(tracksToInsert);
-
-      if (tracksError) {
-        console.error('Database error (tracks):', tracksError);
-        throw tracksError;
-      }
-
-      // Insert royalty statements
       const { error: royaltiesError } = await supabase
-        .from('royalty_statements')
-        .insert(royaltyStatementsToInsert);
+        .from("royalties")
+        .insert(royaltiesToInsert);
 
-      if (royaltiesError) {
-        console.error('Database error (royalty_statements):', royaltiesError);
-        throw royaltiesError;
-      }
+      if (royaltiesError) throw royaltiesError;
 
       toast({
-        title: "Success",
-        description: `Successfully uploaded ${tracksToInsert.length} royalty records`,
+        title: "Upload Successful",
+        description: `Successfully uploaded ${parsedData.length} royalty records`,
       });
 
-      // Refresh the list
-      fetchRoyalties();
+      // Reset form
+      setParsedData([]);
+      setSelectedArtist("");
+      const fileInput = document.getElementById("csv-file-input") as HTMLInputElement;
+      if (fileInput) fileInput.value = "";
     } catch (error) {
-      console.error('Upload error:', error);
+      console.error("Upload error:", error);
       toast({
         title: "Upload Failed",
-        description: "Failed to upload CSV file. Make sure the database tables are created.",
+        description: "Failed to upload royalty data. Check console for details.",
         variant: "destructive",
       });
     } finally {
@@ -193,359 +214,148 @@ export default function RoyaltyUploaderPage() {
     }
   };
 
-  const handleEdit = (record: RoyaltyRecord) => {
-    setEditingRecord(record);
-    setEditForm(record);
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editingRecord) return;
-
-    try {
-      // Update royalty_statements table
-      const { error } = await supabase
-        .from('royalty_statements')
-        .update({
-          track_title: editForm.song_title,
-          platform: editForm.exploitation_source_name,
-          streams: editForm.usage_count,
-          revenue_usd: editForm.net_amount
-        })
-        .eq('id', editingRecord.id);
-
-      if (error) {
-        console.error('Database error:', error);
-        throw error;
-      }
-
-      toast({
-        title: "Success",
-        description: "Record updated successfully",
-      });
-
-      setEditingRecord(null);
-      setEditForm({});
-      fetchRoyalties();
-    } catch (error) {
-      console.error('Update error:', error);
-      toast({
-        title: "Update Failed",
-        description: "Failed to update record. Make sure the database tables are created.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!deleteRecord) return;
-
-    try {
-      const { error } = await supabase
-        .from('royalty_statements')
-        .delete()
-        .eq('id', deleteRecord.id);
-
-      if (error) {
-        console.error('Database error:', error);
-        throw error;
-      }
-
-      toast({
-        title: "Success",
-        description: "Record deleted successfully",
-      });
-
-      setDeleteRecord(null);
-      fetchRoyalties();
-    } catch (error) {
-      console.error('Delete error:', error);
-      toast({
-        title: "Delete Failed",
-        description: "Failed to delete record. Make sure the database tables are created.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount);
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString();
-  };
-
-  if (loading) {
+  if (loading || loadingArtists) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading royalty data...</p>
-        </div>
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-zinc-500">Loading...</div>
       </div>
     );
   }
 
+  if (!user || user.role !== "admin") {
+    return null;
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Toaster />
-      
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Royalty Management Dashboard</h1>
-              <p className="text-sm text-gray-600">Upload and manage royalty data securely by account.</p>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="text-sm text-gray-600">
-                Welcome, {currentUser?.email || 'Guest'}
-              </span>
-              <Button
-                variant="outline"
-                onClick={() => window.location.href = '/login'}
-                className="flex items-center gap-2"
-              >
-                <LogOut className="h-4 w-4" />
-                {currentUser ? 'Logout' : 'Login'}
-              </Button>
-            </div>
-          </div>
-        </div>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold">CSV Royalty Uploader</h1>
+        <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-1">
+          Upload royalty data from CSV files and assign to artists
+        </p>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Upload Section */}
-        <div className="bg-white rounded-lg shadow p-6 mb-8">
-          <h2 className="text-lg font-semibold mb-4">Upload CSV File</h2>
-          <div className="flex items-center gap-4">
-            <Input
+      {/* CSV Format Info */}
+      <section className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/20 p-6">
+        <div className="flex items-start gap-3">
+          <AlertCircle className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+            <div>
+            <h3 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">
+              Required CSV Format
+            </h3>
+            <p className="text-sm text-blue-700 dark:text-blue-300 mb-2">
+              Your CSV file must include the following columns (in any order):
+            </p>
+            <div className="text-sm text-blue-700 dark:text-blue-300 font-mono bg-blue-100 dark:bg-blue-900/50 p-3 rounded">
+              Song Title, ISWC, Composer, Date, Territory, Source, Usage Count, Gross, Admin %, Net
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Upload Form */}
+      <section className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-6 bg-white dark:bg-zinc-950">
+        <h2 className="text-lg font-semibold mb-4">Upload Royalty Data</h2>
+        
+        <div className="space-y-4">
+          {/* Artist Selection */}
+          <div>
+            <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">
+              Select Artist
+            </label>
+            <select
+              value={selectedArtist}
+              onChange={(e) => setSelectedArtist(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100"
+            >
+              <option value="">-- Choose an artist --</option>
+              {artists.map((artist) => (
+                <option key={artist.id} value={artist.id}>
+                  {artist.email}
+                </option>
+              ))}
+            </select>
+      </div>
+
+          {/* File Upload */}
+          <div>
+            <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">
+              Upload CSV File
+            </label>
+            <input
+              id="csv-file-input"
               type="file"
               accept=".csv"
-              onChange={handleFileUpload}
-              disabled={uploading}
-              className="flex-1"
+              onChange={handleFileChange}
+              className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-zinc-100 file:text-zinc-700 hover:file:bg-zinc-200 dark:file:bg-zinc-800 dark:file:text-zinc-300"
             />
-            {uploading && (
-              <div className="text-sm text-gray-600">Uploading...</div>
-            )}
           </div>
-          <p className="text-sm text-gray-500 mt-2">
-            Upload a CSV file with royalty data. Make sure it includes columns for Song Title, ISWC, Song Composer(s), Broadcast Date, Territory, Exploitation Source Name, Usage Count, Gross Amount, Administration %, and Net Amount.
-          </p>
         </div>
+      </section>
 
-        {/* Data Table */}
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="px-6 py-4 border-b">
-            <h2 className="text-lg font-semibold">Royalty Records ({royalties.length})</h2>
+      {/* Preview */}
+      {parsedData.length > 0 && (
+        <section className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-hidden">
+          <div className="px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Preview ({parsedData.length} rows)</h2>
+            <Button
+              onClick={handleUpload}
+              disabled={uploading || !selectedArtist}
+              className="bg-green-600 hover:bg-green-700 text-white"
+            >
+              {uploading ? (
+                <>Uploading...</>
+              ) : (
+                <>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Upload to Database
+                </>
+              )}
+            </Button>
           </div>
           
-          {royalties.length === 0 ? (
-            <div className="p-8 text-center text-gray-500">
-              No royalty records found. Upload a CSV file to get started.
-            </div>
-          ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Song Title</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ISWC</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Composers</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Broadcast Date</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Territory</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usage Count</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Gross Amount</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Admin %</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Net Amount</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {royalties.map((record) => (
-                    <tr key={record.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {record.song_title}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {record.iswc}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {record.song_composers}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {record.broadcast_date ? formatDate(record.broadcast_date) : '-'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {record.territory}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {record.exploitation_source_name}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {record.usage_count}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {formatCurrency(record.gross_amount)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {record.administration_percent}%
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {formatCurrency(record.net_amount)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleEdit(record)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setDeleteRecord(record)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </td>
+            <table className="min-w-full divide-y divide-zinc-200 dark:divide-zinc-800">
+              <thead className="bg-zinc-50 dark:bg-zinc-900">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">Song Title</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">ISWC</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">Composer</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">Date</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">Territory</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">Source</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">Usage</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">Gross</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">Admin %</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">Net</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white dark:bg-zinc-950 divide-y divide-zinc-200 dark:divide-zinc-800">
+                {parsedData.slice(0, 10).map((row, idx) => (
+                  <tr key={idx}>
+                    <td className="px-4 py-3 text-sm text-zinc-900 dark:text-zinc-100">{row.songTitle}</td>
+                    <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-400">{row.iswc}</td>
+                    <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-400">{row.composer}</td>
+                    <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-400">{row.date}</td>
+                    <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-400">{row.territory}</td>
+                    <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-400">{row.source}</td>
+                    <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-400">{row.usageCount.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-400">${row.gross.toFixed(2)}</td>
+                    <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-400">{row.adminPercent}%</td>
+                    <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-400 font-semibold">${row.net.toFixed(2)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            </div>
-          )}
-        </div>
       </div>
 
-      {/* Edit Dialog */}
-      <Dialog open={!!editingRecord} onOpenChange={() => setEditingRecord(null)}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Edit Record</DialogTitle>
-            <DialogDescription>
-              Update the royalty record details below.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Song Title</label>
-              <Input
-                value={editForm.song_title || ''}
-                onChange={(e) => setEditForm({...editForm, song_title: e.target.value})}
-              />
+          {parsedData.length > 10 && (
+            <div className="px-6 py-3 bg-zinc-50 dark:bg-zinc-900 text-sm text-zinc-600 dark:text-zinc-400 text-center">
+              Showing first 10 of {parsedData.length} rows
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">ISWC</label>
-              <Input
-                value={editForm.iswc || ''}
-                onChange={(e) => setEditForm({...editForm, iswc: e.target.value})}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Composers</label>
-              <Input
-                value={editForm.song_composers || ''}
-                onChange={(e) => setEditForm({...editForm, song_composers: e.target.value})}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Broadcast Date</label>
-              <Input
-                type="date"
-                value={editForm.broadcast_date || ''}
-                onChange={(e) => setEditForm({...editForm, broadcast_date: e.target.value})}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Territory</label>
-              <Input
-                value={editForm.territory || ''}
-                onChange={(e) => setEditForm({...editForm, territory: e.target.value})}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Source</label>
-              <Input
-                value={editForm.exploitation_source_name || ''}
-                onChange={(e) => setEditForm({...editForm, exploitation_source_name: e.target.value})}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Usage Count</label>
-              <Input
-                type="number"
-                value={editForm.usage_count || ''}
-                onChange={(e) => setEditForm({...editForm, usage_count: parseInt(e.target.value) || 0})}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Gross Amount</label>
-              <Input
-                type="number"
-                step="0.01"
-                value={editForm.gross_amount || ''}
-                onChange={(e) => setEditForm({...editForm, gross_amount: parseFloat(e.target.value) || 0})}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Administration %</label>
-              <Input
-                type="number"
-                step="0.01"
-                value={editForm.administration_percent || ''}
-                onChange={(e) => setEditForm({...editForm, administration_percent: parseFloat(e.target.value) || 0})}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Net Amount</label>
-              <Input
-                type="number"
-                step="0.01"
-                value={editForm.net_amount || ''}
-                onChange={(e) => setEditForm({...editForm, net_amount: parseFloat(e.target.value) || 0})}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingRecord(null)}>
-              Cancel
-            </Button>
-            <Button onClick={handleSaveEdit}>
-              Save Changes
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={!!deleteRecord} onOpenChange={() => setDeleteRecord(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Record</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete this royalty record? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteRecord(null)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDelete}>
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          )}
+        </section>
+      )}
     </div>
   );
 }

@@ -1,90 +1,441 @@
 "use client";
+
 import { useEffect, useState } from "react";
-import { Track } from "@/types";
+import { useAuth } from "@/lib/auth";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
+import { useToast } from "@/components/ui/use-toast";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Edit, Trash2, Plus } from "lucide-react";
+import type { Track } from "@/types";
 
 export default function CatalogPage() {
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
+  const { toast } = useToast();
+
   const [tracks, setTracks] = useState<Track[]>([]);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState<Partial<Track>>({ title: "", isrc: "", composers: "", releaseDate: "", platform: "Spotify", territory: "Global" });
-
-  async function load() {
-    setLoading(true);
-    const res = await fetch("/api/catalog");
-    const json = await res.json();
-    setTracks(json.data);
-    setLoading(false);
-  }
+  const [editingTrack, setEditingTrack] = useState<Track | null>(null);
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<Track | null>(null);
+  
+  const [form, setForm] = useState({
+    title: "",
+    iswc: "",
+    composers: "",
+    release_date: "",
+    platform: "",
+    territory: "",
+  });
 
   useEffect(() => {
-    load();
-  }, []);
-
-  async function addTrack(e: React.FormEvent) {
-    e.preventDefault();
-    const res = await fetch("/api/catalog", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
-    if (res.ok) {
-      await load();
-      setForm({ title: "", isrc: "", composers: "", releaseDate: "", platform: "Spotify", territory: "Global" });
+    if (!authLoading && !user) {
+      router.push("/login");
+    } else if (user) {
+      fetchTracks();
     }
+  }, [user, authLoading, router]);
+
+  const fetchTracks = async () => {
+    if (!user) return;
+
+    try {
+      setLoading(true);
+      let query = supabase.from("tracks").select("*").order("created_at", { ascending: false });
+
+      // Artists only see their own tracks
+      if (user.role === "artist") {
+        query = query.eq("artist_id", user.id);
+      }
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+      setTracks(data || []);
+    } catch (error) {
+      console.error("Error fetching tracks:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load tracks",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddTrack = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || user.role !== "admin") return;
+
+    try {
+      const { error } = await supabase.from("tracks").insert({
+        artist_id: user.id, // Admin can specify artist_id in a more complete implementation
+        title: form.title,
+        iswc: form.iswc || null,
+        composers: form.composers || null,
+        release_date: form.release_date || null,
+        platform: form.platform || null,
+        territory: form.territory || null,
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Track added successfully",
+      });
+
+      setForm({
+        title: "",
+        iswc: "",
+        composers: "",
+        release_date: "",
+        platform: "",
+        territory: "",
+      });
+      setIsAddDialogOpen(false);
+      fetchTracks();
+    } catch (error) {
+      console.error("Error adding track:", error);
+      toast({
+        title: "Error",
+        description: "Failed to add track",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleEditTrack = async () => {
+    if (!user || user.role !== "admin" || !editingTrack) return;
+
+    try {
+      const { error } = await supabase
+        .from("tracks")
+        .update({
+          title: form.title,
+          iswc: form.iswc || null,
+          composers: form.composers || null,
+          release_date: form.release_date || null,
+          platform: form.platform || null,
+          territory: form.territory || null,
+        })
+        .eq("id", editingTrack.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Track updated successfully",
+      });
+
+      setEditingTrack(null);
+      setForm({
+        title: "",
+        iswc: "",
+        composers: "",
+        release_date: "",
+        platform: "",
+        territory: "",
+      });
+      fetchTracks();
+    } catch (error) {
+      console.error("Error updating track:", error);
+      toast({
+        title: "Error",
+        description: "Failed to update track",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeleteTrack = async () => {
+    if (!user || user.role !== "admin" || !deleteConfirm) return;
+
+    try {
+      const { error } = await supabase.from("tracks").delete().eq("id", deleteConfirm.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Track deleted successfully",
+      });
+
+      setDeleteConfirm(null);
+      fetchTracks();
+    } catch (error) {
+      console.error("Error deleting track:", error);
+      toast({
+        title: "Error",
+        description: "Failed to delete track",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const openEditDialog = (track: Track) => {
+    setEditingTrack(track);
+    setForm({
+      title: track.title,
+      iswc: track.iswc || "",
+      composers: track.composers || "",
+      release_date: track.release_date || "",
+      platform: track.platform || "",
+      territory: track.territory || "",
+    });
+  };
+
+  const closeEditDialog = () => {
+    setEditingTrack(null);
+    setForm({
+      title: "",
+      iswc: "",
+      composers: "",
+      release_date: "",
+      platform: "",
+      territory: "",
+    });
+  };
+
+  if (authLoading || loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-zinc-500">Loading catalog...</div>
+      </div>
+    );
   }
 
-  async function deleteTrack(id: string) {
-    await fetch(`/api/catalog/${id}`, { method: "DELETE" });
-    await load();
+  if (!user) {
+    return null;
   }
+
+  const isAdmin = user.role === "admin";
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Catalog</h1>
-
-      <form onSubmit={addTrack} className="grid grid-cols-1 md:grid-cols-3 gap-3 rounded-lg border border-zinc-200 dark:border-zinc-800 p-4 bg-white dark:bg-zinc-950">
-        <input required placeholder="Song Title" className="px-3 py-2 rounded border bg-transparent" value={form.title || ""} onChange={(e) => setForm({ ...form, title: e.target.value })} />
-        <input placeholder="ISRC" className="px-3 py-2 rounded border bg-transparent" value={form.isrc || ""} onChange={(e) => setForm({ ...form, isrc: e.target.value })} />
-        <input placeholder="Composers" className="px-3 py-2 rounded border bg-transparent" value={form.composers || ""} onChange={(e) => setForm({ ...form, composers: e.target.value })} />
-        <input type="date" className="px-3 py-2 rounded border bg-transparent" value={form.releaseDate || ""} onChange={(e) => setForm({ ...form, releaseDate: e.target.value })} />
-        <input placeholder="Platform" className="px-3 py-2 rounded border bg-transparent" value={form.platform || ""} onChange={(e) => setForm({ ...form, platform: e.target.value })} />
-        <input placeholder="Territory" className="px-3 py-2 rounded border bg-transparent" value={form.territory || ""} onChange={(e) => setForm({ ...form, territory: e.target.value })} />
-        <div className="md:col-span-3"><button className="px-3 py-2 text-sm rounded border hover:bg-zinc-100 dark:hover:bg-zinc-900">Add Track</button></div>
-      </form>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Track Catalog</h1>
+          <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-1">
+            {isAdmin ? "Manage all tracks" : "View your tracks"}
+          </p>
+        </div>
+        {isAdmin && (
+          <Button onClick={() => setIsAddDialogOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white">
+            <Plus className="h-4 w-4 mr-2" />
+            Add Track
+          </Button>
+        )}
+      </div>
 
       <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="text-left text-zinc-500">
-            <tr>
-              <th className="p-3">Title</th>
-              <th className="p-3">ISRC</th>
-              <th className="p-3">Composers</th>
-              <th className="p-3">Release Date</th>
-              <th className="p-3">Platform</th>
-              <th className="p-3">Territory</th>
-              <th className="p-3"></th>
+          <thead className="bg-zinc-50 dark:bg-zinc-900">
+            <tr className="text-left text-zinc-600 dark:text-zinc-400">
+              <th className="p-4 font-medium">Title</th>
+              <th className="p-4 font-medium">ISWC</th>
+              <th className="p-4 font-medium">Composers</th>
+              <th className="p-4 font-medium">Release Date</th>
+              <th className="p-4 font-medium">Platform</th>
+              <th className="p-4 font-medium">Territory</th>
+              {isAdmin && <th className="p-4 font-medium">Actions</th>}
             </tr>
           </thead>
           <tbody>
-            {loading ? (
-              <tr><td className="p-3" colSpan={7}>Loading...</td></tr>
-            ) : tracks.length === 0 ? (
-              <tr><td className="p-3" colSpan={7}>No tracks</td></tr>
+            {tracks.length === 0 ? (
+              <tr>
+                <td className="p-4 text-center text-zinc-500" colSpan={isAdmin ? 7 : 6}>
+                  No tracks found
+                </td>
+              </tr>
             ) : (
-              tracks.map((t) => (
-                <tr key={t.id} className="border-t border-zinc-100 dark:border-zinc-800">
-                  <td className="p-3">{t.title}</td>
-                  <td className="p-3">{t.isrc}</td>
-                  <td className="p-3">{t.composers}</td>
-                  <td className="p-3">{t.releaseDate}</td>
-                  <td className="p-3">{t.platform}</td>
-                  <td className="p-3">{t.territory}</td>
-                  <td className="p-3 text-right">
-                    <button className="text-red-600 hover:underline" onClick={() => deleteTrack(t.id)}>Delete</button>
+              tracks.map((track) => (
+                <tr key={track.id} className="border-t border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900/50">
+                  <td className="p-4 font-medium">{track.title}</td>
+                  <td className="p-4 text-zinc-600 dark:text-zinc-400">{track.iswc || "-"}</td>
+                  <td className="p-4 text-zinc-600 dark:text-zinc-400">{track.composers || "-"}</td>
+                  <td className="p-4 text-zinc-600 dark:text-zinc-400">
+                    {track.release_date ? new Date(track.release_date).toLocaleDateString() : "-"}
                   </td>
+                  <td className="p-4 text-zinc-600 dark:text-zinc-400">{track.platform || "-"}</td>
+                  <td className="p-4 text-zinc-600 dark:text-zinc-400">{track.territory || "-"}</td>
+                  {isAdmin && (
+                    <td className="p-4">
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openEditDialog(track)}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setDeleteConfirm(track)}
+                        >
+                          <Trash2 className="h-4 w-4 text-red-600" />
+                        </Button>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))
             )}
           </tbody>
         </table>
       </div>
+
+      {/* Add Dialog */}
+      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add New Track</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleAddTrack} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Title *</label>
+              <Input
+                required
+                value={form.title}
+                onChange={(e) => setForm({ ...form, title: e.target.value })}
+                placeholder="Enter track title"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">ISWC</label>
+              <Input
+                value={form.iswc}
+                onChange={(e) => setForm({ ...form, iswc: e.target.value })}
+                placeholder="e.g. T-123.456.789-0"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Composers</label>
+              <Input
+                value={form.composers}
+                onChange={(e) => setForm({ ...form, composers: e.target.value })}
+                placeholder="e.g. John Doe, Jane Smith"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Release Date</label>
+              <Input
+                type="date"
+                value={form.release_date}
+                onChange={(e) => setForm({ ...form, release_date: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Platform</label>
+              <Input
+                value={form.platform}
+                onChange={(e) => setForm({ ...form, platform: e.target.value })}
+                placeholder="e.g. Spotify, Apple Music"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Territory</label>
+              <Input
+                value={form.territory}
+                onChange={(e) => setForm({ ...form, territory: e.target.value })}
+                placeholder="e.g. Global, US, UK"
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit">Add Track</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Dialog */}
+      <Dialog open={!!editingTrack} onOpenChange={(open) => !open && closeEditDialog()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Track</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Title *</label>
+              <Input
+                required
+                value={form.title}
+                onChange={(e) => setForm({ ...form, title: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">ISWC</label>
+              <Input
+                value={form.iswc}
+                onChange={(e) => setForm({ ...form, iswc: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Composers</label>
+              <Input
+                value={form.composers}
+                onChange={(e) => setForm({ ...form, composers: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Release Date</label>
+              <Input
+                type="date"
+                value={form.release_date}
+                onChange={(e) => setForm({ ...form, release_date: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Platform</label>
+              <Input
+                value={form.platform}
+                onChange={(e) => setForm({ ...form, platform: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Territory</label>
+              <Input
+                value={form.territory}
+                onChange={(e) => setForm({ ...form, territory: e.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeEditDialog}>
+              Cancel
+            </Button>
+            <Button onClick={handleEditTrack}>Save Changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation */}
+      <Dialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Track</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            Are you sure you want to delete "{deleteConfirm?.title}"? This action cannot be undone and will also delete associated royalty records.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteConfirm(null)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteTrack}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
-
-

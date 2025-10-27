@@ -50,11 +50,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchUserProfile = async (supabaseUser: User) => {
     try {
+      console.log('👤 Fetching profile for user:', supabaseUser.id);
       const { data: profile, error } = await supabase
         .from('user_profiles')
         .select('*')
         .eq('id', supabaseUser.id)
         .single();
+
+      console.log('📊 Profile query result:', { profile, error });
 
       if (error) {
         // If profile doesn't exist, create one with default role
@@ -132,12 +135,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      console.log('🔐 Attempting sign in...', email);
+      const { error, data } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
+      console.log('✅ Sign in response:', { error, user: data?.user?.id });
       return { error };
     } catch (error) {
+      console.error('❌ Sign in error:', error);
       return { error };
     }
   };

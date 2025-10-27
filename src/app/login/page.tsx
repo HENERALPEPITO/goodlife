@@ -31,7 +31,8 @@ export default function LoginPage() {
       if (result.error) {
         setError(result.error.message || "Authentication failed");
       } else {
-        router.push("/royalty-uploader");
+        // Redirect to home - it will show the right dashboard based on role
+        router.push("/");
       }
     } catch (err) {
       setError("An unexpected error occurred");
@@ -95,20 +96,28 @@ export default function LoginPage() {
         
         {/* Quick test credentials */}
         <div className="mt-4 p-3 bg-zinc-100 dark:bg-zinc-800 rounded text-sm">
-          <p className="font-semibold mb-2">Quick Test:</p>
-          <p>Email: test@test.com</p>
-          <p>Password: testpassword123</p>
-          <button
-            type="button"
-            onClick={() => {
-              setEmail("test@test.com");
-              setPassword("testpassword123");
-              setIsSignUp(false);
-            }}
-            className="mt-2 px-3 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
-          >
-            Fill Test Credentials
-          </button>
+          <p className="font-semibold mb-2">Test Accounts:</p>
+          <div className="space-y-2">
+            <div>
+              <p className="text-xs font-medium">Admin:</p>
+              <p className="text-xs">admin@test.com / admin123456</p>
+            </div>
+            <div>
+              <p className="text-xs font-medium">Artist:</p>
+              <p className="text-xs">artist@test.com / artist123456</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setEmail("admin@test.com");
+                setPassword("admin123456");
+                setIsSignUp(false);
+              }}
+              className="mt-2 px-3 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
+            >
+              Fill Admin Credentials
+            </button>
+          </div>
         </div>
       </form>
     </div>

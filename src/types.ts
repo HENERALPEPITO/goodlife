@@ -1,38 +1,58 @@
-export type UserRole = "artist" | "label" | "manager";
+export type UserRole = "artist" | "admin";
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  role: UserRole;
+  created_at: string;
+}
 
 export interface Track {
   id: string;
+  artist_id: string;
   title: string;
-  isrc: string;
-  composers: string;
-  releaseDate: string; // ISO date
-  platform: string; // e.g., Spotify, Apple Music
-  territory: string; // e.g., US, Global
-  createdAt: string; // ISO date
+  iswc: string | null;
+  composers: string | null;
+  release_date: string | null;
+  platform: string | null;
+  territory: string | null;
+  created_at: string;
 }
 
-export interface RoyaltyStatement {
+export interface Royalty {
   id: string;
-  trackId: string;
-  trackTitle: string;
-  platform: string;
-  period: string; // e.g., 2025-Q3
-  streams: number;
-  revenueUsd: number;
-  status: "paid" | "pending";
+  track_id: string | null;
+  artist_id: string;
+  usage_count: number | null;
+  gross_amount: number | null;
+  admin_percent: number | null;
+  net_amount: number | null;
+  broadcast_date: string | null;
+  exploitation_source_name: string | null;
+  territory: string | null;
+  created_at: string;
 }
 
-export interface ProfileSettings {
-  name: string;
-  email: string;
-  role: UserRole;
+export interface PaymentRequest {
+  id: string;
+  artist_id: string;
+  amount: number;
+  status: "pending" | "approved" | "rejected" | "paid";
+  created_at: string;
+  updated_at: string;
 }
 
-export interface InvoicingSettings {
-  labelName: string;
-  address: string;
-  billingEmail: string;
-  paymentMode: "bank" | "apple_pay";
+export interface CSVRoyaltyRow {
+  "Song Title": string;
+  "ISWC": string;
+  "Composer": string;
+  "Date": string;
+  "Territory": string;
+  "Source": string;
+  "Usage Count": string;
+  "Gross": string;
+  "Admin %": string;
+  "Net": string;
 }
 
 
