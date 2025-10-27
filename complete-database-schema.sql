@@ -243,3 +243,6 @@ CREATE POLICY "Admins can manage payment requests"
 -- WHERE up.role = 'artist'
 -- GROUP BY up.id, up.email;
 
+
+
+

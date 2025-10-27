@@ -8,7 +8,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Edit, Trash2, Plus } from "lucide-react";
+import { Edit, Trash2, Plus, Search, Trash } from "lucide-react";
 import type { Track } from "@/types";
 
 export default function CatalogPage() {
@@ -17,10 +17,13 @@ export default function CatalogPage() {
   const { toast } = useToast();
 
   const [tracks, setTracks] = useState<Track[]>([]);
+  const [filteredTracks, setFilteredTracks] = useState<Track[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingTrack, setEditingTrack] = useState<Track | null>(null);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<Track | null>(null);
+  const [deleteAllConfirm, setDeleteAllConfirm] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
   
   const [form, setForm] = useState({
     title: "",
@@ -38,6 +41,10 @@ export default function CatalogPage() {
       fetchTracks();
     }
   }, [user, authLoading, router]);
+
+  useEffect(() => {
+    filterTracks();
+  }, [searchTerm, tracks]);
 
   const fetchTracks = async () => {
     if (!user) return;
@@ -65,6 +72,24 @@ export default function CatalogPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const filterTracks = () => {
+    if (!searchTerm) {
+      setFilteredTracks(tracks);
+      return;
+    }
+
+    const searchLower = searchTerm.toLowerCase();
+    const filtered = tracks.filter(
+      (track) =>
+        track.title.toLowerCase().includes(searchLower) ||
+        track.iswc?.toLowerCase().includes(searchLower) ||
+        track.composers?.toLowerCase().includes(searchLower) ||
+        track.platform?.toLowerCase().includes(searchLower) ||
+        track.territory?.toLowerCase().includes(searchLower)
+    );
+    setFilteredTracks(filtered);
   };
 
   const handleAddTrack = async (e: React.FormEvent) => {
@@ -177,6 +202,31 @@ export default function CatalogPage() {
     }
   };
 
+  const handleDeleteAllTracks = async () => {
+    if (!user || user.role !== "admin") return;
+
+    try {
+      const { error } = await supabase.from("tracks").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "All tracks deleted successfully",
+      });
+
+      setDeleteAllConfirm(false);
+      fetchTracks();
+    } catch (error) {
+      console.error("Error deleting all tracks:", error);
+      toast({
+        title: "Error",
+        description: "Failed to delete all tracks",
+        variant: "destructive",
+      });
+    }
+  };
+
   const openEditDialog = (track: Track) => {
     setEditingTrack(track);
     setForm({
@@ -225,11 +275,32 @@ export default function CatalogPage() {
           </p>
         </div>
         {isAdmin && (
-          <Button onClick={() => setIsAddDialogOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white">
-            <Plus className="h-4 w-4 mr-2" />
-            Add Track
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              onClick={() => setDeleteAllConfirm(true)}
+              variant="outline"
+              className="text-red-600 hover:text-red-700 border-red-300 hover:border-red-400"
+            >
+              <Trash className="h-4 w-4 mr-2" />
+              Delete All
+            </Button>
+            <Button onClick={() => setIsAddDialogOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white">
+              <Plus className="h-4 w-4 mr-2" />
+              Add Track
+            </Button>
+          </div>
         )}
+      </div>
+
+      {/* Search Bar */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+        <Input
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          placeholder="Search by title, ISWC, composer, platform, or territory..."
+          className="pl-9"
+        />
       </div>
 
       <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-x-auto">
@@ -246,14 +317,14 @@ export default function CatalogPage() {
             </tr>
           </thead>
           <tbody>
-            {tracks.length === 0 ? (
+            {filteredTracks.length === 0 ? (
               <tr>
                 <td className="p-4 text-center text-zinc-500" colSpan={isAdmin ? 7 : 6}>
-                  No tracks found
+                  {searchTerm ? "No tracks match your search" : "No tracks found"}
                 </td>
               </tr>
             ) : (
-              tracks.map((track) => (
+              filteredTracks.map((track) => (
                 <tr key={track.id} className="border-t border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900/50">
                   <td className="p-4 font-medium">{track.title}</td>
                   <td className="p-4 text-zinc-600 dark:text-zinc-400">{track.iswc || "-"}</td>
@@ -432,6 +503,34 @@ export default function CatalogPage() {
             </Button>
             <Button variant="destructive" onClick={handleDeleteTrack}>
               Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete All Confirmation */}
+      <Dialog open={deleteAllConfirm} onOpenChange={setDeleteAllConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete All Tracks</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              Are you sure you want to delete <span className="font-bold text-red-600">ALL {tracks.length} tracks</span>?
+            </p>
+            <div className="p-4 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900">
+              <p className="text-sm text-red-800 dark:text-red-200 font-semibold">⚠️ Warning</p>
+              <p className="text-sm text-red-700 dark:text-red-300 mt-1">
+                This action cannot be undone. All tracks and their associated royalty records will be permanently deleted.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteAllConfirm(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteAllTracks}>
+              Delete All Tracks
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth";
-import { Music2, LayoutDashboard, BarChart3, DollarSign, Music, FileUp, Users, Settings } from "lucide-react";
+import { Music2, LayoutDashboard, BarChart3, DollarSign, Music, FileUp, Users, Settings, Receipt } from "lucide-react";
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -21,6 +21,7 @@ export default function Sidebar() {
     { href: "/", label: "Dashboard", icon: LayoutDashboard, show: true },
     { href: "/analytics", label: "Analytics", icon: BarChart3, show: true },
     { href: "/royalties", label: "Royalties", icon: DollarSign, show: true },
+    { href: "/invoices", label: "Invoices", icon: Receipt, show: true },
     { href: "/catalog", label: "Catalog", icon: Music, show: true },
     { href: "/artists", label: "Artists", icon: Users, show: isAdmin },
     { href: "/royalty-uploader", label: "Upload CSV", icon: FileUp, show: isAdmin },
@@ -85,4 +86,5 @@ export default function Sidebar() {
     </aside>
   );
 }
+
 

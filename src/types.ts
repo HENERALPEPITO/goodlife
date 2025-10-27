@@ -42,6 +42,18 @@ export interface PaymentRequest {
   updated_at: string;
 }
 
+export interface Invoice {
+  id: string;
+  artist_id: string;
+  amount: number;
+  mode_of_payment: string;
+  invoice_number: string;
+  status: "pending" | "approved" | "paid" | "rejected";
+  remarks: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface CSVRoyaltyRow {
   "Song Title": string;
   "ISWC": string;

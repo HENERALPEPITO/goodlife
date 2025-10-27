@@ -31,3 +31,6 @@ DROP POLICY IF EXISTS "Users can delete their own data" ON royalties;
 ALTER TABLE royalties ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow all operations" ON royalties FOR ALL USING (true) WITH CHECK (true);
 
+
+
+
