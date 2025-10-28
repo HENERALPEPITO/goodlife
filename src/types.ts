@@ -22,7 +22,10 @@ export interface Track {
 export interface Royalty {
   id: string;
   track_id: string | null;
+  track_title: string | null;
   artist_id: string;
+  artist_email: string | null;
+  platform: string | null;
   usage_count: number | null;
   gross_amount: number | null;
   admin_percent: number | null;
@@ -30,6 +33,8 @@ export interface Royalty {
   broadcast_date: string | null;
   exploitation_source_name: string | null;
   territory: string | null;
+  paid_status: "unpaid" | "pending" | "paid";
+  payment_request_id: string | null;
   created_at: string;
 }
 
@@ -52,6 +57,28 @@ export interface Invoice {
   remarks: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface PaymentRequest {
+  id: string;
+  artist_id: string;
+  total_amount: number;
+  status: "pending" | "approved" | "rejected" | "paid";
+  remarks: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PaymentReceipt {
+  id: string;
+  payment_request_id: string;
+  artist_id: string;
+  total_amount: number;
+  pdf_url: string | null;
+  receipt_number: string;
+  created_at: string;
 }
 
 export interface CSVRoyaltyRow {
