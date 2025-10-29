@@ -90,3 +90,5 @@ export async function hasRole(role: UserRole): Promise<boolean> {
   return user?.role === role;
 }
 
+
+

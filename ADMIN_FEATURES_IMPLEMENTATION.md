@@ -347,3 +347,5 @@ Consider adding:
 **Framework:** Next.js 16 (App Router)  
 **Database:** Supabase (PostgreSQL)
 
+
+

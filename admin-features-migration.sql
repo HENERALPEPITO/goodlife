@@ -188,3 +188,5 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- Run this migration with: psql -U postgres -d your_database -f admin-features-migration.sql
 -- Or apply via Supabase dashboard SQL editor
 
+
+

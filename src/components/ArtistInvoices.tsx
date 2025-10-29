@@ -333,3 +333,5 @@ export default function ArtistInvoices({ user }: ArtistInvoicesProps) {
 
 
 
+
+

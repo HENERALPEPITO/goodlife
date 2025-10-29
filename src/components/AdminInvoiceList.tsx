@@ -44,7 +44,7 @@ export default function AdminInvoiceList({ user }: AdminInvoiceListProps) {
         .from("invoices")
         .select(`
           *,
-          user_profiles!invoices_artist_id_fkey(email)
+          user_profiles!artist_id(email)
         `)
         .order("created_at", { ascending: false });
 
@@ -403,6 +403,7 @@ export default function AdminInvoiceList({ user }: AdminInvoiceListProps) {
     </div>
   );
 }
+
 
 
 

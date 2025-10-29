@@ -60,7 +60,23 @@ CREATE TABLE IF NOT EXISTS payment_requests (
 );
 
 -- ============================================
--- 5. CREATE INDEXES FOR PERFORMANCE
+-- 5. INVOICES TABLE
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS invoices (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  artist_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  amount NUMERIC(12,2) NOT NULL,
+  mode_of_payment TEXT NOT NULL,
+  invoice_number TEXT NOT NULL UNIQUE,
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'paid', 'rejected')),
+  remarks TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- ============================================
+-- 6. CREATE INDEXES FOR PERFORMANCE
 -- ============================================
 
 CREATE INDEX IF NOT EXISTS idx_tracks_artist_id ON tracks(artist_id);
@@ -70,20 +86,28 @@ CREATE INDEX IF NOT EXISTS idx_royalties_artist_id ON royalties(artist_id);
 CREATE INDEX IF NOT EXISTS idx_royalties_broadcast_date ON royalties(broadcast_date);
 CREATE INDEX IF NOT EXISTS idx_payment_requests_artist_id ON payment_requests(artist_id);
 CREATE INDEX IF NOT EXISTS idx_payment_requests_status ON payment_requests(status);
+CREATE INDEX IF NOT EXISTS idx_invoices_artist_id ON invoices(artist_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
+CREATE INDEX IF NOT EXISTS idx_invoices_invoice_number ON invoices(invoice_number);
 
 -- ============================================
--- 6. ENABLE ROW LEVEL SECURITY (RLS)
+-- 7. DISABLE ROW LEVEL SECURITY (FOR DEVELOPMENT)
 -- ============================================
+-- Note: RLS is disabled for easier development
+-- Enable and configure RLS policies before going to production
 
-ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE tracks ENABLE ROW LEVEL SECURITY;
-ALTER TABLE royalties ENABLE ROW LEVEL SECURITY;
-ALTER TABLE payment_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_profiles DISABLE ROW LEVEL SECURITY;
+ALTER TABLE tracks DISABLE ROW LEVEL SECURITY;
+ALTER TABLE royalties DISABLE ROW LEVEL SECURITY;
+ALTER TABLE payment_requests DISABLE ROW LEVEL SECURITY;
+ALTER TABLE invoices DISABLE ROW LEVEL SECURITY;
 
 -- ============================================
--- 7. DROP EXISTING POLICIES (if re-running)
+-- 8. RLS POLICIES (COMMENTED OUT FOR DEVELOPMENT)
 -- ============================================
+-- RLS is currently disabled. Uncomment below to enable in production.
 
+/*
 DROP POLICY IF EXISTS "Users can view own profile" ON user_profiles;
 DROP POLICY IF EXISTS "Users can update own profile" ON user_profiles;
 DROP POLICY IF EXISTS "Users can insert own profile" ON user_profiles;
@@ -102,9 +126,10 @@ DROP POLICY IF EXISTS "Artist can create payment requests" ON payment_requests;
 DROP POLICY IF EXISTS "Admins can view all payment requests" ON payment_requests;
 DROP POLICY IF EXISTS "Admins can manage payment requests" ON payment_requests;
 
--- ============================================
--- 8. ROW LEVEL SECURITY POLICIES
--- ============================================
+DROP POLICY IF EXISTS "Artist can view own invoices" ON invoices;
+DROP POLICY IF EXISTS "Artist can create invoices" ON invoices;
+DROP POLICY IF EXISTS "Admins can view all invoices" ON invoices;
+DROP POLICY IF EXISTS "Admins can manage invoices" ON invoices;
 
 -- USER PROFILES POLICIES
 CREATE POLICY "Users can view own profile" 
@@ -201,6 +226,34 @@ CREATE POLICY "Admins can manage payment requests"
     )
   );
 
+-- INVOICES POLICIES  
+CREATE POLICY "Artist can view own invoices" 
+  ON invoices FOR SELECT 
+  USING (artist_id = auth.uid());
+
+CREATE POLICY "Artist can create invoices" 
+  ON invoices FOR INSERT 
+  WITH CHECK (artist_id = auth.uid());
+
+CREATE POLICY "Admins can view all invoices" 
+  ON invoices FOR SELECT 
+  USING (
+    EXISTS (
+      SELECT 1 FROM user_profiles 
+      WHERE id = auth.uid() AND role = 'admin'
+    )
+  );
+
+CREATE POLICY "Admins can manage invoices" 
+  ON invoices FOR ALL 
+  USING (
+    EXISTS (
+      SELECT 1 FROM user_profiles 
+      WHERE id = auth.uid() AND role = 'admin'
+    )
+  );
+*/
+
 -- ============================================
 -- 9. SAMPLE DATA FOR TESTING
 -- ============================================
@@ -242,6 +295,7 @@ CREATE POLICY "Admins can manage payment requests"
 -- LEFT JOIN payment_requests pr ON pr.artist_id = up.id
 -- WHERE up.role = 'artist'
 -- GROUP BY up.id, up.email;
+
 
 
 

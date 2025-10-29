@@ -398,3 +398,5 @@ user_profiles (id, email, role, created_at)
 **Last Updated:** October 2025  
 **Status:** ✅ Production Ready
 
+
+
