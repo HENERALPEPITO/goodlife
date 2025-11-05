@@ -35,15 +35,41 @@ export default function ArtistDashboard() {
     if (!user) return;
 
     try {
+      // First, find the artist record for this user
+      const { data: artist, error: artistError } = await supabase
+        .from("artists")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (artistError) {
+        console.error("Error fetching artist:", artistError);
+        setLoading(false);
+        return;
+      }
+
+      if (!artist) {
+        console.warn("No artist found for user");
+        setStats({
+          totalRevenue: 0,
+          pendingRevenue: 0,
+          totalTracks: 0,
+          totalStreams: 0,
+        });
+        setLoading(false);
+        return;
+      }
+
+      // Query tracks using the artist ID (not user ID)
       const { count: trackCount } = await supabase
         .from("tracks")
         .select("*", { count: "exact", head: true })
-        .eq("artist_id", user.id);
+        .eq("artist_id", artist.id);
 
       const { data: royalties } = await supabase
         .from("royalties")
         .select("net_amount, usage_count")
-        .eq("artist_id", user.id);
+        .eq("artist_id", artist.id);
 
       const totalRevenue = royalties?.reduce(
         (sum, r) => sum + Number(r.net_amount || 0),
@@ -58,7 +84,7 @@ export default function ArtistDashboard() {
       const { data: pendingRequests } = await supabase
         .from("payment_requests")
         .select("amount")
-        .eq("artist_id", user.id)
+        .eq("artist_id", artist.id)
         .eq("status", "pending");
 
       const pendingRevenue = pendingRequests?.reduce(
@@ -95,8 +121,24 @@ export default function ArtistDashboard() {
         return;
       }
 
+      // Get artist ID first
+      const { data: artist } = await supabase
+        .from("artists")
+        .select("id")
+        .eq("user_id", user.id)
+        .single();
+
+      if (!artist) {
+        toast({
+          title: "Error",
+          description: "Artist record not found.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       const { error } = await supabase.from("payment_requests").insert({
-        artist_id: user.id,
+        artist_id: artist.id,
         amount: availableBalance,
         status: "pending",
       });

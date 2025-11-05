@@ -43,18 +43,31 @@ export default function MyCatalogPage() {
   useEffect(() => {
     if (!user) return;
     const init = async () => {
+      console.log('🔍 Finding artist for user:', user.id);
       // Find artist row linked to this user
-      const { data: artist } = await supabase
+      const { data: artist, error: artistError } = await supabase
         .from("artists")
         .select("id")
         .eq("user_id", user.id)
         .maybeSingle();
-      if (!artist) {
+      
+      if (artistError) {
+        console.error('❌ Error fetching artist:', artistError);
         setArtistId(null);
         setTracks([]);
         setFetching(false);
         return;
       }
+      
+      if (!artist) {
+        console.warn('⚠️ No artist found for user:', user.id);
+        setArtistId(null);
+        setTracks([]);
+        setFetching(false);
+        return;
+      }
+      
+      console.log('✅ Found artist:', artist.id);
       setArtistId(artist.id);
       await fetchTracks(artist.id);
     };
@@ -62,12 +75,22 @@ export default function MyCatalogPage() {
   }, [user]);
 
   const fetchTracks = async (aid: string) => {
+    console.log('🎵 Fetching tracks for artist:', aid);
     setFetching(true);
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("tracks")
       .select("id,song_title,composer_name,isrc,artist_name,split,created_at")
       .eq("artist_id", aid)
       .order("created_at", { ascending: false });
+    
+    if (error) {
+      console.error('❌ Error fetching tracks:', error);
+      setTracks([]);
+      setFetching(false);
+      return;
+    }
+    
+    console.log('✅ Fetched tracks:', data?.length || 0, 'tracks');
     setTracks((data as any) || []);
     setLastUpdated(data && data.length > 0 ? data[0].created_at : null);
     setFetching(false);

@@ -31,7 +31,7 @@ export default function RoyaltyUploaderPage() {
   const { theme } = useTheme();
   const [mounted, setMounted] = useState(false);
   
-  const [artists, setArtists] = useState<UserProfile[]>([]);
+  const [artists, setArtists] = useState<Array<{ id: string; email: string; name: string }>>([]);
   const [selectedArtist, setSelectedArtist] = useState<string>("");
   const [parsedData, setParsedData] = useState<ParsedRoyaltyData[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -54,14 +54,22 @@ export default function RoyaltyUploaderPage() {
 
   const fetchArtists = async () => {
     try {
+      // Fetch from artists table (not user_profiles) to get the correct artist_id
       const { data, error } = await supabase
-        .from("user_profiles")
-        .select("*")
-        .eq("role", "artist")
+        .from("artists")
+        .select("id, name, email, user_id")
         .order("email");
 
       if (error) throw error;
-      setArtists(data || []);
+      
+      // Map to the format expected by the component
+      const artistList = (data || []).map(artist => ({
+        id: artist.id, // Use artist.id (from artists table), not user_id
+        email: artist.email || artist.name || "Unknown",
+        name: artist.name || artist.email || "Unknown",
+      }));
+      
+      setArtists(artistList as any);
     } catch (error) {
       console.error("Error fetching artists:", error);
       toast({
@@ -83,17 +91,42 @@ export default function RoyaltyUploaderPage() {
         skipEmptyLines: true,
       complete: (results) => {
         try {
+          // Debug: Log available column names from first row
+          if (results.data && results.data.length > 0) {
+            const firstRow = results.data[0] as Record<string, string>;
+            console.log("📋 Available CSV columns:", Object.keys(firstRow));
+          }
+
+          // Helper function to get column value with multiple possible names (case-insensitive)
+          const getColumn = (row: Record<string, string>, possibleNames: string[]) => {
+            // First try exact match
+            for (const name of possibleNames) {
+              if (row[name] !== undefined && row[name] !== null && row[name] !== "") {
+                return row[name];
+              }
+            }
+            // Then try case-insensitive match
+            const rowKeys = Object.keys(row);
+            for (const name of possibleNames) {
+              const foundKey = rowKeys.find(key => key.toLowerCase() === name.toLowerCase());
+              if (foundKey && row[foundKey] !== undefined && row[foundKey] !== null && row[foundKey] !== "") {
+                return row[foundKey];
+              }
+            }
+            return "";
+          };
+
           const parsed = (results.data as Record<string, string>[]).map((row) => ({
-            songTitle: row["Song Title"] || "",
-            iswc: row["ISWC"] || "",
-            composer: row["Composer"] || "",
-            date: row["Date"] || "",
-            territory: row["Territory"] || "",
-            source: row["Source"] || "",
-            usageCount: parseInt(row["Usage Count"]) || 0,
-            gross: parseFloat(row["Gross"]) || 0,
-            adminPercent: parseFloat(row["Admin %"]) || 0,
-            net: parseFloat(row["Net"]) || 0,
+            songTitle: getColumn(row, ["Song Title", "song title", "Song Title", "title", "Title"]) || "",
+            iswc: getColumn(row, ["ISWC", "iswc", "Iswc", "ISWC Code", "ISWC Code"]) || "",
+            composer: getColumn(row, ["Composer", "composer", "Composer Name", "Composer"]) || "",
+            date: getColumn(row, ["Date", "date", "Broadcast Date", "broadcast_date"]) || "",
+            territory: getColumn(row, ["Territory", "territory"]) || "",
+            source: getColumn(row, ["Source", "source", "Platform", "platform", "Exploitation Source"]) || "",
+            usageCount: parseInt(getColumn(row, ["Usage Count", "usage count", "Usage Cou", "Usage", "usage"]) || "0") || 0,
+            gross: parseFloat(getColumn(row, ["Gross", "gross", "Gross Amount", "Gross"]) || "0") || 0,
+            adminPercent: parseFloat(getColumn(row, ["Admin %", "admin %", "Admin %", "Admin Percent", "Admin %"]) || "0") || 0,
+            net: parseFloat(getColumn(row, ["Net", "net", "Net Amount", "Net"]) || "0") || 0,
           }));
 
           setParsedData(parsed);
@@ -153,29 +186,46 @@ export default function RoyaltyUploaderPage() {
         const { data: existingTrack } = await supabase
           .from("tracks")
           .select("id")
-          .eq("title", row.songTitle)
+          .eq("song_title", row.songTitle)
           .eq("artist_id", selectedArtist)
-          .single();
+          .maybeSingle();
 
         if (existingTrack) {
           trackId = existingTrack.id;
         } else {
           // Create new track
+          const trackData: any = {
+            artist_id: selectedArtist,
+            song_title: row.songTitle || "Unknown",
+            artist_name: "", // Will be populated from artist record
+            split: "100%",
+            uploaded_by: user.id,
+          };
+          
+          // Only include composer_name and isrc if they have values
+          if (row.composer && row.composer.trim() !== "") {
+            trackData.composer_name = row.composer;
+          }
+          
+          if (row.iswc && row.iswc.trim() !== "") {
+            trackData.isrc = row.iswc;
+          }
+          
+          // If title column exists, populate it too (for backward compatibility)
+          if (row.songTitle) {
+            trackData.title = row.songTitle;
+          }
+
           const { data: newTrack, error: trackError } = await supabase
             .from("tracks")
-            .insert({
-              artist_id: selectedArtist,
-              title: row.songTitle,
-              iswc: row.iswc,
-              composers: row.composer,
-              release_date: row.date || null,
-              territory: row.territory,
-              platform: row.source,
-            })
+            .insert(trackData)
             .select()
             .single();
 
-          if (trackError) throw trackError;
+          if (trackError) {
+            console.error("Track creation error:", trackError);
+            throw trackError;
+          }
           trackId = newTrack.id;
         }
 
@@ -211,11 +261,19 @@ export default function RoyaltyUploaderPage() {
       setSelectedArtist("");
       const fileInput = document.getElementById("csv-file-input") as HTMLInputElement;
       if (fileInput) fileInput.value = "";
-    } catch (error) {
+    } catch (error: any) {
       console.error("Upload error:", error);
+      console.error("Error details:", {
+        message: error?.message,
+        code: error?.code,
+        details: error?.details,
+        hint: error?.hint,
+      });
+      
+      const errorMessage = error?.message || "Unknown error occurred";
       toast({
         title: "Upload Failed",
-        description: "Failed to upload royalty data. Check console for details.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
