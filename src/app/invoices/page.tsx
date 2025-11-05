@@ -3,16 +3,20 @@
 import { useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { useRouter } from "next/navigation";
-import ArtistInvoices from "@/components/ArtistInvoices";
-import AdminInvoiceList from "@/components/AdminInvoiceList";
+import SimpleInvoiceManager from "@/components/SimpleInvoiceManager";
 
 export default function InvoicesPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
+    // Only redirect if we're sure the user isn't authenticated
+    // Wait a bit to avoid race conditions with auth loading
     if (!authLoading && !user) {
-      router.push("/login");
+      const timer = setTimeout(() => {
+        router.push("/login");
+      }, 100);
+      return () => clearTimeout(timer);
     }
   }, [user, authLoading, router]);
 
@@ -25,16 +29,18 @@ export default function InvoicesPage() {
   }
 
   if (!user) {
-    return null;
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-zinc-500">Redirecting to login...</div>
+      </div>
+    );
   }
 
-  // Render different components based on user role
-  if (user.role === "admin") {
-    return <AdminInvoiceList user={user} />;
-  }
-
-  return <ArtistInvoices user={user} />;
+  // Render SimpleInvoiceManager component (handles both admin and artist views)
+  return <SimpleInvoiceManager user={user} />;
 }
+
+
 
 
 

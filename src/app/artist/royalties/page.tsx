@@ -50,6 +50,8 @@ export default function ArtistRoyaltiesPage() {
 
   const [unpaidTotal, setUnpaidTotal] = useState(0);
   const [unpaidCount, setUnpaidCount] = useState(0);
+  const [hasPendingRequest, setHasPendingRequest] = useState(false);
+  const MINIMUM_BALANCE = 100;
 
   // Check authorization - redirect non-artists
   useEffect(() => {
@@ -82,11 +84,22 @@ export default function ArtistRoyaltiesPage() {
 
       setRoyalties(data || []);
 
-      // Calculate unpaid totals
-      const unpaid = (data || []).filter((r) => r.paid_status === "unpaid");
+      // Calculate unpaid totals (using is_paid = false or paid_status = 'unpaid')
+      const unpaid = (data || []).filter((r) => 
+        (r as any).is_paid === false || r.paid_status === "unpaid"
+      );
       const total = unpaid.reduce((sum, r) => sum + parseFloat(r.net_amount || "0"), 0);
       setUnpaidTotal(total);
       setUnpaidCount(unpaid.length);
+
+      // Check for pending/approved payment requests
+      const { data: pendingRequests } = await supabase
+        .from("payment_requests")
+        .select("id, status")
+        .eq("artist_id", user?.id)
+        .in("status", ["pending", "approved"]);
+
+      setHasPendingRequest((pendingRequests?.length || 0) > 0);
     } catch (error) {
       console.error("Error fetching royalties:", error);
       toast({
@@ -100,10 +113,21 @@ export default function ArtistRoyaltiesPage() {
   };
 
   const handleRequestPayment = async () => {
-    if (unpaidTotal <= 0) {
+    // Check minimum balance
+    if (unpaidTotal < MINIMUM_BALANCE) {
       toast({
-        title: "No Unpaid Royalties",
-        description: "You don't have any unpaid royalties to request payment for.",
+        title: "Minimum Balance Required",
+        description: `Minimum payout is €${MINIMUM_BALANCE}. You currently have €${unpaidTotal.toFixed(2)}.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Check for existing requests
+    if (hasPendingRequest) {
+      toast({
+        title: "Request Already Exists",
+        description: "You already have a pending or approved payment request. Only one request can be active at a time.",
         variant: "destructive",
       });
       return;
@@ -127,11 +151,11 @@ export default function ArtistRoyaltiesPage() {
 
       toast({
         title: "Success",
-        description: `Payment request submitted for $${data.paymentRequest.total_amount.toFixed(2)}`,
+        description: `✅ Payment request of €${data.paymentRequest.total_amount.toFixed(2)} submitted successfully. Your balance has been reset to €0.`,
       });
 
       setConfirmRequestOpen(false);
-      fetchRoyalties(); // Refresh to show updated status
+      fetchRoyalties(); // Refresh to show updated status (balance should now be €0)
     } catch (error) {
       console.error("Error requesting payment:", error);
       toast({
@@ -182,9 +206,9 @@ export default function ArtistRoyaltiesPage() {
           <div className="bg-white rounded-lg shadow-md p-6 border border-slate-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-slate-600 mb-1">Unpaid Amount</p>
+                <p className="text-sm text-slate-600 mb-1">Current Balance</p>
                 <p className="text-2xl font-bold text-orange-600">
-                  ${unpaidTotal.toFixed(2)}
+                  €{unpaidTotal.toFixed(2)}
                 </p>
                 <p className="text-xs text-slate-500 mt-1">{unpaidCount} royalties</p>
               </div>
@@ -199,9 +223,9 @@ export default function ArtistRoyaltiesPage() {
               <div>
                 <p className="text-sm text-slate-600 mb-1">Paid Amount</p>
                 <p className="text-2xl font-bold text-green-600">
-                  $
+                  €
                   {royalties
-                    .filter((r) => r.paid_status === "paid")
+                    .filter((r) => r.paid_status === "paid" || (r as any).is_paid === true)
                     .reduce((sum, r) => sum + parseFloat(r.net_amount || "0"), 0)
                     .toFixed(2)}
                 </p>
@@ -220,14 +244,31 @@ export default function ArtistRoyaltiesPage() {
               <div>
                 <h3 className="font-semibold text-lg mb-1">Ready to request payment?</h3>
                 <p className="text-sm text-slate-600">
-                  You have ${unpaidTotal.toFixed(2)} in unpaid royalties ({unpaidCount}{" "}
-                  items)
+                  Current balance: €{unpaidTotal.toFixed(2)} ({unpaidCount} unpaid {unpaidCount === 1 ? "royalty" : "royalties"})
                 </p>
+                {unpaidTotal < MINIMUM_BALANCE && (
+                  <p className="text-xs text-orange-600 mt-1">
+                    Minimum payout is €{MINIMUM_BALANCE}. You need €{(MINIMUM_BALANCE - unpaidTotal).toFixed(2)} more.
+                  </p>
+                )}
+                {hasPendingRequest && (
+                  <p className="text-xs text-orange-600 mt-1">
+                    You already have a pending or approved payment request.
+                  </p>
+                )}
               </div>
               <Button
                 onClick={() => setConfirmRequestOpen(true)}
                 size="lg"
                 className="gap-2"
+                disabled={unpaidTotal < MINIMUM_BALANCE || hasPendingRequest}
+                title={
+                  unpaidTotal < MINIMUM_BALANCE
+                    ? `Minimum payout is €${MINIMUM_BALANCE}. You currently have €${unpaidTotal.toFixed(2)}.`
+                    : hasPendingRequest
+                    ? "You already have a pending payment request."
+                    : "Request Payment"
+                }
               >
                 <DollarSign className="w-5 h-5" />
                 Request Payment
@@ -318,18 +359,31 @@ export default function ArtistRoyaltiesPage() {
         open={confirmRequestOpen}
         onOpenChange={setConfirmRequestOpen}
         onConfirm={handleRequestPayment}
-        title="Request Payment"
-        description={`Are you sure you want to request payment for $${unpaidTotal.toFixed(
-          2
-        )}? This will include ${unpaidCount} unpaid royalt${
-          unpaidCount === 1 ? "y" : "ies"
-        }.`}
-        confirmText="Request Payment"
+        title="Confirm Payment Request"
+        description={
+          <div className="space-y-3">
+            <p className="text-base font-semibold text-gray-900">
+              Are you sure you want to request a payout of <span className="text-2xl font-bold text-blue-600">€{unpaidTotal.toFixed(2)}</span>?
+            </p>
+            <p className="text-sm text-gray-600">
+              This will reset your balance to €0 once submitted. The entire balance of €{unpaidTotal.toFixed(2)} will be used for this request.
+            </p>
+            <p className="text-xs text-gray-500">
+              {unpaidCount} unpaid {unpaidCount === 1 ? "royalty" : "royalties"} will be included.
+            </p>
+          </div>
+        }
+        confirmText="Confirm Request"
+        cancelText="Cancel"
         loading={requesting}
       />
     </div>
   );
 }
+
+
+
+
 
 
 

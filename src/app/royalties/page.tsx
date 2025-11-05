@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { useRouter } from "next/navigation";
+import { useTheme } from "next-themes";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Edit, Trash2, Download, DollarSign } from "lucide-react";
 import type { Royalty, PaymentRequest } from "@/types";
 import jsPDF from "jspdf";
+import StatusBadge from "@/components/StatusBadge";
 
 interface RoyaltyWithTrack extends Royalty {
   tracks?: { title: string } | null;
@@ -20,12 +22,20 @@ export default function RoyaltiesPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
+  const { theme } = useTheme();
+  const [mounted, setMounted] = useState(false);
 
   const [royalties, setRoyalties] = useState<RoyaltyWithTrack[]>([]);
   const [paymentRequests, setPaymentRequests] = useState<PaymentRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingRoyalty, setEditingRoyalty] = useState<Royalty | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Royalty | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const isDark = mounted && theme === "dark";
 
   const [form, setForm] = useState({
     usage_count: 0,
@@ -204,7 +214,7 @@ export default function RoyaltiesPage() {
 
       toast({
         title: "Payment requested",
-        description: `Successfully requested payment of $${availableBalance.toFixed(2)}`,
+        description: `Successfully requested payment of €${availableBalance.toFixed(2)}`,
       });
 
       fetchPaymentRequests();
@@ -279,7 +289,7 @@ export default function RoyaltiesPage() {
     
     royalties.slice(0, 50).forEach((r) => {
       const trackTitle = r.tracks?.title || "Unknown";
-      const text = `${trackTitle} | ${r.exploitation_source_name} | $${(r.net_amount || 0).toFixed(2)}`;
+      const text = `${trackTitle} | ${r.exploitation_source_name} | €${(r.net_amount || 0).toFixed(2)}`;
       pdf.text(text, 14, y);
       y += 8;
       if (y > 280) {
@@ -320,7 +330,7 @@ export default function RoyaltiesPage() {
   if (authLoading || loading) {
     return (
       <div className="flex items-center justify-center h-screen">
-        <div className="text-zinc-500">Loading royalties...</div>
+        <div className="transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Loading royalties...</div>
       </div>
     );
   }
@@ -337,8 +347,8 @@ export default function RoyaltiesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-        <h1 className="text-2xl font-semibold">Royalties</h1>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-1">
+        <h1 className="text-2xl font-semibold transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>Royalties</h1>
+          <p className="text-sm mt-1 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
             {isAdmin ? "Manage all royalty records" : "View your earnings"}
           </p>
         </div>
@@ -362,52 +372,77 @@ export default function RoyaltiesPage() {
 
       {/* Summary Cards */}
       <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-4 bg-white dark:bg-zinc-950">
-          <div className="text-sm text-zinc-500">Total Revenue</div>
-          <div className="mt-1 text-2xl font-semibold">
-            ${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        <div 
+          className="rounded-lg border p-4 transition-colors"
+          style={{
+            backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
+            borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+          }}
+        >
+          <div className="text-sm transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Total Revenue</div>
+          <div className="mt-1 text-2xl font-semibold transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>
+            €{totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
         </div>
-        <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-4 bg-white dark:bg-zinc-950">
-          <div className="text-sm text-zinc-500">Total Usage</div>
-          <div className="mt-1 text-2xl font-semibold">{totalStreams.toLocaleString()}</div>
+        <div 
+          className="rounded-lg border p-4 transition-colors"
+          style={{
+            backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
+            borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+          }}
+        >
+          <div className="text-sm transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Total Usage</div>
+          <div className="mt-1 text-2xl font-semibold transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>{totalStreams.toLocaleString()}</div>
         </div>
-        <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-4 bg-white dark:bg-zinc-950">
-          <div className="text-sm text-zinc-500">Total Records</div>
-          <div className="mt-1 text-2xl font-semibold">{royalties.length}</div>
+        <div 
+          className="rounded-lg border p-4 transition-colors"
+          style={{
+            backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
+            borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+          }}
+        >
+          <div className="text-sm transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Total Records</div>
+          <div className="mt-1 text-2xl font-semibold transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>{royalties.length}</div>
         </div>
       </section>
 
       {/* Payment Requests (for artists and admins) */}
       {paymentRequests.length > 0 && (
-        <section className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-6">
-          <h2 className="text-lg font-semibold mb-4">Payment Requests</h2>
+        <section 
+          className="rounded-lg border p-6 transition-colors"
+          style={{
+            backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
+            borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+          }}
+        >
+          <h2 className="text-lg font-semibold mb-4 transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>Payment Requests</h2>
           <div className="space-y-3">
             {paymentRequests.map((request) => (
               <div
                 key={request.id}
-                className="flex items-center justify-between p-4 rounded-lg border border-zinc-200 dark:border-zinc-800"
+                className="flex items-center justify-between p-4 rounded-lg border transition-colors"
+                style={{
+                  borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+                }}
               >
                 <div>
-                  <div className="font-medium">
-                    ${Number(request.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  <div className="font-medium transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>
+                    €{Number(request.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
-                  <div className="text-sm text-zinc-600 dark:text-zinc-400">
+                  <div className="text-sm transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
                     Requested on {new Date(request.created_at).toLocaleDateString()}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span
-                    className={`px-3 py-1 rounded-full text-xs font-medium ${
-                      request.status === "pending"
-                        ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300"
-                        : request.status === "approved"
-                        ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"
-                        : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
-                    }`}
-                  >
-                    {request.status}
-                  </span>
+                  <StatusBadge 
+                    status={
+                      request.status === "pending" 
+                        ? "pending" 
+                        : request.status === "approved" 
+                        ? "approved" 
+                        : "rejected"
+                    } 
+                  />
                   {isAdmin && request.status === "pending" && (
                     <>
                       <Button
@@ -434,10 +469,21 @@ export default function RoyaltiesPage() {
       )}
 
       {/* Royalties Table */}
-      <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-x-auto">
+      <div 
+        className="rounded-lg border overflow-x-auto transition-colors"
+        style={{
+          backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
+          borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+        }}
+      >
         <table className="w-full text-sm">
-          <thead className="bg-zinc-50 dark:bg-zinc-900">
-            <tr className="text-left text-zinc-600 dark:text-zinc-400">
+          <thead 
+            className="text-left transition-colors"
+            style={{
+              backgroundColor: isDark ? 'rgba(31, 41, 55, 0.5)' : '#F9FAFB',
+            }}
+          >
+            <tr style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
               <th className="p-4 font-medium">Track</th>
               <th className="p-4 font-medium">Source</th>
               <th className="p-4 font-medium">Territory</th>
@@ -452,7 +498,7 @@ export default function RoyaltiesPage() {
           <tbody>
             {royalties.length === 0 ? (
               <tr>
-                <td className="p-4 text-center text-zinc-500" colSpan={isAdmin ? 9 : 8}>
+                <td className="p-4 text-center transition-colors" colSpan={isAdmin ? 9 : 8} style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
                   No royalties found
                 </td>
               </tr>
@@ -460,26 +506,35 @@ export default function RoyaltiesPage() {
               royalties.map((royalty) => (
                 <tr
                   key={royalty.id}
-                  className="border-t border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900/50"
+                  className="border-t transition-colors"
+                  style={{
+                    borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = isDark ? 'rgba(31, 41, 55, 0.5)' : '#F9FAFB';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
                 >
-                  <td className="p-4 font-medium">{royalty.tracks?.title || "Unknown"}</td>
-                  <td className="p-4 text-zinc-600 dark:text-zinc-400">
+                  <td className="p-4 font-medium transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>{royalty.tracks?.title || "Unknown"}</td>
+                  <td className="p-4 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
                     {royalty.exploitation_source_name || "-"}
                   </td>
-                  <td className="p-4 text-zinc-600 dark:text-zinc-400">{royalty.territory || "-"}</td>
-                  <td className="p-4 text-zinc-600 dark:text-zinc-400">
+                  <td className="p-4 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>{royalty.territory || "-"}</td>
+                  <td className="p-4 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
                     {(royalty.usage_count || 0).toLocaleString()}
                   </td>
-                  <td className="p-4 text-zinc-600 dark:text-zinc-400">
-                    ${(royalty.gross_amount || 0).toFixed(2)}
+                  <td className="p-4 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
+                    €{(royalty.gross_amount || 0).toFixed(2)}
                   </td>
-                  <td className="p-4 text-zinc-600 dark:text-zinc-400">
+                  <td className="p-4 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
                     {(royalty.admin_percent || 0).toFixed(1)}%
                   </td>
-                  <td className="p-4 font-semibold text-green-600 dark:text-green-400">
-                    ${(royalty.net_amount || 0).toFixed(2)}
+                  <td className="p-4 font-semibold transition-colors" style={{ color: '#10B981' }}>
+                    €{(royalty.net_amount || 0).toFixed(2)}
                   </td>
-                  <td className="p-4 text-zinc-600 dark:text-zinc-400">
+                  <td className="p-4 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
                     {royalty.broadcast_date
                       ? new Date(royalty.broadcast_date).toLocaleDateString()
                       : "-"}
@@ -507,11 +562,11 @@ export default function RoyaltiesPage() {
       <Dialog open={!!editingRoyalty} onOpenChange={(open) => !open && setEditingRoyalty(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Royalty</DialogTitle>
+            <DialogTitle className="transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>Edit Royalty</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Usage Count</label>
+              <label className="block text-sm font-medium mb-1 transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>Usage Count</label>
               <Input
                 type="number"
                 value={form.usage_count}
@@ -519,7 +574,7 @@ export default function RoyaltiesPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Gross Amount</label>
+              <label className="block text-sm font-medium mb-1 transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>Gross Amount</label>
               <Input
                 type="number"
                 step="0.01"
@@ -528,7 +583,7 @@ export default function RoyaltiesPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Admin %</label>
+              <label className="block text-sm font-medium mb-1 transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>Admin %</label>
               <Input
                 type="number"
                 step="0.1"
@@ -537,7 +592,7 @@ export default function RoyaltiesPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Net Amount</label>
+              <label className="block text-sm font-medium mb-1 transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>Net Amount</label>
               <Input
                 type="number"
                 step="0.01"
@@ -546,7 +601,7 @@ export default function RoyaltiesPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Broadcast Date</label>
+              <label className="block text-sm font-medium mb-1 transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>Broadcast Date</label>
               <Input
                 type="date"
                 value={form.broadcast_date}
@@ -554,14 +609,14 @@ export default function RoyaltiesPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Source</label>
+              <label className="block text-sm font-medium mb-1 transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>Source</label>
               <Input
                 value={form.exploitation_source_name}
                 onChange={(e) => setForm({ ...form, exploitation_source_name: e.target.value })}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Territory</label>
+              <label className="block text-sm font-medium mb-1 transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>Territory</label>
               <Input
                 value={form.territory}
                 onChange={(e) => setForm({ ...form, territory: e.target.value })}
@@ -581,9 +636,9 @@ export default function RoyaltiesPage() {
       <Dialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Royalty</DialogTitle>
+            <DialogTitle className="transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>Delete Royalty</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+          <p className="text-sm transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
             Are you sure you want to delete this royalty record? This action cannot be undone.
           </p>
           <DialogFooter>

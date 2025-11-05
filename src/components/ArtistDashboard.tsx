@@ -35,13 +35,11 @@ export default function ArtistDashboard() {
     if (!user) return;
 
     try {
-      // Get artist's tracks
       const { count: trackCount } = await supabase
         .from("tracks")
         .select("*", { count: "exact", head: true })
         .eq("artist_id", user.id);
 
-      // Get artist's royalties
       const { data: royalties } = await supabase
         .from("royalties")
         .select("net_amount, usage_count")
@@ -57,7 +55,6 @@ export default function ArtistDashboard() {
         0
       ) || 0;
 
-      // Get pending payment requests
       const { data: pendingRequests } = await supabase
         .from("payment_requests")
         .select("amount")
@@ -87,7 +84,6 @@ export default function ArtistDashboard() {
 
     setRequestingPayment(true);
     try {
-      // Calculate available balance (total revenue - pending requests)
       const availableBalance = stats.totalRevenue - stats.pendingRevenue;
 
       if (availableBalance <= 0) {
@@ -112,7 +108,6 @@ export default function ArtistDashboard() {
         description: `Successfully requested payment of $${availableBalance.toFixed(2)}`,
       });
 
-      // Refresh stats
       await fetchArtistStats();
     } catch (error) {
       console.error("Error requesting payment:", error);
@@ -129,38 +124,38 @@ export default function ArtistDashboard() {
   const kpis = [
     {
       label: "Total Revenue",
-      value: `$${stats.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      value: `€${stats.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       sub: "All time earnings",
       icon: DollarSign,
-      color: "text-green-600 dark:text-green-400",
+      color: "#4ADE80",
     },
     {
       label: "Available Balance",
-      value: `$${(stats.totalRevenue - stats.pendingRevenue).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      value: `€${(stats.totalRevenue - stats.pendingRevenue).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       sub: "Ready to withdraw",
       icon: TrendingUp,
-      color: "text-blue-600 dark:text-blue-400",
+      color: "#60A5FA",
     },
     {
       label: "Total Streams",
       value: stats.totalStreams.toLocaleString(),
       sub: "All platforms",
       icon: TrendingUp,
-      color: "text-purple-600 dark:text-purple-400",
+      color: "#A78BFA",
     },
     {
       label: "Active Tracks",
       value: stats.totalTracks.toString(),
       sub: "In catalog",
       icon: Music,
-      color: "text-orange-600 dark:text-orange-400",
+      color: "#FB923C",
     },
   ];
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-zinc-500">Loading your dashboard...</div>
+        <div className="transition-colors" style={{ color: 'var(--text-secondary)' }}>Loading your dashboard...</div>
       </div>
     );
   }
@@ -169,15 +164,29 @@ export default function ArtistDashboard() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Artist Dashboard</h1>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-1">
+          <h1 className="text-2xl font-semibold transition-colors" style={{ color: 'var(--text-primary)' }}>Artist Dashboard</h1>
+          <p className="text-sm mt-1 transition-colors" style={{ color: 'var(--text-secondary)' }}>
             Welcome back, {user?.email}!
           </p>
         </div>
         <button
           onClick={handleRequestPayment}
           disabled={requestingPayment || stats.totalRevenue - stats.pendingRevenue <= 0}
-          className="px-4 py-2 text-sm rounded-lg bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-4 py-2 text-sm rounded-lg font-semibold text-white transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95"
+          style={{
+            background: 'linear-gradient(to right, #10B981, #059669)',
+            boxShadow: '0 4px 15px rgba(16, 185, 129, 0.4)',
+          }}
+          onMouseEnter={(e) => {
+            if (!e.currentTarget.disabled) {
+              e.currentTarget.style.boxShadow = '0 6px 20px rgba(16, 185, 129, 0.5)';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!e.currentTarget.disabled) {
+              e.currentTarget.style.boxShadow = '0 4px 15px rgba(16, 185, 129, 0.4)';
+            }
+          }}
         >
           {requestingPayment ? "Processing..." : "Request Payment"}
         </button>
@@ -189,14 +198,19 @@ export default function ArtistDashboard() {
           return (
             <div
               key={kpi.label}
-              className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-6 bg-white dark:bg-zinc-950"
+              className="backdrop-blur-md rounded-2xl p-6 transition-all duration-200 hover:scale-[1.02] cursor-default"
+              style={{
+                backgroundColor: 'var(--glass-bg)',
+                border: '1px solid var(--glass-border)',
+                boxShadow: '0 8px 32px 0 var(--shadow)',
+              }}
             >
               <div className="flex items-center justify-between">
-                <div className="text-sm text-zinc-500">{kpi.label}</div>
-                <Icon className={`h-5 w-5 ${kpi.color}`} />
+                <div className="text-sm transition-colors" style={{ color: 'var(--text-secondary)' }}>{kpi.label}</div>
+                <Icon className="h-5 w-5" style={{ color: kpi.color }} />
               </div>
-              <div className="mt-2 text-3xl font-semibold">{kpi.value}</div>
-              <div className="text-xs text-zinc-500 mt-1">{kpi.sub}</div>
+              <div className="mt-2 text-3xl font-semibold transition-colors" style={{ color: 'var(--text-primary)' }}>{kpi.value}</div>
+              <div className="text-xs mt-1 transition-colors" style={{ color: 'var(--text-muted)' }}>{kpi.sub}</div>
             </div>
           );
         })}
@@ -205,44 +219,66 @@ export default function ArtistDashboard() {
       <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Link
           href="/analytics"
-          className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-6 bg-white dark:bg-zinc-950 hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors"
+          className="backdrop-blur-md rounded-2xl p-6 transition-all duration-200 hover:scale-[1.02] block"
+          style={{
+            backgroundColor: 'var(--glass-bg)',
+            border: '1px solid var(--glass-border)',
+            boxShadow: '0 8px 32px 0 var(--shadow)',
+          }}
         >
-          <TrendingUp className="h-8 w-8 text-blue-600 dark:text-blue-400 mb-3" />
-          <h3 className="font-semibold mb-1">Analytics</h3>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+          <TrendingUp className="h-8 w-8 mb-3" style={{ color: 'var(--accent-blue)' }} />
+          <h3 className="font-semibold mb-1 transition-colors" style={{ color: 'var(--text-primary)' }}>Analytics</h3>
+          <p className="text-sm transition-colors" style={{ color: 'var(--text-secondary)' }}>
             View detailed performance metrics
           </p>
         </Link>
 
         <Link
           href="/royalties"
-          className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-6 bg-white dark:bg-zinc-950 hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors"
+          className="backdrop-blur-md rounded-2xl p-6 transition-all duration-200 hover:scale-[1.02] block"
+          style={{
+            backgroundColor: 'var(--glass-bg)',
+            border: '1px solid var(--glass-border)',
+            boxShadow: '0 8px 32px 0 var(--shadow)',
+          }}
         >
-          <FileText className="h-8 w-8 text-green-600 dark:text-green-400 mb-3" />
-          <h3 className="font-semibold mb-1">Royalties</h3>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+          <FileText className="h-8 w-8 mb-3" style={{ color: '#10B981' }} />
+          <h3 className="font-semibold mb-1 transition-colors" style={{ color: 'var(--text-primary)' }}>Royalties</h3>
+          <p className="text-sm transition-colors" style={{ color: 'var(--text-secondary)' }}>
             View your royalty statements
           </p>
         </Link>
 
         <Link
           href="/catalog"
-          className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-6 bg-white dark:bg-zinc-950 hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors"
+          className="backdrop-blur-md rounded-2xl p-6 transition-all duration-200 hover:scale-[1.02] block"
+          style={{
+            backgroundColor: 'var(--glass-bg)',
+            border: '1px solid var(--glass-border)',
+            boxShadow: '0 8px 32px 0 var(--shadow)',
+          }}
         >
-          <Music className="h-8 w-8 text-purple-600 dark:text-purple-400 mb-3" />
-          <h3 className="font-semibold mb-1">Catalog</h3>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+          <Music className="h-8 w-8 mb-3" style={{ color: '#A78BFA' }} />
+          <h3 className="font-semibold mb-1 transition-colors" style={{ color: 'var(--text-primary)' }}>Catalog</h3>
+          <p className="text-sm transition-colors" style={{ color: 'var(--text-secondary)' }}>
             Browse your track catalog
           </p>
         </Link>
       </section>
 
       {stats.pendingRevenue > 0 && (
-        <section className="rounded-lg border border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-950/20 p-6">
-          <h2 className="text-lg font-semibold mb-2 text-orange-900 dark:text-orange-100">
+        <section 
+          className="backdrop-blur-md rounded-2xl p-6 transition-all duration-200"
+          style={{
+            backgroundColor: 'rgba(251, 146, 60, 0.1)',
+            border: '1px solid rgba(251, 146, 60, 0.3)',
+            boxShadow: '0 8px 32px 0 rgba(251, 146, 60, 0.2)',
+          }}
+        >
+          <h2 className="text-lg font-semibold mb-2 transition-colors" style={{ color: '#FBBF24' }}>
             Pending Payment Request
           </h2>
-          <p className="text-sm text-orange-700 dark:text-orange-300">
+          <p className="text-sm transition-colors" style={{ color: '#FCD34D' }}>
             You have a pending payment request of ${stats.pendingRevenue.toFixed(2)}. 
             Your admin will review and process it soon.
           </p>
@@ -251,9 +287,3 @@ export default function ArtistDashboard() {
     </div>
   );
 }
-
-
-
-
-
-

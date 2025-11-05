@@ -26,7 +26,7 @@ import { useRouter } from "next/navigation";
 
 interface PaymentRequest {
   id: string;
-  total_amount: number;
+  total_amount: number | null | undefined;
   status: string;
   remarks: string | null;
   created_at: string;
@@ -200,7 +200,7 @@ export default function ArtistPaymentsPage() {
                       {new Date(request.created_at).toLocaleDateString()}
                     </TableCell>
                     <TableCell className="text-right font-semibold">
-                      ${parseFloat(request.total_amount.toString()).toFixed(2)}
+                      €{(parseFloat(request.total_amount?.toString() || "0") || 0).toFixed(2)}
                     </TableCell>
                     <TableCell>{getStatusBadge(request.status)}</TableCell>
                     <TableCell>
@@ -239,6 +239,7 @@ export default function ArtistPaymentsPage() {
     </div>
   );
 }
+
 
 
 

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { useRouter } from "next/navigation";
+import { useTheme } from "next-themes";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,8 @@ export default function CatalogPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
+  const { theme } = useTheme();
+  const [mounted, setMounted] = useState(false);
 
   const [tracks, setTracks] = useState<Track[]>([]);
   const [filteredTracks, setFilteredTracks] = useState<Track[]>([]);
@@ -24,6 +27,12 @@ export default function CatalogPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<Track | null>(null);
   const [deleteAllConfirm, setDeleteAllConfirm] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const isDark = mounted && theme === "dark";
   
   const [form, setForm] = useState({
     title: "",
@@ -254,7 +263,7 @@ export default function CatalogPage() {
   if (authLoading || loading) {
     return (
       <div className="flex items-center justify-center h-screen">
-        <div className="text-zinc-500">Loading catalog...</div>
+        <div className="transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Loading catalog...</div>
       </div>
     );
   }
@@ -269,8 +278,8 @@ export default function CatalogPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Track Catalog</h1>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-1">
+          <h1 className="text-2xl font-semibold transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>Track Catalog</h1>
+          <p className="text-sm mt-1 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
             {isAdmin ? "Manage all tracks" : "View your tracks"}
           </p>
         </div>
@@ -294,7 +303,7 @@ export default function CatalogPage() {
 
       {/* Search Bar */}
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#9CA3AF' }} />
         <Input
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
@@ -303,10 +312,21 @@ export default function CatalogPage() {
         />
       </div>
 
-      <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-x-auto">
+      <div 
+        className="rounded-lg border overflow-x-auto transition-colors"
+        style={{
+          backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
+          borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+        }}
+      >
         <table className="w-full text-sm">
-          <thead className="bg-zinc-50 dark:bg-zinc-900">
-            <tr className="text-left text-zinc-600 dark:text-zinc-400">
+          <thead 
+            className="text-left transition-colors"
+            style={{
+              backgroundColor: isDark ? 'rgba(31, 41, 55, 0.5)' : '#F9FAFB',
+            }}
+          >
+            <tr style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
               <th className="p-4 font-medium">Title</th>
               <th className="p-4 font-medium">ISWC</th>
               <th className="p-4 font-medium">Composers</th>
@@ -319,21 +339,33 @@ export default function CatalogPage() {
           <tbody>
             {filteredTracks.length === 0 ? (
               <tr>
-                <td className="p-4 text-center text-zinc-500" colSpan={isAdmin ? 7 : 6}>
+                <td className="p-4 text-center transition-colors" colSpan={isAdmin ? 7 : 6} style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
                   {searchTerm ? "No tracks match your search" : "No tracks found"}
                 </td>
               </tr>
             ) : (
               filteredTracks.map((track) => (
-                <tr key={track.id} className="border-t border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900/50">
-                  <td className="p-4 font-medium">{track.title}</td>
-                  <td className="p-4 text-zinc-600 dark:text-zinc-400">{track.iswc || "-"}</td>
-                  <td className="p-4 text-zinc-600 dark:text-zinc-400">{track.composers || "-"}</td>
-                  <td className="p-4 text-zinc-600 dark:text-zinc-400">
+                <tr 
+                  key={track.id} 
+                  className="border-t transition-colors"
+                  style={{
+                    borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = isDark ? 'rgba(31, 41, 55, 0.5)' : '#F9FAFB';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
+                >
+                  <td className="p-4 font-medium transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>{track.title}</td>
+                  <td className="p-4 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>{track.iswc || "-"}</td>
+                  <td className="p-4 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>{track.composers || "-"}</td>
+                  <td className="p-4 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
                     {track.release_date ? new Date(track.release_date).toLocaleDateString() : "-"}
                   </td>
-                  <td className="p-4 text-zinc-600 dark:text-zinc-400">{track.platform || "-"}</td>
-                  <td className="p-4 text-zinc-600 dark:text-zinc-400">{track.territory || "-"}</td>
+                  <td className="p-4 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>{track.platform || "-"}</td>
+                  <td className="p-4 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>{track.territory || "-"}</td>
                   {isAdmin && (
                     <td className="p-4">
                       <div className="flex gap-2">

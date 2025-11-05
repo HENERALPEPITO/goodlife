@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input";
 import { Check, X, DollarSign, Search } from "lucide-react";
 import type { Invoice, AuthUser } from "@/types";
+import InvoiceStatusBadge from "@/components/InvoiceStatusBadge";
 
 interface InvoiceWithArtist extends Invoice {
   user_profiles?: {
@@ -40,21 +41,35 @@ export default function AdminInvoiceList({ user }: AdminInvoiceListProps) {
   const fetchInvoices = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      const { data: invoicesData, error: invoicesError } = await supabase
         .from("invoices")
-        .select(`
-          *,
-          user_profiles!artist_id(email)
-        `)
+        .select("*")
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
-      setInvoices(data || []);
+      if (invoicesError) throw invoicesError;
+
+      // Fetch user profiles for artist_ids
+      const artistIds = [...new Set((invoicesData || []).map((inv) => inv.artist_id).filter(Boolean))];
+      const { data: profilesData } = await supabase
+        .from("user_profiles")
+        .select("id, email")
+        .in("id", artistIds);
+
+      // Map profiles by id
+      const profilesMap = new Map((profilesData || []).map((p) => [p.id, p]));
+
+      // Combine invoice data with profile emails
+      const invoicesWithProfiles = (invoicesData || []).map((invoice) => ({
+        ...invoice,
+        user_profiles: profilesMap.get(invoice.artist_id) || null,
+      }));
+
+      setInvoices(invoicesWithProfiles as any);
     } catch (error) {
       console.error("Error fetching invoices:", error);
       toast({
         title: "Error",
-        description: "Failed to load invoices",
+        description: error instanceof Error ? error.message : "Failed to load invoices",
         variant: "destructive",
       });
     } finally {
@@ -118,20 +133,6 @@ export default function AdminInvoiceList({ user }: AdminInvoiceListProps) {
     setActionType(action);
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "pending":
-        return "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300";
-      case "approved":
-        return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300";
-      case "paid":
-        return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300";
-      case "rejected":
-        return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300";
-      default:
-        return "bg-zinc-100 text-zinc-700 dark:bg-zinc-900/30 dark:text-zinc-300";
-    }
-  };
 
   const getActionDialogContent = () => {
     if (!selectedInvoice || !actionType) return null;
@@ -139,7 +140,7 @@ export default function AdminInvoiceList({ user }: AdminInvoiceListProps) {
     const actionTexts = {
       approve: {
         title: "Approve Invoice",
-        message: `Are you sure you want to approve invoice ${selectedInvoice.invoice_number} for $${Number(
+        message: `Are you sure you want to approve invoice ${selectedInvoice.invoice_number} for €${Number(
           selectedInvoice.amount
         ).toFixed(2)}?`,
         buttonText: "Approve",
@@ -178,7 +179,7 @@ export default function AdminInvoiceList({ user }: AdminInvoiceListProps) {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-zinc-500">Loading invoices...</div>
+        <div style={{ color: '#6B7280' }}>Loading invoices...</div>
       </div>
     );
   }
@@ -189,8 +190,8 @@ export default function AdminInvoiceList({ user }: AdminInvoiceListProps) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Invoice Management</h1>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-1">
+          <h1 className="text-2xl font-semibold" style={{ color: '#1F2937' }}>Invoice Management</h1>
+          <p className="text-sm mt-1" style={{ color: '#6B7280' }}>
             Review and manage artist payment requests
           </p>
         </div>
@@ -198,29 +199,57 @@ export default function AdminInvoiceList({ user }: AdminInvoiceListProps) {
 
       {/* Statistics Cards */}
       <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-4 bg-white dark:bg-zinc-950">
-          <div className="text-sm text-zinc-500">Total Invoices</div>
-          <div className="mt-1 text-2xl font-semibold">{stats.total}</div>
+        <div 
+          className="rounded-xl p-4"
+          style={{
+            backgroundColor: '#FFFFFF',
+            border: '1px solid #E5E7EB',
+            boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.08)',
+          }}
+        >
+          <div className="text-sm" style={{ color: '#6B7280' }}>Total Invoices</div>
+          <div className="mt-1 text-2xl font-semibold" style={{ color: '#1F2937' }}>{stats.total}</div>
         </div>
-        <div className="rounded-lg border border-yellow-200 dark:border-yellow-900 p-4 bg-yellow-50 dark:bg-yellow-950/30">
-          <div className="text-sm text-yellow-700 dark:text-yellow-300">Pending</div>
-          <div className="mt-1 text-2xl font-semibold text-yellow-700 dark:text-yellow-300">
+        <div 
+          className="rounded-xl p-4"
+          style={{
+            backgroundColor: '#FEF9C3',
+            border: '1px solid #FCD34D',
+            boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.08)',
+          }}
+        >
+          <div className="text-sm" style={{ color: '#92400E' }}>Pending</div>
+          <div className="mt-1 text-2xl font-semibold" style={{ color: '#92400E' }}>
             {stats.pending}
           </div>
-          <div className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">
-            ${stats.pendingAmount.toFixed(2)}
+          <div className="text-xs mt-1" style={{ color: '#B45309' }}>
+            €{stats.pendingAmount.toFixed(2)}
           </div>
         </div>
-        <div className="rounded-lg border border-green-200 dark:border-green-900 p-4 bg-green-50 dark:bg-green-950/30">
-          <div className="text-sm text-green-700 dark:text-green-300">Paid</div>
-          <div className="mt-1 text-2xl font-semibold text-green-700 dark:text-green-300">
+        <div 
+          className="rounded-xl p-4"
+          style={{
+            backgroundColor: '#DCFCE7',
+            border: '1px solid #22C55E',
+            boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.08)',
+          }}
+        >
+          <div className="text-sm" style={{ color: '#166534' }}>Paid</div>
+          <div className="mt-1 text-2xl font-semibold" style={{ color: '#166534' }}>
             {stats.paid}
           </div>
         </div>
-        <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-4 bg-white dark:bg-zinc-950">
-          <div className="text-sm text-zinc-500">Total Amount</div>
-          <div className="mt-1 text-2xl font-semibold">
-            ${stats.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        <div 
+          className="rounded-xl p-4"
+          style={{
+            backgroundColor: '#FFFFFF',
+            border: '1px solid #E5E7EB',
+            boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.08)',
+          }}
+        >
+          <div className="text-sm" style={{ color: '#6B7280' }}>Total Amount</div>
+          <div className="mt-1 text-2xl font-semibold" style={{ color: '#1F2937' }}>
+            €{stats.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
         </div>
       </section>
@@ -228,18 +257,46 @@ export default function AdminInvoiceList({ user }: AdminInvoiceListProps) {
       {/* Search and Filter */}
       <div className="flex gap-4 items-center">
         <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: '#9CA3AF' }} />
           <Input
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search by invoice number, artist email, or payment mode..."
-            className="pl-9"
+            className="pl-9 rounded-md"
+            style={{
+              backgroundColor: '#FFFFFF',
+              border: '1px solid #D1D5DB',
+              color: '#1F2937',
+            }}
+            onFocus={(e) => {
+              e.currentTarget.style.borderColor = '#3B82F6';
+              e.currentTarget.style.outline = 'none';
+              e.currentTarget.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)';
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.borderColor = '#D1D5DB';
+              e.currentTarget.style.boxShadow = 'none';
+            }}
           />
         </div>
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-3 py-2 rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm min-w-[140px]"
+          className="px-3 py-2 rounded-md text-sm min-w-[140px]"
+          style={{
+            backgroundColor: '#FFFFFF',
+            border: '1px solid #D1D5DB',
+            color: '#1F2937',
+          }}
+          onFocus={(e) => {
+            e.currentTarget.style.borderColor = '#3B82F6';
+            e.currentTarget.style.outline = 'none';
+            e.currentTarget.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)';
+          }}
+          onBlur={(e) => {
+            e.currentTarget.style.borderColor = '#D1D5DB';
+            e.currentTarget.style.boxShadow = 'none';
+          }}
         >
           <option value="all">All Status</option>
           <option value="pending">Pending</option>
@@ -250,24 +307,31 @@ export default function AdminInvoiceList({ user }: AdminInvoiceListProps) {
       </div>
 
       {/* Invoices Table */}
-      <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-x-auto">
+      <div 
+        className="rounded-xl overflow-x-auto"
+        style={{
+          backgroundColor: '#FFFFFF',
+          border: '1px solid #E5E7EB',
+          boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.08)',
+        }}
+      >
         <table className="w-full text-sm">
-          <thead className="bg-zinc-50 dark:bg-zinc-900">
-            <tr className="text-left text-zinc-600 dark:text-zinc-400">
-              <th className="p-4 font-medium">Invoice #</th>
-              <th className="p-4 font-medium">Artist</th>
-              <th className="p-4 font-medium">Amount</th>
-              <th className="p-4 font-medium">Payment Mode</th>
-              <th className="p-4 font-medium">Status</th>
-              <th className="p-4 font-medium">Remarks</th>
-              <th className="p-4 font-medium">Created</th>
-              <th className="p-4 font-medium">Actions</th>
+          <thead style={{ backgroundColor: '#F3F4F6' }}>
+            <tr className="text-left">
+              <th className="p-4 font-medium" style={{ color: '#6B7280' }}>Invoice #</th>
+              <th className="p-4 font-medium" style={{ color: '#6B7280' }}>Artist</th>
+              <th className="p-4 font-medium" style={{ color: '#6B7280' }}>Amount</th>
+              <th className="p-4 font-medium" style={{ color: '#6B7280' }}>Payment Mode</th>
+              <th className="p-4 font-medium" style={{ color: '#6B7280' }}>Status</th>
+              <th className="p-4 font-medium" style={{ color: '#6B7280' }}>Remarks</th>
+              <th className="p-4 font-medium" style={{ color: '#6B7280' }}>Created</th>
+              <th className="p-4 font-medium" style={{ color: '#6B7280' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {filteredInvoices.length === 0 ? (
               <tr>
-                <td className="p-4 text-center text-zinc-500" colSpan={8}>
+                <td className="p-4 text-center" colSpan={8} style={{ color: '#6B7280' }}>
                   {searchTerm || statusFilter !== "all"
                     ? "No invoices match your filters"
                     : "No invoices found"}
@@ -277,29 +341,44 @@ export default function AdminInvoiceList({ user }: AdminInvoiceListProps) {
               filteredInvoices.map((invoice) => (
                 <tr
                   key={invoice.id}
-                  className="border-t border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900/50"
+                  className="border-t transition-colors"
+                  style={{
+                    borderColor: '#E5E7EB',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#F9FAFB';
+                    e.currentTarget.style.boxShadow = '0px 1px 2px rgba(0, 0, 0, 0.05)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = '#FFFFFF';
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}
                 >
-                  <td className="p-4 font-mono font-medium">{invoice.invoice_number}</td>
-                  <td className="p-4 text-zinc-600 dark:text-zinc-400">
+                  <td className="p-4 font-mono font-medium" style={{ color: '#1F2937' }}>{invoice.invoice_number}</td>
+                  <td className="p-4" style={{ color: '#6B7280' }}>
                     {invoice.user_profiles?.email || "Unknown"}
                   </td>
-                  <td className="p-4 font-semibold text-green-600 dark:text-green-400">
-                    ${Number(invoice.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  <td className="p-4 font-semibold" style={{ color: '#166534' }}>
+                    €{Number(invoice.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
-                  <td className="p-4 text-zinc-600 dark:text-zinc-400">{invoice.mode_of_payment}</td>
+                  <td className="p-4" style={{ color: '#6B7280' }}>{invoice.mode_of_payment}</td>
                   <td className="p-4">
-                    <span
-                      className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(
-                        invoice.status
-                      )}`}
-                    >
-                      {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
-                    </span>
+                    <InvoiceStatusBadge 
+                      status={
+                        invoice.status === "pending" 
+                          ? "pending" 
+                          : invoice.status === "approved" 
+                          ? "approved" 
+                          : invoice.status === "paid"
+                          ? "paid"
+                          : "rejected"
+                      } 
+                    />
                   </td>
-                  <td className="p-4 text-zinc-600 dark:text-zinc-400 max-w-xs truncate">
+                  <td className="p-4 max-w-xs truncate" style={{ color: '#6B7280' }}>
                     {invoice.remarks || "-"}
                   </td>
-                  <td className="p-4 text-zinc-600 dark:text-zinc-400">
+                  <td className="p-4" style={{ color: '#6B7280' }}>
                     {new Date(invoice.created_at).toLocaleDateString()}
                   </td>
                   <td className="p-4">
@@ -309,7 +388,18 @@ export default function AdminInvoiceList({ user }: AdminInvoiceListProps) {
                           <Button
                             size="sm"
                             onClick={() => openActionDialog(invoice, "approve")}
-                            className="bg-green-600 hover:bg-green-700 text-white"
+                            className="rounded-full"
+                            style={{
+                              backgroundColor: '#22C55E',
+                              color: '#FFFFFF',
+                              fontWeight: 500,
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = '#16A34A';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = '#22C55E';
+                            }}
                             title="Approve"
                           >
                             <Check className="h-4 w-4" />
@@ -318,7 +408,19 @@ export default function AdminInvoiceList({ user }: AdminInvoiceListProps) {
                             size="sm"
                             variant="outline"
                             onClick={() => openActionDialog(invoice, "reject")}
-                            className="text-red-600 hover:text-red-700"
+                            className="rounded-full"
+                            style={{
+                              border: '1px solid #DC2626',
+                              color: '#DC2626',
+                              backgroundColor: '#FFFFFF',
+                              fontWeight: 500,
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = '#FEE2E2';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = '#FFFFFF';
+                            }}
                             title="Reject"
                           >
                             <X className="h-4 w-4" />
@@ -329,7 +431,18 @@ export default function AdminInvoiceList({ user }: AdminInvoiceListProps) {
                         <Button
                           size="sm"
                           onClick={() => openActionDialog(invoice, "paid")}
-                          className="bg-blue-600 hover:bg-blue-700 text-white"
+                          className="rounded-full"
+                          style={{
+                            backgroundColor: '#2563EB',
+                            color: '#FFFFFF',
+                            fontWeight: 500,
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = '#1D4ED8';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = '#2563EB';
+                          }}
                           title="Mark as Paid"
                         >
                           <DollarSign className="h-4 w-4 mr-1" />
@@ -337,7 +450,7 @@ export default function AdminInvoiceList({ user }: AdminInvoiceListProps) {
                         </Button>
                       )}
                       {(invoice.status === "paid" || invoice.status === "rejected") && (
-                        <span className="text-xs text-zinc-500 px-2 py-1">No actions</span>
+                        <span className="text-xs px-2 py-1" style={{ color: '#6B7280' }}>No actions</span>
                       )}
                     </div>
                   </td>
@@ -358,25 +471,31 @@ export default function AdminInvoiceList({ user }: AdminInvoiceListProps) {
           }
         }}
       >
-        <DialogContent>
+        <DialogContent style={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: '12px' }}>
           <DialogHeader>
-            <DialogTitle>{dialogContent?.title}</DialogTitle>
+            <DialogTitle style={{ color: '#1F2937', fontSize: '1.25rem', fontWeight: 600 }}>{dialogContent?.title}</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">{dialogContent?.message}</p>
+          <p className="text-sm" style={{ color: '#6B7280' }}>{dialogContent?.message}</p>
           {selectedInvoice && (
-            <div className="mt-4 p-4 rounded-lg bg-zinc-50 dark:bg-zinc-900 space-y-2 text-sm">
+            <div 
+              className="mt-4 p-4 rounded-lg space-y-2 text-sm"
+              style={{
+                backgroundColor: '#F3F4F6',
+                border: '1px solid #E5E7EB',
+              }}
+            >
               <div className="flex justify-between">
-                <span className="text-zinc-600 dark:text-zinc-400">Artist:</span>
-                <span className="font-medium">{selectedInvoice.user_profiles?.email}</span>
+                <span style={{ color: '#6B7280' }}>Artist:</span>
+                <span className="font-medium" style={{ color: '#1F2937' }}>{selectedInvoice.user_profiles?.email}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-zinc-600 dark:text-zinc-400">Payment Mode:</span>
-                <span className="font-medium">{selectedInvoice.mode_of_payment}</span>
+                <span style={{ color: '#6B7280' }}>Payment Mode:</span>
+                <span className="font-medium" style={{ color: '#1F2937' }}>{selectedInvoice.mode_of_payment}</span>
               </div>
               {selectedInvoice.remarks && (
                 <div className="flex justify-between">
-                  <span className="text-zinc-600 dark:text-zinc-400">Remarks:</span>
-                  <span className="font-medium">{selectedInvoice.remarks}</span>
+                  <span style={{ color: '#6B7280' }}>Remarks:</span>
+                  <span className="font-medium" style={{ color: '#1F2937' }}>{selectedInvoice.remarks}</span>
                 </div>
               )}
             </div>
@@ -388,11 +507,61 @@ export default function AdminInvoiceList({ user }: AdminInvoiceListProps) {
                 setSelectedInvoice(null);
                 setActionType(null);
               }}
+              className="rounded-full"
+              style={{
+                border: '1px solid #E5E7EB',
+                color: '#6B7280',
+                backgroundColor: '#FFFFFF',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#F3F4F6';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = '#FFFFFF';
+              }}
             >
               Cancel
             </Button>
             <Button
-              className={dialogContent?.buttonClass}
+              className="rounded-full"
+              style={
+                actionType === "approve"
+                  ? {
+                      backgroundColor: '#22C55E',
+                      color: '#FFFFFF',
+                      fontWeight: 500,
+                    }
+                  : actionType === "reject"
+                  ? {
+                      border: '1px solid #DC2626',
+                      color: '#DC2626',
+                      backgroundColor: '#FFFFFF',
+                      fontWeight: 500,
+                    }
+                  : {
+                      backgroundColor: '#2563EB',
+                      color: '#FFFFFF',
+                      fontWeight: 500,
+                    }
+              }
+              onMouseEnter={(e) => {
+                if (actionType === "approve") {
+                  e.currentTarget.style.backgroundColor = '#16A34A';
+                } else if (actionType === "reject") {
+                  e.currentTarget.style.backgroundColor = '#FEE2E2';
+                } else {
+                  e.currentTarget.style.backgroundColor = '#1D4ED8';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (actionType === "approve") {
+                  e.currentTarget.style.backgroundColor = '#22C55E';
+                } else if (actionType === "reject") {
+                  e.currentTarget.style.backgroundColor = '#FFFFFF';
+                } else {
+                  e.currentTarget.style.backgroundColor = '#2563EB';
+                }
+              }}
               onClick={() => actionType && handleUpdateStatus(actionType)}
             >
               {dialogContent?.buttonText}

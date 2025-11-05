@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/lib/auth";
 import { useRouter } from "next/navigation";
+import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import Papa from "papaparse";
@@ -27,12 +28,20 @@ export default function RoyaltyUploaderPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
+  const { theme } = useTheme();
+  const [mounted, setMounted] = useState(false);
   
   const [artists, setArtists] = useState<UserProfile[]>([]);
   const [selectedArtist, setSelectedArtist] = useState<string>("");
   const [parsedData, setParsedData] = useState<ParsedRoyaltyData[]>([]);
   const [uploading, setUploading] = useState(false);
   const [loadingArtists, setLoadingArtists] = useState(true);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const isDark = mounted && theme === "dark";
 
   useEffect(() => {
     if (!loading && (!user || user.role !== "admin")) {
@@ -217,7 +226,7 @@ export default function RoyaltyUploaderPage() {
   if (loading || loadingArtists) {
     return (
       <div className="flex items-center justify-center h-screen">
-        <div className="text-zinc-500">Loading...</div>
+        <div className="transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Loading...</div>
       </div>
     );
   }
@@ -229,24 +238,36 @@ export default function RoyaltyUploaderPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">CSV Royalty Uploader</h1>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-1">
+        <h1 className="text-2xl font-semibold transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>CSV Royalty Uploader</h1>
+        <p className="text-sm mt-1 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
           Upload royalty data from CSV files and assign to artists
         </p>
       </div>
 
       {/* CSV Format Info */}
-      <section className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/20 p-6">
+      <section 
+        className="rounded-lg border p-6 transition-colors"
+        style={{
+          backgroundColor: isDark ? 'rgba(30, 58, 138, 0.2)' : '#DBEAFE',
+          borderColor: isDark ? 'rgba(59, 130, 246, 0.3)' : '#93C5FD',
+        }}
+      >
         <div className="flex items-start gap-3">
-          <AlertCircle className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+          <AlertCircle className="h-5 w-5 mt-0.5 transition-colors" style={{ color: '#3B82F6' }} />
             <div>
-            <h3 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">
+            <h3 className="font-semibold mb-2 transition-colors" style={{ color: isDark ? '#DBEAFE' : '#1E3A8A' }}>
               Required CSV Format
             </h3>
-            <p className="text-sm text-blue-700 dark:text-blue-300 mb-2">
+            <p className="text-sm mb-2 transition-colors" style={{ color: isDark ? '#BFDBFE' : '#1E40AF' }}>
               Your CSV file must include the following columns (in any order):
             </p>
-            <div className="text-sm text-blue-700 dark:text-blue-300 font-mono bg-blue-100 dark:bg-blue-900/50 p-3 rounded">
+            <div 
+              className="text-sm font-mono p-3 rounded transition-colors"
+              style={{
+                color: isDark ? '#BFDBFE' : '#1E40AF',
+                backgroundColor: isDark ? 'rgba(30, 58, 138, 0.3)' : '#BFDBFE',
+              }}
+            >
               Song Title, ISWC, Composer, Date, Territory, Source, Usage Count, Gross, Admin %, Net
             </div>
           </div>
@@ -254,19 +275,30 @@ export default function RoyaltyUploaderPage() {
       </section>
 
       {/* Upload Form */}
-      <section className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-6 bg-white dark:bg-zinc-950">
-        <h2 className="text-lg font-semibold mb-4">Upload Royalty Data</h2>
+      <section 
+        className="rounded-lg border p-6 transition-colors"
+        style={{
+          backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
+          borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+        }}
+      >
+        <h2 className="text-lg font-semibold mb-4 transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>Upload Royalty Data</h2>
         
         <div className="space-y-4">
           {/* Artist Selection */}
           <div>
-            <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">
+            <label className="block text-sm font-medium mb-2 transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>
               Select Artist
             </label>
             <select
               value={selectedArtist}
               onChange={(e) => setSelectedArtist(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100"
+              className="w-full px-3 py-2 rounded-lg border transition-colors"
+              style={{
+                backgroundColor: isDark ? '#374151' : '#FFFFFF',
+                color: isDark ? '#FFFFFF' : '#1F2937',
+                borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+              }}
             >
               <option value="">-- Choose an artist --</option>
               {artists.map((artist) => (
@@ -279,7 +311,7 @@ export default function RoyaltyUploaderPage() {
 
           {/* File Upload */}
           <div>
-            <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">
+            <label className="block text-sm font-medium mb-2 transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>
               Upload CSV File
             </label>
             <input
@@ -287,7 +319,12 @@ export default function RoyaltyUploaderPage() {
               type="file"
               accept=".csv"
               onChange={handleFileChange}
-              className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-zinc-100 file:text-zinc-700 hover:file:bg-zinc-200 dark:file:bg-zinc-800 dark:file:text-zinc-300"
+              className="w-full px-3 py-2 rounded-lg border transition-colors"
+              style={{
+                backgroundColor: isDark ? '#374151' : '#FFFFFF',
+                color: isDark ? '#FFFFFF' : '#1F2937',
+                borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+              }}
             />
           </div>
         </div>
@@ -295,9 +332,20 @@ export default function RoyaltyUploaderPage() {
 
       {/* Preview */}
       {parsedData.length > 0 && (
-        <section className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-hidden">
-          <div className="px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Preview ({parsedData.length} rows)</h2>
+        <section 
+          className="rounded-lg border overflow-hidden transition-colors"
+          style={{
+            backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
+            borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+          }}
+        >
+          <div 
+            className="px-6 py-4 border-b flex items-center justify-between transition-colors"
+            style={{
+              borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+            }}
+          >
+            <h2 className="text-lg font-semibold transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>Preview ({parsedData.length} rows)</h2>
             <Button
               onClick={handleUpload}
               disabled={uploading || !selectedArtist}
@@ -315,34 +363,39 @@ export default function RoyaltyUploaderPage() {
           </div>
           
             <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-zinc-200 dark:divide-zinc-800">
-              <thead className="bg-zinc-50 dark:bg-zinc-900">
+            <table className="min-w-full divide-y transition-colors">
+              <thead 
+                className="transition-colors"
+                style={{
+                  backgroundColor: isDark ? 'rgba(31, 41, 55, 0.5)' : '#F9FAFB',
+                }}
+              >
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">Song Title</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">ISWC</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">Composer</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">Date</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">Territory</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">Source</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">Usage</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">Gross</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">Admin %</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">Net</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Song Title</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>ISWC</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Composer</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Date</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Territory</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Source</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Usage</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Gross</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Admin %</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Net</th>
                 </tr>
               </thead>
-              <tbody className="bg-white dark:bg-zinc-950 divide-y divide-zinc-200 dark:divide-zinc-800">
+              <tbody className="divide-y transition-colors" style={{ borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)' }}>
                 {parsedData.slice(0, 10).map((row, idx) => (
-                  <tr key={idx}>
-                    <td className="px-4 py-3 text-sm text-zinc-900 dark:text-zinc-100">{row.songTitle}</td>
-                    <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-400">{row.iswc}</td>
-                    <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-400">{row.composer}</td>
-                    <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-400">{row.date}</td>
-                    <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-400">{row.territory}</td>
-                    <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-400">{row.source}</td>
-                    <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-400">{row.usageCount.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-400">${row.gross.toFixed(2)}</td>
-                    <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-400">{row.adminPercent}%</td>
-                    <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-400 font-semibold">${row.net.toFixed(2)}</td>
+                  <tr key={idx} className="transition-colors">
+                    <td className="px-4 py-3 text-sm transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>{row.songTitle}</td>
+                    <td className="px-4 py-3 text-sm transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>{row.iswc}</td>
+                    <td className="px-4 py-3 text-sm transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>{row.composer}</td>
+                    <td className="px-4 py-3 text-sm transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>{row.date}</td>
+                    <td className="px-4 py-3 text-sm transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>{row.territory}</td>
+                    <td className="px-4 py-3 text-sm transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>{row.source}</td>
+                    <td className="px-4 py-3 text-sm transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>{row.usageCount.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-sm transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>€{row.gross.toFixed(2)}</td>
+                    <td className="px-4 py-3 text-sm transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>{row.adminPercent}%</td>
+                    <td className="px-4 py-3 text-sm font-semibold transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>€{row.net.toFixed(2)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -350,7 +403,13 @@ export default function RoyaltyUploaderPage() {
       </div>
 
           {parsedData.length > 10 && (
-            <div className="px-6 py-3 bg-zinc-50 dark:bg-zinc-900 text-sm text-zinc-600 dark:text-zinc-400 text-center">
+            <div 
+              className="px-6 py-3 text-sm text-center transition-colors"
+              style={{
+                backgroundColor: isDark ? 'rgba(31, 41, 55, 0.5)' : '#F9FAFB',
+                color: isDark ? '#9CA3AF' : '#6B7280',
+              }}
+            >
               Showing first 10 of {parsedData.length} rows
             </div>
           )}

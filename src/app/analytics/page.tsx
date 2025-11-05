@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { useRouter } from "next/navigation";
+import { useTheme } from "next-themes";
 import { supabase } from "@/lib/supabaseClient";
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { TrendingUp, Music, DollarSign, Globe } from "lucide-react";
@@ -31,12 +32,38 @@ interface MonthlyData {
 export default function AnalyticsPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const { theme } = useTheme();
+  const [mounted, setMounted] = useState(false);
   
   const [topTracks, setTopTracks] = useState<TrackPerformance[]>([]);
   const [territoryBreakdown, setTerritoryBreakdown] = useState<TerritoryData[]>([]);
   const [sourceBreakdown, setSourceBreakdown] = useState<SourceData[]>([]);
   const [monthlyRevenue, setMonthlyRevenue] = useState<MonthlyData[]>([]);
   const [loadingData, setLoadingData] = useState(true);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Tooltip and chart styles based on theme
+  const isDark = mounted && theme === "dark";
+  const tooltipStyle = isDark
+    ? {
+        backgroundColor: "#18181b",
+        border: "1px solid #3f3f46",
+        borderRadius: "8px",
+        color: "#e4e4e7",
+      }
+    : {
+        backgroundColor: "#FFFFFF",
+        border: "1px solid rgba(0, 0, 0, 0.1)",
+        borderRadius: "8px",
+        color: "#1F2937",
+        boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1)",
+      };
+  
+  const axisColor = isDark ? "#9ca3af" : "#6B7280";
+  const gridColor = isDark ? "#374151" : "#D1D5DB"; // Light gray in white mode
 
   const [stats, setStats] = useState({
     totalRevenue: 0,
@@ -188,90 +215,125 @@ export default function AnalyticsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Analytics Dashboard</h1>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-1">
+        <h1 className="text-2xl font-semibold transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>Analytics Dashboard</h1>
+        <p className="text-sm mt-1 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
           Performance insights and revenue breakdown
         </p>
       </div>
 
       {/* Key Metrics */}
       <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-6 bg-white dark:bg-zinc-950">
+        <div 
+          className="rounded-lg border p-6 transition-colors"
+          style={{
+            backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
+            borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+          }}
+        >
           <div className="flex items-center justify-between">
-            <div className="text-sm text-zinc-500">Total Revenue</div>
-            <DollarSign className="h-5 w-5 text-green-600 dark:text-green-400" />
+            <div className="text-sm transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Total Revenue</div>
+            <DollarSign className="h-5 w-5" style={{ color: '#10B981' }} />
           </div>
-          <div className="mt-2 text-3xl font-semibold">
-            ${stats.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          <div className="mt-2 text-3xl font-semibold transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>
+            €{stats.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
-          <div className="text-xs text-zinc-500 mt-1">All time earnings</div>
+          <div className="text-xs mt-1 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>All time earnings</div>
         </div>
 
-        <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-6 bg-white dark:bg-zinc-950">
+        <div 
+          className="rounded-lg border p-6 transition-colors"
+          style={{
+            backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
+            borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+          }}
+        >
           <div className="flex items-center justify-between">
-            <div className="text-sm text-zinc-500">Total Streams</div>
-            <TrendingUp className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+            <div className="text-sm transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Total Streams</div>
+            <TrendingUp className="h-5 w-5" style={{ color: '#3B82F6' }} />
           </div>
-          <div className="mt-2 text-3xl font-semibold">{stats.totalStreams.toLocaleString()}</div>
-          <div className="text-xs text-zinc-500 mt-1">All platforms</div>
+          <div className="mt-2 text-3xl font-semibold transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>{stats.totalStreams.toLocaleString()}</div>
+          <div className="text-xs mt-1 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>All platforms</div>
         </div>
 
-        <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-6 bg-white dark:bg-zinc-950">
+        <div 
+          className="rounded-lg border p-6 transition-colors"
+          style={{
+            backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
+            borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+          }}
+        >
           <div className="flex items-center justify-between">
-            <div className="text-sm text-zinc-500">Avg per Stream</div>
-            <Music className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+            <div className="text-sm transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Avg per Stream</div>
+            <Music className="h-5 w-5" style={{ color: '#A78BFA' }} />
           </div>
-          <div className="mt-2 text-3xl font-semibold">
+          <div className="mt-2 text-3xl font-semibold transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>
             ${stats.averagePerStream.toFixed(4)}
           </div>
-          <div className="text-xs text-zinc-500 mt-1">Revenue per play</div>
+          <div className="text-xs mt-1 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Revenue per play</div>
         </div>
 
-        <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-6 bg-white dark:bg-zinc-950">
+        <div 
+          className="rounded-lg border p-6 transition-colors"
+          style={{
+            backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
+            borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+          }}
+        >
           <div className="flex items-center justify-between">
-            <div className="text-sm text-zinc-500">Top Territory</div>
-            <Globe className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+            <div className="text-sm transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Top Territory</div>
+            <Globe className="h-5 w-5" style={{ color: '#F59E0B' }} />
           </div>
-          <div className="mt-2 text-3xl font-semibold">{stats.topTerritory}</div>
-          <div className="text-xs text-zinc-500 mt-1">Highest revenue</div>
+          <div className="mt-2 text-3xl font-semibold transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>{stats.topTerritory}</div>
+          <div className="text-xs mt-1 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Highest revenue</div>
         </div>
       </section>
 
       {/* Charts Row 1 */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Top Performing Tracks */}
-        <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-6 bg-white dark:bg-zinc-950">
-          <h2 className="text-lg font-semibold mb-4">Top Performing Tracks</h2>
+        <div 
+          className="rounded-lg border p-6 transition-colors"
+          style={{
+            backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
+            borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+          }}
+        >
+          <h2 className="text-lg font-semibold mb-4 transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>Top Performing Tracks</h2>
           {topTracks.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={topTracks}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
-                <XAxis dataKey="title" tick={{ fill: "#9ca3af", fontSize: 12 }} />
-                <YAxis tick={{ fill: "#9ca3af", fontSize: 12 }} />
+              <BarChart 
+                data={topTracks}
+                style={{ backgroundColor: isDark ? "transparent" : "#F9FAFB" }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke={gridColor} opacity={0.3} />
+                <XAxis dataKey="title" tick={{ fill: axisColor, fontSize: 12 }} />
+                <YAxis tick={{ fill: axisColor, fontSize: 12 }} />
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: "#18181b",
-                    border: "1px solid #3f3f46",
-                    borderRadius: "8px",
-                  }}
-                  labelStyle={{ color: "#e4e4e7" }}
+                  contentStyle={tooltipStyle}
+                  labelStyle={{ color: tooltipStyle.color }}
                 />
                 <Bar dataKey="revenue" fill="#10b981" radius={[8, 8, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="h-[300px] flex items-center justify-center text-zinc-400">
+            <div className="h-[300px] flex items-center justify-center transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
               No data available
             </div>
           )}
         </div>
 
         {/* Platform/Source Breakdown */}
-        <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-6 bg-white dark:bg-zinc-950">
-          <h2 className="text-lg font-semibold mb-4">Revenue by Source</h2>
+        <div 
+          className="rounded-lg border p-6 transition-colors"
+          style={{
+            backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
+            borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+          }}
+        >
+          <h2 className="text-lg font-semibold mb-4 transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>Revenue by Source</h2>
           {sourceBreakdown.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
+              <PieChart style={{ backgroundColor: isDark ? "transparent" : "#F9FAFB" }}>
                 <Pie
                   data={sourceBreakdown as unknown as { [key: string]: string | number }[]}
                   cx="50%"
@@ -288,16 +350,12 @@ export default function AnalyticsPage() {
                   ))}
                 </Pie>
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: "#18181b",
-                    border: "1px solid #3f3f46",
-                    borderRadius: "8px",
-                  }}
+                  contentStyle={tooltipStyle}
                 />
               </PieChart>
             </ResponsiveContainer>
           ) : (
-            <div className="h-[300px] flex items-center justify-center text-zinc-400">
+            <div className="h-[300px] flex items-center justify-center transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
               No data available
             </div>
           )}
@@ -307,52 +365,63 @@ export default function AnalyticsPage() {
       {/* Charts Row 2 */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Territory Breakdown */}
-        <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-6 bg-white dark:bg-zinc-950">
-          <h2 className="text-lg font-semibold mb-4">Revenue by Territory</h2>
+        <div 
+          className="rounded-lg border p-6 transition-colors"
+          style={{
+            backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
+            borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+          }}
+        >
+          <h2 className="text-lg font-semibold mb-4 transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>Revenue by Territory</h2>
           {territoryBreakdown.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={territoryBreakdown} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
-                <XAxis type="number" tick={{ fill: "#9ca3af", fontSize: 12 }} />
-                <YAxis dataKey="territory" type="category" tick={{ fill: "#9ca3af", fontSize: 12 }} />
+              <BarChart 
+                data={territoryBreakdown} 
+                layout="vertical"
+                style={{ backgroundColor: isDark ? "transparent" : "#F9FAFB" }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke={gridColor} opacity={0.3} />
+                <XAxis type="number" tick={{ fill: axisColor, fontSize: 12 }} />
+                <YAxis dataKey="territory" type="category" tick={{ fill: axisColor, fontSize: 12 }} />
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: "#18181b",
-                    border: "1px solid #3f3f46",
-                    borderRadius: "8px",
-                  }}
+                  contentStyle={tooltipStyle}
                 />
                 <Bar dataKey="revenue" fill="#3b82f6" radius={[0, 8, 8, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="h-[300px] flex items-center justify-center text-zinc-400">
+            <div className="h-[300px] flex items-center justify-center transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
               No data available
             </div>
           )}
         </div>
 
         {/* Monthly Revenue Trend */}
-        <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-6 bg-white dark:bg-zinc-950">
-          <h2 className="text-lg font-semibold mb-4">Monthly Revenue Trend</h2>
+        <div 
+          className="rounded-lg border p-6 transition-colors"
+          style={{
+            backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
+            borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+          }}
+        >
+          <h2 className="text-lg font-semibold mb-4 transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>Monthly Revenue Trend</h2>
           {monthlyRevenue.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={monthlyRevenue}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
-                <XAxis dataKey="month" tick={{ fill: "#9ca3af", fontSize: 12 }} />
-                <YAxis tick={{ fill: "#9ca3af", fontSize: 12 }} />
+              <BarChart 
+                data={monthlyRevenue}
+                style={{ backgroundColor: isDark ? "transparent" : "#F9FAFB" }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke={gridColor} opacity={0.3} />
+                <XAxis dataKey="month" tick={{ fill: axisColor, fontSize: 12 }} />
+                <YAxis tick={{ fill: axisColor, fontSize: 12 }} />
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: "#18181b",
-                    border: "1px solid #3f3f46",
-                    borderRadius: "8px",
-                  }}
+                  contentStyle={tooltipStyle}
                 />
                 <Bar dataKey="revenue" fill="#f59e0b" radius={[8, 8, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="h-[300px] flex items-center justify-center text-zinc-400">
+            <div className="h-[300px] flex items-center justify-center transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
               No data available
             </div>
           )}

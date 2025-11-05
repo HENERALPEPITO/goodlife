@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "next-themes";
 import { ReactNode } from "react";
@@ -8,18 +8,14 @@ import Topbar from "@/components/Topbar";
 import Sidebar from "@/components/Sidebar";
 import { Toaster } from "@/components/ui/toaster";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
   subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-inter",
 });
 
 export const metadata: Metadata = {
-  title: "GoodLife: Cloud Workspace",
+  title: "GOOD LIFE MUSIC: Cloud Workspace",
   description: "Streamlined music business dashboard",
 };
 
@@ -29,17 +25,21 @@ export default function RootLayout({
   children: ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}> 
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+    <html lang="en" suppressHydrationWarning className={inter.variable}>
+      <body className="antialiased"> 
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
           <Providers>
-            <div className="min-h-screen grid grid-cols-1 md:grid-cols-[260px_1fr]">
+            <main className="flex h-screen bg-background text-foreground transition-colors">
               <Sidebar />
-              <div className="flex flex-col min-h-screen">
+              <div className="flex-1 flex flex-col ml-64 overflow-hidden bg-background">
                 <Topbar />
-                <main className="p-4 md:p-6">{children}</main>
+                <div className="flex-1 overflow-auto bg-background">
+                  <section className="flex-1 overflow-auto p-8 bg-background">
+                    {children}
+                  </section>
+                </div>
               </div>
-            </div>
+            </main>
             <Toaster />
           </Providers>
         </ThemeProvider>
