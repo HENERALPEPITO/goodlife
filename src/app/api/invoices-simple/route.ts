@@ -1,11 +1,14 @@
 ﻿import { NextResponse } from "next/server";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 
 export async function GET(request: Request) {
   try {
-    // Create authenticated client using cookies
-    const supabase = createRouteHandlerClient<any>({ cookies });
+    // Create supabase client
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
     
     // Get the URL parameters
     const { searchParams } = new URL(request.url);
