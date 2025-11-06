@@ -7,8 +7,9 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/lib/auth";
+import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,7 +37,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
-import { ConfirmModal } from "@/components/ConfirmModal";
 import { ReceiptModal } from "@/components/ReceiptModal";
 import {
   Loader2,
@@ -76,14 +76,63 @@ export default function AdminPaymentRequestsPage() {
 
   // Modals
   const [selectedRequest, setSelectedRequest] = useState<PaymentRequest | null>(null);
-  const [approveModalOpen, setApproveModalOpen] = useState(false);
-  const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [remarksModalOpen, setRemarksModalOpen] = useState(false);
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
-  const [selectedRequestIdForReceipt, setSelectedRequestIdForReceipt] = useState<string | null>(null);
+  const [selectedRequestIdForReceipt] = useState<string | null>(null);
   
   const [actionRemarks, setActionRemarks] = useState("");
   const [actionType, setActionType] = useState<"approved" | "rejected" | "paid">("approved");
+
+  const fetchPaymentRequests = useCallback(async () => {
+    try {
+      setLoading(true);
+
+      // Create query params
+      const queryParams = new URLSearchParams();
+      if (statusFilter !== "all") {
+        queryParams.append("status", statusFilter);
+      }
+
+      // Get current session token
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.access_token) {
+        throw new Error("No active session. Please login again.");
+      }
+      
+      // Add auth token to request
+      const response = await fetch(`/api/admin/payment-requests?${queryParams.toString()}`, {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        }
+      });
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error("You don't have permission to access this page");
+        }
+        throw new Error("Failed to fetch payment requests: " + response.statusText);
+      }
+
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.error || "Failed to fetch payment requests");
+      }
+
+      setPaymentRequests(data.paymentRequests || []);
+    } catch (error) {
+      console.error("Error fetching payment requests:", error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to load payment requests",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [statusFilter, setLoading, setPaymentRequests, toast]);
 
   // Check authorization
   useEffect(() => {
@@ -101,36 +150,7 @@ export default function AdminPaymentRequestsPage() {
     if (user?.role === "admin") {
       fetchPaymentRequests();
     }
-  }, [user, statusFilter]);
-
-  const fetchPaymentRequests = async () => {
-    try {
-      setLoading(true);
-
-      const queryParams = new URLSearchParams();
-      if (statusFilter !== "all") {
-        queryParams.append("status", statusFilter);
-      }
-
-      const response = await fetch(`/api/admin/payment-requests?${queryParams.toString()}`);
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || "Failed to fetch payment requests");
-      }
-
-      setPaymentRequests(data.paymentRequests);
-    } catch (error) {
-      console.error("Error fetching payment requests:", error);
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to load payment requests",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [user, fetchPaymentRequests]);
 
   const handleUpdateStatus = async () => {
     if (!selectedRequest) return;
@@ -138,10 +158,14 @@ export default function AdminPaymentRequestsPage() {
     try {
       setProcessing(true);
 
+      // Get current session token
+      const { data: { session } } = await supabase.auth.getSession();
+      
       const response = await fetch("/api/admin/payment-requests", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...(session?.access_token && { "Authorization": `Bearer ${session.access_token}` }),
         },
         body: JSON.stringify({
           id: selectedRequest.id,
@@ -162,8 +186,6 @@ export default function AdminPaymentRequestsPage() {
       });
 
       // Close modals and refresh
-      setApproveModalOpen(false);
-      setRejectModalOpen(false);
       setRemarksModalOpen(false);
       setActionRemarks("");
       setSelectedRequest(null);
@@ -194,9 +216,54 @@ export default function AdminPaymentRequestsPage() {
     setRemarksModalOpen(true);
   };
 
-  const handleViewReceipt = (requestId: string) => {
-    setSelectedRequestIdForReceipt(requestId);
-    setReceiptModalOpen(true);
+  const handleViewReceipt = async (requestId: string) => {
+    try {
+      // Fetch invoice for this payment request
+      const response = await fetch(`/api/invoices-simple?payment_request_id=${requestId}`);
+      const data = await response.json();
+      
+      if (data.success && data.invoices && data.invoices.length > 0) {
+        const invoice = data.invoices[0];
+        
+        // If PDF URL exists, open it directly
+        if (invoice.pdf_url) {
+          window.open(invoice.pdf_url, "_blank");
+          return;
+        }
+        
+        // Otherwise, generate PDF on the fly
+        const { PaymentRequestInvoicePDF } = await import("@/components/PaymentRequestInvoicePDF");
+        const { getInvoiceSettings } = await import("@/lib/invoiceSettings");
+        const settings = await getInvoiceSettings();
+        
+        PaymentRequestInvoicePDF.previewInvoice(
+          {
+            id: invoice.id,
+            invoice_number: invoice.invoice_number || invoice.invoice_ref || "INV-0000",
+            invoice_date: invoice.invoice_date || invoice.created_at,
+            artist_name: invoice.artist_name || "Unknown Artist",
+            artist_email: invoice.user_profiles?.email,
+            total_net: invoice.total_net || invoice.amount || 0,
+            status: invoice.status || "pending",
+            payment_request_id: requestId,
+          },
+          { settings: settings || undefined }
+        );
+      } else {
+        toast({
+          title: "Not Found",
+          description: "Invoice not found for this payment request",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Error viewing invoice:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load invoice",
+        variant: "destructive",
+      });
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -233,7 +300,7 @@ export default function AdminPaymentRequestsPage() {
           <FileText className="w-8 h-8" />
           <h1 className="text-3xl font-bold">Payment Requests Management</h1>
         </div>
-        <p className="text-slate-600">Review and manage artist payment requests</p>
+        <p className="text-slate-600">Review and manage artist payment requests. Invoices are automatically generated when artists request payment.</p>
       </div>
 
       {/* Summary Cards */}
@@ -438,6 +505,7 @@ export default function AdminPaymentRequestsPage() {
     </div>
   );
 }
+
 
 
 

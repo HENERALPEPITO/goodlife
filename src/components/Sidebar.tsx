@@ -5,7 +5,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { useTheme } from "next-themes";
-import { LayoutDashboard, BarChart3, DollarSign, Music, FileUp, Users, Settings, Receipt, Upload, User } from "lucide-react";
+import { LayoutDashboard, BarChart3, DollarSign, Music, FileUp, Users, Settings, Receipt, Upload, User, FileText } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export default function Sidebar() {
@@ -37,6 +37,8 @@ export default function Sidebar() {
     { href: "/artists", label: "Artists", icon: Users, show: isAdmin },
     { href: "/admin/artists", label: "Manage Artists", icon: Users, show: isAdmin },
     { href: "/admin/artist-tracks", label: "Track Catalog", icon: Upload, show: isAdmin },
+    { href: "/admin/payment-requests", label: "Payment Requests", icon: FileText, show: isAdmin },
+    { href: "/admin/invoice-settings", label: "Invoice Settings", icon: Settings, show: isAdmin },
     { href: "/royalty-uploader", label: "Upload Royalties", icon: FileUp, show: isAdmin },
     { href: "/settings", label: "Settings", icon: Settings, show: true },
   ];

@@ -29,3 +29,6 @@ CREATE INDEX IF NOT EXISTS idx_artists_user_id ON artists(user_id);
 CREATE INDEX IF NOT EXISTS idx_artists_email ON artists(email);
 
 
+
+
+

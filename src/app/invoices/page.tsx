@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { useRouter } from "next/navigation";
-import SimpleInvoiceManager from "@/components/SimpleInvoiceManager";
+import InvoiceManagement from "@/components/InvoiceManagement";
 
 export default function InvoicesPage() {
   const { user, loading: authLoading } = useAuth();
@@ -36,8 +36,8 @@ export default function InvoicesPage() {
     );
   }
 
-  // Render SimpleInvoiceManager component (handles both admin and artist views)
-  return <SimpleInvoiceManager user={user} />;
+  // Render InvoiceManagement component (handles both admin and artist views)
+  return <InvoiceManagement user={user} />;
 }
 
 

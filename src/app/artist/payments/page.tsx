@@ -65,10 +65,30 @@ export default function ArtistPaymentsPage() {
   const fetchPaymentRequests = async () => {
     try {
       setLoading(true);
+      
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+
+      // First, get the artist ID from the artists table
+      const { data: artist, error: artistError } = await supabase
+        .from("artists")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (artistError || !artist) {
+        console.error("Error fetching artist:", artistError);
+        setPaymentRequests([]);
+        setLoading(false);
+        return;
+      }
+
       const { data, error } = await supabase
         .from("payment_requests")
         .select("*")
-        .eq("artist_id", user?.id)
+        .eq("artist_id", artist.id)
         .order("created_at", { ascending: false });
 
       if (error) throw error;

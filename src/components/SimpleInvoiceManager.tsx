@@ -302,6 +302,15 @@ export default function SimpleInvoiceManager({ user }: SimpleInvoiceManagerProps
         final_totalAmount: totalAmount
       });
       
+      // Validate required fields
+      if (!invoice.invoice_number) {
+        throw new Error("Invoice number is missing");
+      }
+      
+      if (totalAmount <= 0) {
+        console.warn("Invoice amount is 0 or invalid, proceeding anyway");
+      }
+      
       const invoiceData: SimpleInvoiceData = {
         invoice_number: invoice.invoice_number,
         invoice_date: invoice.invoice_date || invoice.created_at,
@@ -316,13 +325,23 @@ export default function SimpleInvoiceManager({ user }: SimpleInvoiceManagerProps
         currency: "€",
       };
 
-      const logoBase64 = await loadLogoAsBase64('/logo.png');
+      // Try to load logo, but don't fail if it doesn't work
+      let logoBase64: string | undefined;
+      try {
+        logoBase64 = await loadLogoAsBase64('/logo.png');
+      } catch (logoError) {
+        console.warn("Could not load logo, proceeding without it:", logoError);
+        logoBase64 = undefined;
+      }
+
+      // Generate and download PDF
       SimpleInvoicePDF.downloadInvoice(invoiceData, logoBase64);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error exporting PDF:", error);
+      const errorMessage = error?.message || "Failed to export PDF. Please check the console for details.";
       toast({
         title: "Error",
-        description: "Failed to export PDF",
+        description: errorMessage,
         variant: "destructive",
       });
     }
@@ -349,6 +368,11 @@ export default function SimpleInvoiceManager({ user }: SimpleInvoiceManagerProps
         final_totalAmount: totalAmount
       });
       
+      // Validate required fields
+      if (!invoice.invoice_number) {
+        throw new Error("Invoice number is missing");
+      }
+      
       const invoiceData: SimpleInvoiceData = {
         invoice_number: invoice.invoice_number,
         invoice_date: invoice.invoice_date || invoice.created_at,
@@ -363,13 +387,23 @@ export default function SimpleInvoiceManager({ user }: SimpleInvoiceManagerProps
         currency: "€",
       };
 
-      const logoBase64 = await loadLogoAsBase64('/logo.png');
+      // Try to load logo, but don't fail if it doesn't work
+      let logoBase64: string | undefined;
+      try {
+        logoBase64 = await loadLogoAsBase64('/logo.png');
+      } catch (logoError) {
+        console.warn("Could not load logo, proceeding without it:", logoError);
+        logoBase64 = undefined;
+      }
+
+      // Generate and preview PDF
       SimpleInvoicePDF.previewInvoice(invoiceData, logoBase64);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error previewing PDF:", error);
+      const errorMessage = error?.message || "Failed to preview PDF. Please check the console for details.";
       toast({
         title: "Error",
-        description: "Failed to preview PDF",
+        description: errorMessage,
         variant: "destructive",
       });
     }

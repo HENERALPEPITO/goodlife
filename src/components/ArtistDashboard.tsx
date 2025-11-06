@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth";
 import { DollarSign, Music, TrendingUp, FileText } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/components/ui/use-toast";
+import { PaymentRequestCard } from "./PaymentRequestCard";
 
 interface ArtistStats {
   totalRevenue: number;
@@ -69,7 +70,8 @@ export default function ArtistDashboard() {
       const { data: royalties } = await supabase
         .from("royalties")
         .select("net_amount, usage_count")
-        .eq("artist_id", artist.id);
+        .eq("artist_id", artist.id)
+        .eq("is_paid", false);
 
       const totalRevenue = royalties?.reduce(
         (sum, r) => sum + Number(r.net_amount || 0),
@@ -204,35 +206,15 @@ export default function ArtistDashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold transition-colors" style={{ color: 'var(--text-primary)' }}>Artist Dashboard</h1>
-          <p className="text-sm mt-1 transition-colors" style={{ color: 'var(--text-secondary)' }}>
-            Welcome back, {user?.email}!
-          </p>
-        </div>
-        <button
-          onClick={handleRequestPayment}
-          disabled={requestingPayment || stats.totalRevenue - stats.pendingRevenue <= 0}
-          className="px-4 py-2 text-sm rounded-lg font-semibold text-white transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95"
-          style={{
-            background: 'linear-gradient(to right, #10B981, #059669)',
-            boxShadow: '0 4px 15px rgba(16, 185, 129, 0.4)',
-          }}
-          onMouseEnter={(e) => {
-            if (!e.currentTarget.disabled) {
-              e.currentTarget.style.boxShadow = '0 6px 20px rgba(16, 185, 129, 0.5)';
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (!e.currentTarget.disabled) {
-              e.currentTarget.style.boxShadow = '0 4px 15px rgba(16, 185, 129, 0.4)';
-            }
-          }}
-        >
-          {requestingPayment ? "Processing..." : "Request Payment"}
-        </button>
+      <div>
+        <h1 className="text-2xl font-semibold transition-colors" style={{ color: 'var(--text-primary)' }}>Artist Dashboard</h1>
+        <p className="text-sm mt-1 transition-colors" style={{ color: 'var(--text-secondary)' }}>
+          Welcome back, {user?.email}!
+        </p>
       </div>
+
+      {/* Payment Request Card */}
+      <PaymentRequestCard user={user} />
 
       <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {kpis.map((kpi) => {

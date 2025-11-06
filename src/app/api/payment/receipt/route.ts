@@ -7,7 +7,19 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/authHelpers";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+
+interface Royalty {
+  id: string;
+  track_title: string;
+  usage_count: number;
+  gross_amount: string;
+  admin_percent: string;
+  net_amount: string;
+  broadcast_date: string;
+  platform: string;
+  territory: string;
+}
 
 interface RoyaltyItem {
   id: string;
@@ -46,9 +58,12 @@ interface ReceiptData {
 
 export async function GET(request: NextRequest): Promise<NextResponse<ReceiptData>> {
   try {
-    // Get current user
-    const user = await getCurrentUser();
+    // Get current user with request headers
+    const user = await getCurrentUser(request.headers);
     if (!user) {
+      console.log("❌ [PaymentReceipt] Authentication failed", {
+        headers: Object.fromEntries(request.headers.entries())
+      });
       return NextResponse.json(
         { success: false, error: "Unauthorized. Please login." },
         { status: 401 }
@@ -66,8 +81,11 @@ export async function GET(request: NextRequest): Promise<NextResponse<ReceiptDat
       );
     }
 
+    // Get admin client
+    const admin = getSupabaseAdmin();
+
     // Fetch payment request with details
-    const { data: paymentRequest, error: prError } = await supabaseAdmin
+    const { data: paymentRequest, error: prError } = await admin
       .from("payment_requests_detailed")
       .select("*")
       .eq("id", paymentRequestId)
@@ -90,7 +108,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<ReceiptDat
     }
 
     // Fetch associated royalties
-    const { data: royalties, error: royaltiesError } = await supabaseAdmin
+    const { data: royalties, error: royaltiesError } = await admin
       .from("royalties")
       .select("*")
       .eq("payment_request_id", paymentRequestId)
@@ -105,8 +123,13 @@ export async function GET(request: NextRequest): Promise<NextResponse<ReceiptDat
     }
 
     // Calculate totals
-    const totals = (royalties || []).reduce(
-      (acc, royalty) => {
+    const totals = (royalties as Royalty[] || []).reduce(
+      (acc: {
+        total_gross: number;
+        total_admin_fee: number;
+        total_net: number;
+        royalty_count: number;
+      }, royalty: Royalty) => {
         acc.total_gross += parseFloat(royalty.gross_amount || "0");
         acc.total_admin_fee += parseFloat(royalty.gross_amount || "0") * (parseFloat(royalty.admin_percent || "0") / 100);
         acc.total_net += parseFloat(royalty.net_amount || "0");
@@ -122,7 +145,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<ReceiptDat
     );
 
     // Fetch receipt number if exists
-    const { data: receiptData } = await supabaseAdmin
+    const { data: receiptData } = await admin
       .from("payment_receipts")
       .select("receipt_number")
       .eq("payment_request_id", paymentRequestId)
@@ -141,7 +164,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<ReceiptDat
           created_at: paymentRequest.created_at,
           approved_at: paymentRequest.approved_at,
           approved_by_email: paymentRequest.approved_by_email,
-          royalties: (royalties || []).map((r) => ({
+          royalties: (royalties as Royalty[] || []).map((r: Royalty) => ({
             id: r.id,
             track_title: r.track_title || "Unknown",
             usage_count: r.usage_count || 0,
@@ -165,6 +188,9 @@ export async function GET(request: NextRequest): Promise<NextResponse<ReceiptDat
     );
   }
 }
+
+
+
 
 
 

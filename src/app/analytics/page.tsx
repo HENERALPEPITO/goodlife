@@ -85,13 +85,33 @@ export default function AnalyticsPage() {
 
     try {
       // Fetch royalties based on role
-      const query = supabase
+      let query = supabase
         .from("royalties")
         .select("*, tracks(title)");
 
       // If artist, only get their royalties
       if (user.role === "artist") {
-        query.eq("artist_id", user.id);
+        // First, get the artist ID from the artists table
+        const { data: artist, error: artistError } = await supabase
+          .from("artists")
+          .select("id")
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (artistError) {
+          console.error("Error fetching artist:", artistError);
+          setLoadingData(false);
+          return;
+        }
+
+        if (!artist) {
+          console.warn("No artist found for user");
+          setLoadingData(false);
+          return;
+        }
+
+        // Use artist.id instead of user.id
+        query = query.eq("artist_id", artist.id);
       }
 
       const { data: royalties, error } = await query;
