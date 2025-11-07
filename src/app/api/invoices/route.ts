@@ -223,6 +223,98 @@ export async function GET(request: NextRequest) {
       finalInvoice = newInvoice;
     }
 
+    // If invoice exists but has no file_url, generate and upload PDF
+    if (finalInvoice && !finalInvoice.file_url) {
+      try {
+        // Get payment request
+        const { data: paymentRequest } = await adminClient
+          .from("payment_requests")
+          .select("*")
+          .eq("id", paymentRequestId)
+          .single();
+
+        if (paymentRequest) {
+          // Get artist info
+          const { data: artist } = await adminClient
+            .from("artists")
+            .select("id, name, user_id")
+            .eq("id", paymentRequest.artist_id)
+            .single();
+
+          if (artist) {
+            // Get user profile for email
+            const { data: userProfile } = await adminClient
+              .from("user_profiles")
+              .select("email")
+              .eq("id", artist.user_id)
+              .single();
+
+            const artistEmail = userProfile?.email || "";
+
+            // Generate PDF invoice
+            const { generatePaymentRequestInvoicePDF } = await import("@/lib/pdfGenerator");
+            const { getInvoiceSettingsAdmin } = await import("@/lib/invoiceSettings");
+            const invoiceSettings = await getInvoiceSettingsAdmin();
+
+            const invoiceDate = new Date(paymentRequest.created_at).toISOString().split("T")[0];
+            const invoiceNumber = finalInvoice.invoice_number || `INV-${new Date().getFullYear()}-${paymentRequest.id.substring(0, 8).toUpperCase()}`;
+
+            const pdfInvoiceData = {
+              id: paymentRequest.id,
+              invoice_number: invoiceNumber,
+              invoice_date: invoiceDate,
+              artist_name: artist.name || "Artist",
+              artist_email: artistEmail,
+              total_net: Number(paymentRequest.amount || 0),
+              status: paymentRequest.status as "pending" | "approved" | "rejected",
+              payment_request_id: paymentRequest.id,
+            };
+
+            const pdfDoc = await generatePaymentRequestInvoicePDF(pdfInvoiceData, {
+              settings: invoiceSettings,
+            });
+
+            // Convert PDF to buffer
+            const pdfArrayBuffer = pdfDoc.output("arraybuffer");
+            const pdfBuffer = Buffer.from(pdfArrayBuffer);
+
+            // Upload PDF to storage
+            const fileName = `invoices/${paymentRequest.artist_id}/${invoiceNumber}.pdf`;
+            let publicUrl = "";
+            
+            try {
+              const { error: uploadError } = await adminClient.storage
+                .from("invoices")
+                .upload(fileName, pdfBuffer, {
+                  contentType: "application/pdf",
+                  upsert: true,
+                });
+
+              if (!uploadError) {
+                const {
+                  data: { publicUrl: url },
+                } = adminClient.storage.from("invoices").getPublicUrl(fileName);
+                publicUrl = url;
+
+                // Update invoice with file_url
+                await adminClient
+                  .from("invoices")
+                  .update({ file_url: publicUrl })
+                  .eq("id", finalInvoice.id);
+
+                finalInvoice.file_url = publicUrl;
+              }
+            } catch (error) {
+              console.error("Error uploading PDF:", error);
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Error generating PDF for existing invoice:", error);
+        // Continue even if PDF generation fails
+      }
+    }
+
     // Check authorization - artists can only view their own invoices
     if (user.role !== "admin") {
       // Get payment request to check artist_id

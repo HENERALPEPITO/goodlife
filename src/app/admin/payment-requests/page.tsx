@@ -182,20 +182,83 @@ export default function AdminPaymentRequestsPage() {
 
       const data = await response.json();
 
-      if (data.success && data.invoice && data.invoice.file_url) {
-        window.open(data.invoice.file_url, "_blank");
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "Failed to fetch invoice");
+      }
+
+      if (data.invoice) {
+        // If file_url exists, open it directly
+        if (data.invoice.file_url) {
+          window.open(data.invoice.file_url, "_blank");
+        } else {
+          // If no file_url, generate PDF on the fly
+          // Get payment request details to generate PDF
+          const { supabase } = await import("@/lib/supabaseClient");
+          const { data: paymentRequest } = await supabase
+            .from("payment_requests")
+            .select("*")
+            .eq("id", requestId)
+            .single();
+
+          if (paymentRequest) {
+            // Generate PDF using the client-side PDF generator
+            const { PaymentRequestInvoicePDF } = await import("@/components/PaymentRequestInvoicePDF");
+            const { getInvoiceSettings } = await import("@/lib/invoiceSettings");
+            const invoiceSettings = await getInvoiceSettings();
+
+            // Get artist info
+            const { data: artist } = await supabase
+              .from("artists")
+              .select("id, name, user_id")
+              .eq("id", paymentRequest.artist_id)
+              .single();
+
+            if (artist) {
+              const { data: userProfile } = await supabase
+                .from("user_profiles")
+                .select("email")
+                .eq("id", artist.user_id)
+                .single();
+
+              const artistEmail = userProfile?.email || "";
+
+              const invoiceDate = new Date(paymentRequest.created_at).toISOString().split("T")[0];
+              const invoiceNumber = data.invoice.invoice_number || `INV-${new Date().getFullYear()}-${requestId.substring(0, 8).toUpperCase()}`;
+
+              const invoiceData = {
+                id: paymentRequest.id,
+                invoice_number: invoiceNumber,
+                invoice_date: invoiceDate,
+                artist_name: artist.name || "Artist",
+                artist_email: artistEmail,
+                total_net: Number(paymentRequest.amount || 0),
+                status: paymentRequest.status as "pending" | "approved" | "rejected",
+                payment_request_id: paymentRequest.id,
+              };
+
+              const pdfDoc = await PaymentRequestInvoicePDF.generateInvoice(invoiceData, {
+                settings: invoiceSettings,
+              });
+
+              // Open PDF in new window
+              const pdfBlob = pdfDoc.output("blob");
+              const pdfUrl = URL.createObjectURL(pdfBlob);
+              window.open(pdfUrl, "_blank");
+            } else {
+              throw new Error("Artist not found");
+            }
+          } else {
+            throw new Error("Payment request not found");
+          }
+        }
       } else {
-        toast({
-          title: "Error",
-          description: "Invoice PDF not found",
-          variant: "destructive",
-        });
+        throw new Error("Invoice not found");
       }
     } catch (error: any) {
       console.error("Error viewing PDF:", error);
       toast({
         title: "Error",
-        description: "Failed to open PDF",
+        description: error?.message || "Failed to open PDF",
         variant: "destructive",
       });
     }
