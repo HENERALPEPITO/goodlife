@@ -33,12 +33,14 @@ export function PaymentRequestConfirmationModal({
         {/* Content */}
         <div className="p-6">
           <p className="text-gray-700 mb-6">
-            Are you sure you want to request payment? This will request your full unpaid amount and reset your balance to €0.
+            Are you sure you want to request a payout of{" "}
+            <span className="font-bold text-xl text-gray-900">
+              €{balance.toFixed(2)}
+            </span>
+            ?
           </p>
           <p className="text-sm text-gray-600 mb-6">
-            <span className="font-bold text-lg text-gray-900">
-              €{balance.toFixed(2)}
-            </span> will be requested. An invoice will be automatically generated as a receipt.
+            This will reset your balance to €0 once submitted.
           </p>
 
           {/* Actions */}

@@ -44,3 +44,4 @@ CREATE POLICY "Allow all operations" ON royalties FOR ALL USING (true) WITH CHEC
 
 
 
+

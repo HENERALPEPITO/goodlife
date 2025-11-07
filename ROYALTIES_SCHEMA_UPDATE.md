@@ -41,3 +41,4 @@ Use:
 - **Artist UUID** for: `tracks.artist_id`, `royalties.artist_id`
 - **User UUID** for: `payment_requests.artist_id`, `invoices.artist_id`
 
+

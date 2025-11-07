@@ -1,234 +1,252 @@
-/**
- * Payment Request Invoice PDF Generator
- * Generates minimalist invoice PDFs for payment requests
- * Works on both client and server side
- */
+"use client";
 
 import { jsPDF } from "jspdf";
 import type { InvoiceSettings } from "@/lib/invoiceSettings";
 
-export interface PaymentRequestInvoiceData {
-  id: string;
+interface PaymentRequestInvoice {
+  id?: string;
   invoice_number: string;
   invoice_date: string;
   artist_name: string;
   artist_email?: string;
   total_net: number;
   status: "pending" | "approved" | "rejected";
-  payment_request_id: string;
+  payment_request_id?: string;
 }
 
 interface PaymentRequestInvoicePDFOptions {
-  settings?: InvoiceSettings;
-  logoBase64?: string;
+  settings?: InvoiceSettings | null;
+  logoUrl?: string;
 }
 
+/**
+ * Payment Request Invoice PDF Generator
+ * Generates minimalist invoice PDFs for payment requests
+ */
 export class PaymentRequestInvoicePDF {
   /**
-   * Generates a minimalist invoice PDF for a payment request
+   * Generates a PDF invoice for a payment request
    */
-  static generateInvoice(
-    data: PaymentRequestInvoiceData,
-    options: PaymentRequestInvoicePDFOptions = {}
-  ): jsPDF {
+  static async generateInvoice(
+    invoice: PaymentRequestInvoice,
+    options?: PaymentRequestInvoicePDFOptions
+  ): Promise<jsPDF> {
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 20; // 20mm margins
+    const margin = 20;
     let yPosition = margin;
 
     // Get invoice settings
-    const settings = options.settings || {
-      id: "default",
+    let settings = options?.settings;
+    if (!settings) {
+      const { getInvoiceSettings } = await import("@/lib/invoiceSettings");
+      settings = await getInvoiceSettings();
+    }
+
+    // Use default settings if none provided
+    const businessSettings = settings || {
       business_name: "Good Life Music S.L",
       address: "Profesor Hermida 6, 3-3C, 36960 Sanxenxo (Spain)",
+      contact_person: undefined,
       phone: "+34 693 43 25 06",
       email: "info@goodlifemusic.com",
       tax_id: "B72510704",
-      updated_at: new Date().toISOString(),
     };
 
-    // Color constants (minimalist: black, gray, white)
+    // Color constants
     const colors = {
-      background: [255, 255, 255], // #FFFFFF
-      text: [17, 17, 17], // #111111
-      secondary: [107, 114, 128], // #6B7280 (medium gray)
-      separator: [229, 231, 235], // #E5E7EB (soft light gray)
+      text: [17, 24, 39], // #111827
+      secondary: [107, 114, 128], // #6B7280
+      border: [229, 231, 235], // #E5E7EB
+      accent: [37, 99, 235], // #2563EB
     };
 
-    // Set default font
     doc.setFont("helvetica");
 
     // ============================================
-    // HEADER SECTION - Logo at top center
+    // LOGO (if available) - Top Center
     // ============================================
-    const headerY = yPosition;
-
-    // Logo (center) - if provided
-    if (options.logoBase64) {
+    if (options?.logoUrl) {
       try {
+        // Load logo image and place at top center
         const logoWidth = 50;
         const logoHeight = 20;
-        const logoX = (pageWidth - logoWidth) / 2;
-        doc.addImage(options.logoBase64, "PNG", logoX, headerY, logoWidth, logoHeight);
-        yPosition = headerY + logoHeight + 15;
+        const logoX = (pageWidth - logoWidth) / 2; // Center horizontally
+        doc.addImage(options.logoUrl, 'PNG', logoX, yPosition, logoWidth, logoHeight);
+        yPosition += logoHeight + 10;
       } catch (error) {
-        console.warn("Could not load logo image:", error);
-        yPosition = headerY + 10;
+        console.warn("Could not load logo:", error);
       }
-    } else {
-      yPosition = headerY + 10;
     }
 
-    // Company info (right side)
-    const companyInfoX = pageWidth - margin;
-    doc.setFontSize(14);
+    // ============================================
+    // INVOICE HEADER (Centered)
+    // ============================================
+    doc.setFontSize(28);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(...colors.text);
-    doc.text(settings.business_name, companyInfoX, yPosition, { align: "right" });
+    const headerText = "INVOICE";
+    const headerWidth = doc.getTextWidth(headerText);
+    doc.text(headerText, (pageWidth - headerWidth) / 2, yPosition); // Center the header
+    yPosition += 15;
 
-    yPosition += 7;
+    // ============================================
+    // INVOICE NUMBER AND DATE
+    // ============================================
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(...colors.secondary);
+    doc.text(`Invoice Number: ${invoice.invoice_number}`, margin, yPosition);
+    yPosition += 5;
+    doc.text(
+      `Invoice Date: ${new Date(invoice.invoice_date).toLocaleDateString()}`,
+      margin,
+      yPosition
+    );
+    yPosition += 12;
+
+    // ============================================
+    // BUSINESS INFO (FROM ADMIN SETTINGS)
+    // ============================================
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...colors.text);
+    doc.text(businessSettings.business_name, margin, yPosition);
+    yPosition += 6;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(...colors.secondary);
+
+    // Split address into lines (handle comma-separated or newline-separated)
+    const addressLines = businessSettings.address.includes("\n")
+      ? businessSettings.address.split("\n").map((s) => s.trim())
+      : businessSettings.address.split(",").map((s) => s.trim());
     
-    // Split address into lines if needed
-    const addressLines = settings.address.split(", ");
-    addressLines.forEach((line, index) => {
-      doc.text(line, companyInfoX, yPosition + (index * 6), { align: "right" });
+    addressLines.forEach((line) => {
+      if (line) {
+        doc.text(line, margin, yPosition);
+        yPosition += 5;
+      }
     });
-    yPosition += addressLines.length * 6;
 
-    yPosition += 3;
-    doc.text(`Phone: ${settings.phone}`, companyInfoX, yPosition, { align: "right" });
-    yPosition += 6;
-    doc.text(`Email: ${settings.email}`, companyInfoX, yPosition, { align: "right" });
-    yPosition += 6;
-    doc.text(`TAX ID: ${settings.tax_id}`, companyInfoX, yPosition, { align: "right" });
-
-    yPosition += 15;
-
-    // Separator line
-    doc.setDrawColor(...colors.separator);
-    doc.setLineWidth(0.5);
-    doc.line(margin, yPosition, pageWidth - margin, yPosition);
-    yPosition += 15;
-
-    // ============================================
-    // INVOICE DETAILS SECTION
-    // ============================================
-    const detailsStartY = yPosition;
-
-    // Left column: Invoice info
-    doc.setFontSize(18);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(...colors.text);
-    doc.text("INVOICE", margin, yPosition);
-
-    yPosition += 10;
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(...colors.secondary);
-    doc.text(`Invoice Number: ${data.invoice_number}`, margin, yPosition);
-
-    yPosition += 7;
-    doc.text(`Invoice Date: ${new Date(data.invoice_date).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}`, margin, yPosition);
-
-    // Right column: Artist info
-    const artistY = detailsStartY;
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(...colors.text);
-    doc.text("Bill To", companyInfoX, artistY, { align: "right" });
-
-    yPosition = artistY + 7;
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "normal");
-    doc.text(data.artist_name, companyInfoX, yPosition, { align: "right" });
-
-    if (data.artist_email) {
-      yPosition += 7;
-      doc.setFontSize(10);
-      doc.setTextColor(...colors.secondary);
-      doc.text(data.artist_email, companyInfoX, yPosition, { align: "right" });
+    // Contact person (if provided)
+    if (businessSettings.contact_person) {
+      yPosition += 2;
+      doc.text(businessSettings.contact_person, margin, yPosition);
+      yPosition += 5;
     }
 
-    // Status badge
-    const statusY = detailsStartY;
-    const statusColors: Record<string, number[]> = {
-      pending: [234, 179, 8], // yellow
-      approved: [34, 197, 94], // green
-      rejected: [239, 68, 68], // red
-    };
-    const statusColor = statusColors[data.status] || colors.secondary;
-    doc.setFillColor(...statusColor);
-    doc.roundedRect(companyInfoX - 60, statusY - 5, 55, 8, 2, 2, "F");
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(255, 255, 255);
-    doc.text(data.status.toUpperCase(), companyInfoX - 2.5, statusY, { align: "right" });
+    yPosition += 2;
+    doc.text(`Phone: ${businessSettings.phone}`, margin, yPosition);
+    yPosition += 5;
+    doc.text(`Email: ${businessSettings.email}`, margin, yPosition);
+    yPosition += 5;
+    doc.text(`TAX ID: ${businessSettings.tax_id}`, margin, yPosition);
+    yPosition += 12;
 
-    yPosition = Math.max(yPosition, detailsStartY + 25) + 15;
-
-    // Separator line
-    doc.setDrawColor(...colors.separator);
+    // ============================================
+    // SEPARATOR LINE
+    // ============================================
+    doc.setDrawColor(...colors.border);
     doc.setLineWidth(0.5);
     doc.line(margin, yPosition, pageWidth - margin, yPosition);
-    yPosition += 15;
+    yPosition += 10;
 
     // ============================================
-    // PAYMENT DETAILS SECTION
+    // ARTIST INFO (RECIPIENT)
     // ============================================
-    doc.setFontSize(12);
+    doc.setFontSize(11);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(...colors.text);
-    doc.text("Payment Details", margin, yPosition);
+    doc.text("Bill To:", margin, yPosition);
+    yPosition += 6;
 
-    yPosition += 10;
-
-    // Payment mode
-    doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
     doc.setTextColor(...colors.secondary);
-    doc.text("Payment Mode:", margin, yPosition);
-    doc.setTextColor(...colors.text);
-    doc.text("Bank Transfer", margin + 50, yPosition);
+    doc.text(invoice.artist_name, margin, yPosition);
+    yPosition += 5;
+    if (invoice.artist_email) {
+      doc.text(invoice.artist_email, margin, yPosition);
+      yPosition += 5;
+    }
+    yPosition += 8;
 
+    // ============================================
+    // SEPARATOR LINE
+    // ============================================
+    doc.setDrawColor(...colors.border);
+    doc.setLineWidth(0.5);
+    doc.line(margin, yPosition, pageWidth - margin, yPosition);
     yPosition += 10;
 
-    // Total amount (highlighted)
-    doc.setFontSize(14);
+    // ============================================
+    // INVOICE DETAILS
+    // ============================================
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...colors.text);
+    doc.text("Invoice Details", margin, yPosition);
+    yPosition += 8;
+
+    // Payment Mode
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(...colors.secondary);
+    doc.text("Payment Mode: Bank Transfer", margin, yPosition);
+    yPosition += 5;
+
+    // Status
+    const statusText =
+      invoice.status === "approved"
+        ? "Approved"
+        : invoice.status === "rejected"
+        ? "Rejected"
+        : "Pending";
+    doc.text(`Status: ${statusText}`, margin, yPosition);
+    yPosition += 10;
+
+    // ============================================
+    // SEPARATOR LINE
+    // ============================================
+    doc.setDrawColor(...colors.border);
+    doc.setLineWidth(0.5);
+    doc.line(margin, yPosition, pageWidth - margin, yPosition);
+    yPosition += 10;
+
+    // ============================================
+    // TOTAL AMOUNT (Large and Bold)
+    // ============================================
+    doc.setFontSize(18);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(...colors.text);
     doc.text("Total Amount:", margin, yPosition);
     
-    const totalX = pageWidth - margin;
-    doc.setFontSize(18);
-    doc.text(`€${data.total_net.toFixed(2)}`, totalX, yPosition, { align: "right" });
-
-    yPosition += 20;
-
-    // Separator line
-    doc.setDrawColor(...colors.separator);
-    doc.setLineWidth(0.5);
-    doc.line(margin, yPosition, pageWidth - margin, yPosition);
+    const totalAmount = Number(invoice.total_net || 0).toFixed(2);
+    const totalText = `€${totalAmount}`;
+    const totalWidth = doc.getTextWidth(totalText);
+    doc.text(totalText, pageWidth - margin - totalWidth, yPosition);
     yPosition += 15;
 
     // ============================================
-    // FOOTER SECTION
+    // SEPARATOR LINE
     // ============================================
-    const footerY = pageHeight - margin - 30;
+    doc.setDrawColor(...colors.border);
+    doc.setLineWidth(0.5);
+    doc.line(margin, yPosition, pageWidth - margin, yPosition);
+    yPosition += 10;
 
-    // Footer text
-    doc.setFontSize(9);
+    // ============================================
+    // FOOTER
+    // ============================================
+    doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(...colors.secondary);
-    doc.text(
-      "Generated automatically by Good Life Music Portal – Receipt for Payment Request",
-      pageWidth / 2,
-      footerY,
-      { align: "center" }
-    );
+    const footerText = "Generated automatically by Good Life Music Portal – Receipt for Payment Request";
+    const footerWidth = doc.getTextWidth(footerText);
+    const pageHeight = doc.internal.pageSize.getHeight();
+    doc.text(footerText, (pageWidth - footerWidth) / 2, pageHeight - 15);
 
     return doc;
   }
@@ -236,37 +254,28 @@ export class PaymentRequestInvoicePDF {
   /**
    * Downloads the invoice PDF
    */
-  static downloadInvoice(
-    data: PaymentRequestInvoiceData,
-    options: PaymentRequestInvoicePDFOptions = {},
+  static async downloadInvoice(
+    invoice: PaymentRequestInvoice,
+    options?: PaymentRequestInvoicePDFOptions,
     filename?: string
-  ): void {
-    const doc = this.generateInvoice(data, options);
-    const downloadFilename = filename || `invoice-${data.invoice_number}.pdf`;
+  ): Promise<void> {
+    const doc = await this.generateInvoice(invoice, options);
+    const downloadFilename =
+      filename || `invoice-${invoice.invoice_number || "invoice"}.pdf`;
     doc.save(downloadFilename);
   }
 
   /**
    * Opens the invoice PDF in a new window/tab
    */
-  static previewInvoice(
-    data: PaymentRequestInvoiceData,
-    options: PaymentRequestInvoicePDFOptions = {}
-  ): void {
-    const doc = this.generateInvoice(data, options);
+  static async previewInvoice(
+    invoice: PaymentRequestInvoice,
+    options?: PaymentRequestInvoicePDFOptions
+  ): Promise<void> {
+    const doc = await this.generateInvoice(invoice, options);
     const pdfBlob = doc.output("blob");
     const pdfUrl = URL.createObjectURL(pdfBlob);
     window.open(pdfUrl, "_blank");
   }
-
-  /**
-   * Generates the PDF as a blob for upload to storage
-   */
-  static generatePDFBlob(
-    data: PaymentRequestInvoiceData,
-    options: PaymentRequestInvoicePDFOptions = {}
-  ): Blob {
-    const doc = this.generateInvoice(data, options);
-    return doc.output("blob");
-  }
 }
+

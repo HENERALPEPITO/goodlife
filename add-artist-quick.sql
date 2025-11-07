@@ -52,3 +52,4 @@ SELECT
 FROM user_profiles
 WHERE id = '920946a9-1d77-45c9-bb72-aaf80aa2769e';
 
+

@@ -113,3 +113,4 @@ SELECT
   SUM(CASE WHEN artist_id = '920946a9-1d77-45c9-bb72-aaf80aa2769e' THEN 1 ELSE 0 END)
 FROM royalties;
 
+
