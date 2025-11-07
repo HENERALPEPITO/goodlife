@@ -52,11 +52,10 @@ export default function Sidebar() {
 
   return (
     <aside 
-      className="hidden md:flex flex-col w-64 fixed h-screen backdrop-blur-md transition-colors"
+      className="hidden md:flex flex-col w-64 fixed h-screen bg-white transition-colors"
       style={{
-        backgroundColor: 'var(--glass-bg)',
-        borderRight: '1px solid var(--glass-border)',
-        boxShadow: '2px 0 20px var(--shadow)',
+        borderRight: '1px solid #E5E7EB',
+        boxShadow: '2px 0 20px rgba(0, 0, 0, 0.05)',
       }}
     >
       <div className="p-6 flex-shrink-0">
@@ -66,11 +65,7 @@ export default function Sidebar() {
             alt="GOOD LIFE MUSIC"
             width={160}
             height={60}
-            className={`object-contain w-auto h-auto max-w-full transition-all ${
-              mounted && theme === "light" 
-                ? "brightness-0" 
-                : "brightness-0 invert"
-            }`}
+            className="object-contain w-auto h-auto max-w-full brightness-0"
             priority
           />
         </Link>
@@ -86,30 +81,29 @@ export default function Sidebar() {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ${
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ease-in-out ${
                   active
                     ? "font-medium"
                     : "font-normal"
                 }`}
                 style={{
                   backgroundColor: active 
-                    ? 'rgba(59, 130, 246, 0.15)' 
+                    ? '#EFF6FF' 
                     : 'transparent',
                   color: active 
-                    ? 'var(--accent-blue)' 
-                    : 'var(--text-secondary)',
-                  borderLeft: active ? '2px solid var(--accent-blue)' : '2px solid transparent',
+                    ? '#2563EB' 
+                    : '#6B7280',
                 }}
                 onMouseEnter={(e) => {
                   if (!active) {
-                    e.currentTarget.style.backgroundColor = 'var(--glass-bg)';
-                    e.currentTarget.style.color = 'var(--text-primary)';
+                    e.currentTarget.style.backgroundColor = '#EFF6FF';
+                    e.currentTarget.style.color = '#2563EB';
                   }
                 }}
                 onMouseLeave={(e) => {
                   if (!active) {
                     e.currentTarget.style.backgroundColor = 'transparent';
-                    e.currentTarget.style.color = 'var(--text-secondary)';
+                    e.currentTarget.style.color = '#6B7280';
                   }
                 }}
               >
@@ -123,12 +117,12 @@ export default function Sidebar() {
 
       <div 
         className="mt-auto p-6 border-t flex-shrink-0 transition-colors"
-        style={{ borderColor: 'var(--glass-border)' }}
+        style={{ borderColor: '#E5E7EB' }}
       >
         {user && (
-          <div className="text-xs transition-colors">
-            <p className="font-medium mb-1 truncate" style={{ color: 'var(--text-primary)' }}>{user.email}</p>
-            <p className="capitalize" style={{ color: 'var(--text-secondary)' }}>{user.role}</p>
+          <div className="text-xs">
+            <p className="font-medium mb-1 truncate text-gray-800">{user.email}</p>
+            <p className="capitalize text-gray-600">{user.role}</p>
           </div>
         )}
       </div>
