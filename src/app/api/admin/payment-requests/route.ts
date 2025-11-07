@@ -231,55 +231,110 @@ export async function POST(request: NextRequest): Promise<NextResponse<UpdatePay
       );
     }
 
-    // If approved, create invoice
+    // If approved, generate new PDF invoice with approved status
     if (status === "approved") {
-      // Get artist info
-      const { data: artist } = await adminClient
-        .from("artists")
-        .select("id, name, email")
-        .eq("id", paymentRequest.artist_id)
-        .single();
+      try {
+        // Get artist info
+        const { data: artist } = await adminClient
+          .from("artists")
+          .select("id, name, user_id")
+          .eq("id", paymentRequest.artist_id)
+          .single();
 
-      if (artist) {
-        // Check if invoice already exists
-        const { data: existingInvoice } = await adminClient
-          .from("invoices")
-          .select("id")
-          .eq("payment_request_id", id)
-          .maybeSingle();
+        if (artist) {
+          // Get user profile for email
+          const { data: userProfile } = await adminClient
+            .from("user_profiles")
+            .select("email")
+            .eq("id", artist.user_id)
+            .single();
 
-        if (!existingInvoice) {
-          // Generate invoice reference
-          let invoiceRef: string;
-          try {
-            const { data: refData } = await adminClient.rpc("generate_invoice_ref");
-            invoiceRef = refData || `INV-${Date.now().toString(36).toUpperCase()}`;
-          } catch {
-            invoiceRef = `INV-${Date.now().toString(36).toUpperCase()}`;
-          }
-          
-          // Generate invoice number
-          const invoiceNumber = `INV-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 10000)).padStart(4, "0")}`;
+          const artistEmail = userProfile?.email || "";
 
-          // Create invoice
-          const { error: invoiceError } = await adminClient
+          // Get existing invoice or create new one
+          const { data: existingInvoice } = await adminClient
             .from("invoices")
-            .insert({
-              artist_id: paymentRequest.artist_id,
-              artist_name: artist.name || artist.email,
-              total_net: paymentRequest.amount,
-              amount: paymentRequest.amount,
-              invoice_ref: invoiceRef,
-              invoice_number: invoiceNumber,
-              invoice_date: new Date().toISOString(),
-              status: "pending",
-              payment_request_id: id,
+            .select("*")
+            .eq("payment_request_id", id)
+            .maybeSingle();
+
+          let invoiceNumber = existingInvoice?.invoice_number;
+          if (!invoiceNumber) {
+            // Generate invoice number: INV-[YEAR]-[AUTO_ID]
+            const year = new Date().getFullYear();
+            const autoId = paymentRequest.id.substring(0, 8).toUpperCase();
+            invoiceNumber = `INV-${year}-${autoId}`;
+          }
+
+          // Generate approved PDF invoice
+          const { generatePaymentRequestInvoicePDF } = await import("@/lib/pdfGenerator");
+          const { getInvoiceSettingsAdmin } = await import("@/lib/invoiceSettings");
+          const invoiceSettings = await getInvoiceSettingsAdmin();
+
+          const invoiceDate = existingInvoice?.created_at
+            ? new Date(existingInvoice.created_at).toISOString().split("T")[0]
+            : new Date().toISOString().split("T")[0];
+
+          const invoice = {
+            id: paymentRequest.id,
+            invoice_number: invoiceNumber,
+            invoice_date: invoiceDate,
+            artist_name: artist.name || "Artist",
+            artist_email: artistEmail,
+            total_net: paymentRequest.amount,
+            status: "approved" as const,
+            payment_request_id: paymentRequest.id,
+          };
+
+          const pdfDoc = await generatePaymentRequestInvoicePDF(invoice, {
+            settings: invoiceSettings,
+          });
+
+          // Convert PDF to buffer (server-side compatible)
+          const pdfArrayBuffer = pdfDoc.output("arraybuffer");
+          const pdfBuffer = Buffer.from(pdfArrayBuffer);
+
+          const fileName = `invoices/${paymentRequest.artist_id}/${invoiceNumber}.pdf`;
+          const { error: uploadError } = await adminClient.storage
+            .from("invoices")
+            .upload(fileName, pdfBuffer, {
+              contentType: "application/pdf",
+              upsert: true,
             });
 
-          if (invoiceError) {
-            console.error("Error creating invoice:", invoiceError);
+          if (uploadError) {
+            console.error("Error uploading PDF:", uploadError);
+          }
+
+          // Get public URL
+          const {
+            data: { publicUrl },
+          } = adminClient.storage.from("invoices").getPublicUrl(fileName);
+
+          // Update or create invoice record
+          if (existingInvoice) {
+            await adminClient
+              .from("invoices")
+              .update({
+                status: "approved",
+                file_url: publicUrl,
+              })
+              .eq("id", existingInvoice.id);
+          } else {
+            await adminClient.from("invoices").insert({
+              artist_id: paymentRequest.artist_id,
+              payment_request_id: id,
+              amount: paymentRequest.amount,
+              invoice_number: invoiceNumber,
+              mode_of_payment: "Bank Transfer",
+              status: "approved",
+              file_url: publicUrl,
+            });
           }
         }
+      } catch (error) {
+        console.error("Error generating approved invoice PDF:", error);
+        // Continue even if PDF generation fails
       }
     }
 

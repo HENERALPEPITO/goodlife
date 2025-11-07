@@ -79,8 +79,21 @@ export function ReceiptModal({
   const fetchReceiptData = async () => {
     try {
       setLoading(true);
+      
+      // Get auth token from Supabase session
+      const { supabase } = await import("@/lib/supabaseClient");
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      
       const response = await fetch(
-        `/api/payment/receipt?payment_request_id=${paymentRequestId}`
+        `/api/payment/receipt?payment_request_id=${paymentRequestId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${session?.access_token || ""}`,
+          },
+          credentials: "include",
+        }
       );
 
       const data = await response.json();
@@ -299,6 +312,7 @@ export function ReceiptModal({
     </Dialog>
   );
 }
+
 
 
 

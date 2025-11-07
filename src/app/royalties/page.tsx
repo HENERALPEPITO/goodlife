@@ -117,6 +117,14 @@ export default function RoyaltiesPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Royalties</h1>
         <div className="flex gap-2">
+          {user?.role === "artist" && (
+            <a 
+              href="/artist/payment-request" 
+              className="px-4 py-2 text-sm rounded border bg-green-600 text-white hover:bg-green-700 border-green-600"
+            >
+              Request Payment
+            </a>
+          )}
           <a className="px-3 py-2 text-sm rounded border hover:bg-zinc-100 dark:hover:bg-zinc-900" href={`/api/royalties/export?status=${status}`} target="_blank">Export CSV</a>
           <button className="px-3 py-2 text-sm rounded border hover:bg-zinc-100 dark:hover:bg-zinc-900" onClick={() => {
             const pdf = new jsPDF();
