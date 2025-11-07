@@ -26,9 +26,22 @@ CREATE TABLE IF NOT EXISTS payment_requests (
   artist_id UUID NOT NULL,
   amount NUMERIC(12,2) NOT NULL,
   status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'paid')),
+  remarks TEXT,
+  approved_by UUID REFERENCES auth.users(id),
+  approved_at TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Add columns if they don't exist (for existing tables)
+ALTER TABLE payment_requests 
+ADD COLUMN IF NOT EXISTS remarks TEXT;
+
+ALTER TABLE payment_requests 
+ADD COLUMN IF NOT EXISTS approved_by UUID REFERENCES auth.users(id);
+
+ALTER TABLE payment_requests 
+ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP WITH TIME ZONE;
 
 -- Fix foreign key to reference artists table (not users)
 DO $$

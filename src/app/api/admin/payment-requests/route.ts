@@ -209,24 +209,81 @@ export async function POST(request: NextRequest): Promise<NextResponse<UpdatePay
     }
 
     // Update payment request
-    const updateData = {
+    // Build update data - try with approved_by/approved_at first, fallback if columns don't exist
+    let updateData: any = {
       status,
-      remarks: remarks || null,
-      approved_by: admin.id,
-      approved_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     };
 
-    const { data: paymentRequest, error: updateError } = await adminClient
+    // Add remarks if provided
+    if (remarks !== undefined) {
+      updateData.remarks = remarks || null;
+    }
+
+    // Add approved_by and approved_at only if status is approved or rejected
+    if (status === "approved" || status === "rejected") {
+      updateData.approved_by = admin.id;
+      updateData.approved_at = new Date().toISOString();
+    }
+
+    let paymentRequest: any = null;
+    let updateError: any = null;
+
+    // Try update with all fields
+    const { data: updatedRequest, error: updateErr } = await adminClient
       .from("payment_requests")
       .update(updateData)
       .eq("id", id)
       .select()
       .single();
 
+    updateError = updateErr;
+    paymentRequest = updatedRequest;
+
+    // If error is about missing columns, try without approved_by/approved_at
+    if (updateError && (updateError.message?.includes("column") || updateError.code === "42703" || updateError.message?.includes("approved_by") || updateError.message?.includes("approved_at"))) {
+      console.warn("Columns approved_by/approved_at don't exist, updating without them");
+      
+      // Remove approved_by and approved_at and try again
+      const fallbackData: any = {
+        status,
+        updated_at: new Date().toISOString(),
+      };
+      if (remarks !== undefined) {
+        fallbackData.remarks = remarks || null;
+      }
+      
+      const { data: fallbackRequest, error: fallbackError } = await adminClient
+        .from("payment_requests")
+        .update(fallbackData)
+        .eq("id", id)
+        .select()
+        .single();
+      
+      if (fallbackError || !fallbackRequest) {
+        console.error("Error updating payment request (fallback):", fallbackError);
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: `Failed to update payment request: ${fallbackError?.message || "Unknown error"}` 
+          },
+          { status: 500 }
+        );
+      }
+      
+      paymentRequest = fallbackRequest;
+      updateError = null;
+    }
+
     if (updateError || !paymentRequest) {
       console.error("Error updating payment request:", updateError);
+      console.error("Update data:", JSON.stringify(updateData, null, 2));
+      console.error("Payment request ID:", id);
       return NextResponse.json(
-        { success: false, error: "Failed to update payment request" },
+        { 
+          success: false, 
+          error: `Failed to update payment request: ${updateError?.message || "Unknown error"}` 
+        },
         { status: 500 }
       );
     }
