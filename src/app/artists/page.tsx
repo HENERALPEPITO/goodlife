@@ -58,17 +58,38 @@ export default function ArtistsPage() {
       // Fetch stats for each artist
       const artistsWithStats = await Promise.all(
         (artistProfiles || []).map(async (artist) => {
-          // Get track count
+          // First, get the artist record from the artists table
+          // This is needed because tracks.artist_id and royalties.artist_id reference artists.id, not user_profiles.id
+          const { data: artistRecord, error: artistRecordError } = await supabase
+            .from("artists")
+            .select("id")
+            .eq("user_id", artist.id)
+            .maybeSingle();
+
+          // If no artist record exists, return zeros
+          if (artistRecordError || !artistRecord) {
+            return {
+              ...artist,
+              totalTracks: 0,
+              totalRevenue: 0,
+              totalStreams: 0,
+              pendingPayments: 0,
+            };
+          }
+
+          const artistId = artistRecord.id;
+
+          // Get track count using artists.id
           const { count: trackCount } = await supabase
             .from("tracks")
             .select("*", { count: "exact", head: true })
-            .eq("artist_id", artist.id);
+            .eq("artist_id", artistId);
 
-          // Get royalties
+          // Get royalties using artists.id
           const { data: royalties } = await supabase
             .from("royalties")
             .select("net_amount, usage_count")
-            .eq("artist_id", artist.id);
+            .eq("artist_id", artistId);
 
           const totalRevenue = royalties?.reduce(
             (sum, r) => sum + Number(r.net_amount || 0),
@@ -81,6 +102,7 @@ export default function ArtistsPage() {
           ) || 0;
 
           // Get pending payment requests
+          // Note: payment_requests.artist_id references auth.users.id (same as user_profiles.id)
           const { data: pendingRequests } = await supabase
             .from("payment_requests")
             .select("amount")
