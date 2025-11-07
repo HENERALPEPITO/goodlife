@@ -8,15 +8,11 @@
 
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://nyxedsuflhvxzijjiktj.supabase.co";
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!supabaseUrl) {
-  throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL environment variable");
-}
-
 if (!supabaseServiceRoleKey) {
-  throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY environment variable");
+  console.warn("Missing SUPABASE_SERVICE_ROLE_KEY environment variable. Admin operations may fail.");
 }
 
 /**
@@ -26,12 +22,26 @@ if (!supabaseServiceRoleKey) {
  * - Bypassing RLS policies
  * - Bulk operations requiring elevated privileges
  */
-export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-});
+export const supabaseAdmin = supabaseServiceRoleKey
+  ? createClient(supabaseUrl, supabaseServiceRoleKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    })
+  : null;
+
+// Helper function to get admin client or throw error
+export function getSupabaseAdmin() {
+  if (!supabaseAdmin) {
+    throw new Error("Supabase admin client not available. SUPABASE_SERVICE_ROLE_KEY is required.");
+  }
+  return supabaseAdmin;
+}
+
+
+
+
 
 
 

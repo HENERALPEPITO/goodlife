@@ -94,4 +94,14 @@ export interface CSVRoyaltyRow {
   "Net": string;
 }
 
+export interface RoyaltyStatement {
+  id: string;
+  trackTitle: string;
+  platform: string;
+  period: string;
+  streams: number;
+  revenueUsd: number;
+  status: "paid" | "pending";
+}
+
 

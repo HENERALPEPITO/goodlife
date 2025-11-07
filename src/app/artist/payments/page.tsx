@@ -26,7 +26,7 @@ import { useRouter } from "next/navigation";
 
 interface PaymentRequest {
   id: string;
-  total_amount: number;
+  total_amount: number | null | undefined;
   status: string;
   remarks: string | null;
   created_at: string;
@@ -65,10 +65,30 @@ export default function ArtistPaymentsPage() {
   const fetchPaymentRequests = async () => {
     try {
       setLoading(true);
+      
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+
+      // First, get the artist ID from the artists table
+      const { data: artist, error: artistError } = await supabase
+        .from("artists")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (artistError || !artist) {
+        console.error("Error fetching artist:", artistError);
+        setPaymentRequests([]);
+        setLoading(false);
+        return;
+      }
+
       const { data, error } = await supabase
         .from("payment_requests")
         .select("*")
-        .eq("artist_id", user?.id)
+        .eq("artist_id", artist.id)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -200,7 +220,7 @@ export default function ArtistPaymentsPage() {
                       {new Date(request.created_at).toLocaleDateString()}
                     </TableCell>
                     <TableCell className="text-right font-semibold">
-                      ${parseFloat(request.total_amount.toString()).toFixed(2)}
+                      €{(parseFloat(request.total_amount?.toString() || "0") || 0).toFixed(2)}
                     </TableCell>
                     <TableCell>{getStatusBadge(request.status)}</TableCell>
                     <TableCell>
@@ -239,6 +259,7 @@ export default function ArtistPaymentsPage() {
     </div>
   );
 }
+
 
 
 

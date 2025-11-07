@@ -1,94 +1,148 @@
 /**
+
  * Authentication Helper Functions
- * Server-side utilities for verifying user roles and permissions
+ * 
+ * Contains helper functions for authentication and authorization.
  */
 
+import { getSupabaseAdmin } from "./supabaseAdmin";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
-import type { UserRole } from "@/types";
+import { NextRequest } from "next/server";
+
+interface AdminUser {
+  id: string;
+  role: string;
+  email: string;
+}
+
+interface CurrentUser {
+  id: string;
+  role: string;
+  email: string;
+}
 
 /**
- * Creates a Supabase client for server-side operations (API routes, Server Components)
- * This client respects RLS policies based on the authenticated user
+ * Require Admin Access
+ * 
+ * Verifies the user is authenticated and has the admin role.
+ * Used as middleware for admin-only API routes.
  */
-export async function createServerSupabaseClient() {
-  const cookieStore = await cookies();
-
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            );
-          } catch {
-            // The `setAll` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing
-            // user sessions.
-          }
-        },
-      },
+export async function requireAdmin(headers: Headers): Promise<AdminUser | null> {
+  try {
+    // Get auth token from request headers
+    const authHeader = headers.get("Authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      console.error("No auth token provided");
+      return null;
     }
-  );
+
+    // Parse token
+    const token = authHeader.replace("Bearer ", "");
+    
+    // Use admin client directly since we have the token
+    const supabase = getSupabaseAdmin();
+
+    // Verify token and get user
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+
+    if (authError || !user) {
+      console.error("Auth error:", authError);
+      return null;
+    }
+
+    // Get user profile to check role
+    const { data: profile, error: profileError } = await supabase
+      .from("user_profiles")
+      .select("id, role, email")
+      .eq("id", user.id)
+      .single();
+
+    if (profileError || !profile) {
+      console.error("Profile error:", profileError);
+      return null;
+    }
+
+    // Verify admin role
+    if (profile.role !== "admin") {
+      console.error("User is not an admin:", profile.email);
+      return null;
+    }
+
+    return {
+      id: profile.id,
+      role: profile.role,
+      email: profile.email,
+    };
+  } catch (error) {
+    console.error("Error in requireAdmin:", error);
+    return null;
+  }
 }
 
 /**
- * Gets the current authenticated user and their profile
- * Returns null if not authenticated
+ * Get Current User
+ * 
+ * Gets the current authenticated user from request headers.
+ * Works for both admin and artist roles.
  */
-export async function getCurrentUser() {
-  const supabase = await createServerSupabaseClient();
-  
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  
-  if (authError || !user) {
+export async function getCurrentUser(headers: Headers): Promise<CurrentUser | null> {
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    
+    if (!supabaseUrl || !supabaseAnonKey) {
+      console.error("Missing Supabase environment variables");
+      return null;
+    }
+
+    // Get cookie store
+    const cookieStore = await cookies();
+
+    // Create server client with cookies
+    const supabase = createServerClient(
+      supabaseUrl,
+      supabaseAnonKey,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll();
+          },
+          setAll(cookiesToSet) {
+            // Cookies are set automatically by Next.js
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set(name, value, options);
+            });
+          },
+        },
+      }
+    );
+
+    // Get user from session
+    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !authUser) {
+      return null;
+    }
+
+    // Get user profile to check role
+    const { data: profile, error: profileError } = await supabase
+      .from("user_profiles")
+      .select("id, role, email")
+      .eq("id", authUser.id)
+      .single();
+
+    if (profileError || !profile) {
+      return null;
+    }
+
+    return {
+      id: profile.id,
+      role: profile.role,
+      email: profile.email,
+    };
+  } catch (error) {
+    console.error("Error in getCurrentUser:", error);
     return null;
   }
-
-  const { data: profile, error: profileError } = await supabase
-    .from("user_profiles")
-    .select("*")
-    .eq("id", user.id)
-    .single();
-
-  if (profileError || !profile) {
-    return null;
-  }
-
-  return {
-    id: user.id,
-    email: user.email || profile.email,
-    role: profile.role as UserRole,
-  };
 }
-
-/**
- * Verifies that the current user is an admin
- * Returns the user object if admin, null otherwise
- */
-export async function requireAdmin() {
-  const user = await getCurrentUser();
-  
-  if (!user || user.role !== "admin") {
-    return null;
-  }
-  
-  return user;
-}
-
-/**
- * Checks if the current user has the specified role
- */
-export async function hasRole(role: UserRole): Promise<boolean> {
-  const user = await getCurrentUser();
-  return user?.role === role;
-}
-
-
-

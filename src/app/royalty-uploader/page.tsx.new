@@ -1,0 +1,25 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabaseClient";
+import { useAuth } from "@/lib/auth";
+import { useRouter } from "next/navigation";
+import { useTheme } from "next-themes";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/use-toast";
+import Papa from "papaparse";
+import { Upload, AlertCircle } from "lucide-react";
+import type { UserProfile } from "@/types";
+
+interface ParsedRoyaltyData {
+  songTitle: string;
+  iswc: string;
+  composer: string;
+  date: string;
+  territory: string;
+  source: string;
+  usageCount: number;
+  gross: number;
+  adminPercent: number;
+  net: number;
+}
