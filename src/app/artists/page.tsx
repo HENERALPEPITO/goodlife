@@ -7,14 +7,13 @@ import { useTheme } from "next-themes";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
-import { Users, Music, DollarSign, TrendingUp } from "lucide-react";
+import { Users, Music, DollarSign } from "lucide-react";
 import type { UserProfile } from "@/types";
 
 interface ArtistWithStats extends UserProfile {
   totalTracks: number;
   totalRevenue: number;
   totalStreams: number;
-  pendingPayments: number;
 }
 
 export default function ArtistsPage() {
@@ -73,7 +72,6 @@ export default function ArtistsPage() {
               totalTracks: 0,
               totalRevenue: 0,
               totalStreams: 0,
-              pendingPayments: 0,
             };
           }
 
@@ -101,25 +99,11 @@ export default function ArtistsPage() {
             0
           ) || 0;
 
-          // Get pending payment requests
-          // Note: payment_requests.artist_id references auth.users.id (same as user_profiles.id)
-          const { data: pendingRequests } = await supabase
-            .from("payment_requests")
-            .select("amount")
-            .eq("artist_id", artist.id)
-            .eq("status", "pending");
-
-          const pendingPayments = pendingRequests?.reduce(
-            (sum, r) => sum + Number(r.amount || 0),
-            0
-          ) || 0;
-
           return {
             ...artist,
             totalTracks: trackCount || 0,
             totalRevenue,
             totalStreams,
-            pendingPayments,
           };
         })
       );
@@ -161,7 +145,6 @@ export default function ArtistsPage() {
   const totalArtists = artists.length;
   const totalRevenue = artists.reduce((sum, a) => sum + a.totalRevenue, 0);
   const totalTracks = artists.reduce((sum, a) => sum + a.totalTracks, 0);
-  const totalPendingPayments = artists.reduce((sum, a) => sum + a.pendingPayments, 0);
 
   return (
     <div className="space-y-6">
@@ -220,23 +203,6 @@ export default function ArtistsPage() {
           <div className="mt-2 text-3xl font-semibold transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>{totalTracks}</div>
           <div className="text-xs mt-1 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>In catalog</div>
         </div>
-
-        <div 
-          className="rounded-lg border p-6 transition-colors"
-          style={{
-            backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
-            borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
-          }}
-        >
-          <div className="flex items-center justify-between">
-            <div className="text-sm transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Pending Payments</div>
-            <TrendingUp className="h-5 w-5 transition-colors" style={{ color: '#F59E0B' }} />
-          </div>
-          <div className="mt-2 text-3xl font-semibold transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>
-            €{totalPendingPayments.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </div>
-          <div className="text-xs mt-1 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Awaiting approval</div>
-        </div>
       </section>
 
       {/* Artists Table */}
@@ -274,7 +240,6 @@ export default function ArtistsPage() {
                   <th className="p-4 font-medium">Tracks</th>
                   <th className="p-4 font-medium">Total Revenue</th>
                   <th className="p-4 font-medium">Total Streams</th>
-                  <th className="p-4 font-medium">Pending Payments</th>
                   <th className="p-4 font-medium">Joined</th>
                   <th className="p-4 font-medium">Actions</th>
                 </tr>
@@ -306,15 +271,6 @@ export default function ArtistsPage() {
                     </td>
                     <td className="p-4 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
                       {artist.totalStreams.toLocaleString()}
-                    </td>
-                    <td className="p-4">
-                      {artist.pendingPayments > 0 ? (
-                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300">
-                          €{artist.pendingPayments.toFixed(2)}
-                        </span>
-                      ) : (
-                        <span className="transition-colors" style={{ color: isDark ? '#9CA3AF' : '#9CA3AF' }}>—</span>
-                      )}
                     </td>
                     <td className="p-4 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
                       {new Date(artist.created_at).toLocaleDateString()}
@@ -357,13 +313,6 @@ export default function ArtistsPage() {
             <Button
               variant="outline"
               className="w-full justify-start"
-              onClick={() => router.push("/royalties")}
-            >
-              Manage Payment Requests
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full justify-start"
               onClick={() => router.push("/catalog")}
             >
               View All Tracks
@@ -387,10 +336,6 @@ export default function ArtistsPage() {
             <div className="flex justify-between">
               <span className="transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Active Artists:</span>
               <span className="font-medium transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>{artists.filter(a => a.totalTracks > 0).length}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Pending Requests:</span>
-              <span className="font-medium transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>{artists.filter(a => a.pendingPayments > 0).length}</span>
             </div>
           </div>
         </div>

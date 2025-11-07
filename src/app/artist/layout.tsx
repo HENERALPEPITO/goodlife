@@ -32,12 +32,6 @@ export default function ArtistLayout({
                 Royalties
               </a>
               <a
-                href="/artist/payments"
-                className="text-sm font-medium text-slate-700 hover:text-slate-900 transition-colors"
-              >
-                Payments
-              </a>
-              <a
                 href="/"
                 className="text-sm font-medium text-slate-700 hover:text-slate-900 transition-colors"
               >

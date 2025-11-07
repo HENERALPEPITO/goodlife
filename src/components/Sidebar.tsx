@@ -5,7 +5,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { useTheme } from "next-themes";
-import { LayoutDashboard, BarChart3, DollarSign, Music, FileUp, Users, Settings, Receipt, Upload, User, FileText } from "lucide-react";
+import { LayoutDashboard, BarChart3, DollarSign, Music, FileUp, Users, Settings, Upload, User } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export default function Sidebar() {
@@ -30,15 +30,11 @@ export default function Sidebar() {
     { href: "/", label: "Dashboard", icon: LayoutDashboard, show: true },
     { href: "/analytics", label: "Analytics", icon: BarChart3, show: true },
     { href: "/royalties", label: "Royalties", icon: DollarSign, show: true },
-    { href: "/invoices", label: "Invoices", icon: Receipt, show: true },
-    { href: "/catalog", label: "Catalog", icon: Music, show: true },
     { href: "/artist/catalog", label: "My Catalog", icon: Music, show: !isAdmin },
     { href: "/artist/profile", label: "My Profile", icon: User, show: !isAdmin },
     { href: "/artists", label: "Artists", icon: Users, show: isAdmin },
     { href: "/admin/artists", label: "Manage Artists", icon: Users, show: isAdmin },
     { href: "/admin/artist-tracks", label: "Track Catalog", icon: Upload, show: isAdmin },
-    { href: "/admin/payment-requests", label: "Payment Requests", icon: FileText, show: isAdmin },
-    { href: "/admin/invoice-settings", label: "Invoice Settings", icon: Settings, show: isAdmin },
     { href: "/royalty-uploader", label: "Upload Royalties", icon: FileUp, show: isAdmin },
     { href: "/settings", label: "Settings", icon: Settings, show: true },
   ];

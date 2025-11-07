@@ -1,15 +1,13 @@
 "use client";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { Users, DollarSign, Music, FileUp, Upload, FileText } from "lucide-react";
+import { Users, DollarSign, Music, FileUp, Upload } from "lucide-react";
 import Link from "next/link";
 
 interface AdminStats {
   totalArtists: number;
   totalRevenue: number;
   totalTracks: number;
-  pendingPayments: number;
-  pendingPaymentsCount: number;
 }
 
 export default function AdminDashboard() {
@@ -17,8 +15,6 @@ export default function AdminDashboard() {
     totalArtists: 0,
     totalRevenue: 0,
     totalTracks: 0,
-    pendingPayments: 0,
-    pendingPaymentsCount: 0,
   });
   const [loading, setLoading] = useState(true);
 
@@ -46,22 +42,10 @@ export default function AdminDashboard() {
         0
       ) || 0;
 
-      const { data: pendingRequests } = await supabase
-        .from("payment_requests")
-        .select("amount")
-        .eq("status", "pending");
-
-      const pendingPayments = pendingRequests?.reduce(
-        (sum, r) => sum + Number(r.amount || 0),
-        0
-      ) || 0;
-
       setStats({
         totalArtists: artistCount || 0,
         totalRevenue,
         totalTracks: trackCount || 0,
-        pendingPayments,
-        pendingPaymentsCount: pendingRequests?.length || 0,
       });
     } catch (error) {
       console.error("Error fetching admin stats:", error);
@@ -91,13 +75,6 @@ export default function AdminDashboard() {
       sub: "In catalog",
       icon: Music,
       color: "#A78BFA",
-    },
-    {
-      label: "Pending Payments",
-      value: `€${stats.pendingPayments.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      sub: `${stats.pendingPaymentsCount} requests`,
-      icon: FileUp,
-      color: "#FB923C",
     },
   ];
 
@@ -174,22 +151,6 @@ export default function AdminDashboard() {
         </Link>
 
         <Link
-          href="/admin/payment-requests"
-          className="backdrop-blur-md rounded-2xl p-6 transition-all duration-200 hover:scale-[1.02] block"
-          style={{
-            backgroundColor: 'var(--glass-bg)',
-            border: '1px solid var(--glass-border)',
-            boxShadow: '0 8px 32px 0 var(--shadow)',
-          }}
-        >
-          <FileText className="h-8 w-8 mb-3" style={{ color: 'var(--accent-blue)' }} />
-          <h3 className="font-semibold mb-1 transition-colors" style={{ color: 'var(--text-primary)' }}>Payment Requests</h3>
-          <p className="text-sm transition-colors" style={{ color: 'var(--text-secondary)' }}>
-            Review and manage artist payment requests
-          </p>
-        </Link>
-
-        <Link
           href="/royalty-uploader"
           className="backdrop-blur-md rounded-2xl p-6 transition-all duration-200 hover:scale-[1.02] block"
           style={{
@@ -239,10 +200,6 @@ export default function AdminDashboard() {
           <div className="flex items-center gap-3 transition-colors" style={{ color: 'var(--text-secondary)' }}>
             <span className="h-2 w-2 rounded-full bg-blue-500" />
             <span>{stats.totalArtists} artists registered</span>
-          </div>
-          <div className="flex items-center gap-3 transition-colors" style={{ color: 'var(--text-secondary)' }}>
-            <span className="h-2 w-2 rounded-full bg-orange-500" />
-            <span>{stats.pendingPaymentsCount} pending payment requests</span>
           </div>
         </div>
       </section>
