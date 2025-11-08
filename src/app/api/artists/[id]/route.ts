@@ -234,13 +234,21 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {
+    // Handle both sync and async params (Next.js 15 compatibility)
+    const resolvedParams = await Promise.resolve(params);
+    const artistId = resolvedParams.id;
+    
+    console.log("DELETE /api/artists/[id] - Artist ID:", artistId);
+    console.log("DELETE /api/artists/[id] - Request URL:", request.url);
+    
     const response = NextResponse.next();
     const user = await getUserFromRequest(request, response);
     
     if (!user) {
+      console.log("DELETE /api/artists/[id] - Unauthorized: No user found");
       return NextResponse.json(
         { 
           error: "Unauthorized",
@@ -251,31 +259,72 @@ export async function DELETE(
       );
     }
 
+    console.log("DELETE /api/artists/[id] - User:", { id: user.id, role: user.role, email: user.email });
+
     // Check if user is admin
     if (user.role !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      console.log("DELETE /api/artists/[id] - Forbidden: User is not admin");
+      return NextResponse.json(
+        { 
+          error: "Forbidden",
+          details: "Only administrators can delete artists"
+        },
+        { status: 403 }
+      );
     }
 
-    const supabase = createRequestSupabaseClient(request, response);
+    // Use admin client for admin operations to bypass RLS
+    let supabaseClient;
+    try {
+      supabaseClient = getSupabaseAdmin();
+      console.log("DELETE /api/artists/[id] - Using admin client to bypass RLS");
+    } catch (adminError: any) {
+      console.warn("DELETE /api/artists/[id] - Admin client not available, using regular client:", adminError.message);
+      supabaseClient = createRequestSupabaseClient(request, response);
+    }
 
-    const { error } = await supabase
+    console.log("DELETE /api/artists/[id] - Deleting artist with ID:", artistId);
+    const { data, error } = await supabaseClient
       .from("artists")
       .delete()
-      .eq("id", params.id);
+      .eq("id", artistId)
+      .select();
 
     if (error) {
-      console.error("Error deleting artist:", error);
+      console.error("DELETE /api/artists/[id] - Error deleting artist:", {
+        error: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+        artistId
+      });
       return NextResponse.json(
-        { error: "Failed to delete artist" },
+        { 
+          error: "Failed to delete artist",
+          details: error.message || "An error occurred while deleting the artist",
+          code: error.code
+        },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({ message: "Artist successfully deleted" });
+    console.log("DELETE /api/artists/[id] - Artist deleted successfully:", { artistId, deletedRows: data?.length || 0 });
+
+    return NextResponse.json({ 
+      message: "Artist successfully deleted",
+      artistId
+    });
   } catch (error: any) {
-    console.error("Error in DELETE /api/artists/[id]:", error);
+    console.error("DELETE /api/artists/[id] - Unexpected error:", {
+      message: error?.message || "Unknown error",
+      name: error?.name,
+      stack: error?.stack
+    });
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { 
+        error: error?.message || "Internal server error",
+        details: "An unexpected error occurred while deleting the artist"
+      },
       { status: 500 }
     );
   }
