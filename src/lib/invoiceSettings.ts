@@ -27,57 +27,93 @@ export async function getInvoiceSettings(): Promise<InvoiceSettings | null> {
       .from("invoice_settings")
       .select("*")
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (error) {
-      console.error("Error fetching invoice settings:", error);
-      return null;
+      console.error("Error fetching invoice settings:", {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint
+      });
+      // Return default settings on error (table might not exist or RLS blocking)
+      return getDefaultInvoiceSettings();
+    }
+
+    // If no rows exist, return default settings
+    if (!data) {
+      console.warn("No invoice settings found in database, using defaults");
+      return getDefaultInvoiceSettings();
     }
 
     return data;
-  } catch (error) {
-    console.error("Error fetching invoice settings:", error);
-    return null;
+  } catch (error: any) {
+    console.error("Error fetching invoice settings:", {
+      message: error?.message || "Unknown error",
+      name: error?.name,
+      stack: error?.stack
+    });
+    // Return default settings on exception
+    return getDefaultInvoiceSettings();
   }
+}
+
+/**
+ * Get default invoice settings
+ */
+function getDefaultInvoiceSettings(): InvoiceSettings {
+  return {
+    id: "default",
+    business_name: "Good Life Music S.L",
+    address: "Profesor Hermida 6, 3-3C, 36960 Sanxenxo (Spain)",
+    phone: "+34 693 43 25 06",
+    email: "info@goodlifemusic.com",
+    tax_id: "B72510704",
+    updated_at: new Date().toISOString(),
+  };
 }
 
 /**
  * Get invoice settings using admin client (for API routes)
  */
 export async function getInvoiceSettingsAdmin(): Promise<InvoiceSettings | null> {
+  if (!supabaseAdmin) {
+    console.warn("Admin client not available, returning default settings");
+    return getDefaultInvoiceSettings();
+  }
+
   try {
     const { data, error } = await supabaseAdmin
       .from("invoice_settings")
       .select("*")
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (error) {
-      console.error("Error fetching invoice settings:", error);
-      // Return default settings if table is empty
-      return {
-        id: "default",
-        business_name: "Good Life Music S.L",
-        address: "Profesor Hermida 6, 3-3C, 36960 Sanxenxo (Spain)",
-        phone: "+34 693 43 25 06",
-        email: "info@goodlifemusic.com",
-        tax_id: "B72510704",
-        updated_at: new Date().toISOString(),
-      };
+      console.error("Error fetching invoice settings (admin):", {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint
+      });
+      // Return default settings if table is empty or error occurs
+      return getDefaultInvoiceSettings();
+    }
+
+    // If no rows exist, return default settings
+    if (!data) {
+      console.warn("No invoice settings found in database, using defaults");
+      return getDefaultInvoiceSettings();
     }
 
     return data;
-  } catch (error) {
-    console.error("Error fetching invoice settings:", error);
-    return {
-      id: "default",
-      business_name: "Good Life Music S.L",
-      address: "Profesor Hermida 6, 3-3C, 36960 Sanxenxo (Spain)",
-      phone: "+34 693 43 25 06",
-      email: "info@goodlifemusic.com",
-      tax_id: "B72510704",
-      updated_at: new Date().toISOString(),
-    };
+  } catch (error: any) {
+    console.error("Error fetching invoice settings (admin):", {
+      message: error?.message || "Unknown error",
+      name: error?.name,
+      stack: error?.stack
+    });
+    return getDefaultInvoiceSettings();
   }
 }
 
