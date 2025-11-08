@@ -22,29 +22,22 @@ export default function Topbar() {
 
   return (
     <header 
-      className="sticky top-0 z-10 backdrop-blur-md transition-colors"
+      className="sticky top-0 z-10 bg-white transition-colors"
       style={{
-        backgroundColor: 'var(--glass-bg)',
-        borderBottom: '1px solid var(--glass-border)',
-        boxShadow: '0 1px 10px var(--shadow)',
+        borderBottom: '1px solid #E5E7EB',
       }}
     >
       <div className="flex items-center justify-end gap-4 px-6 py-4">
         {user && (
-          <div className="text-sm transition-colors" style={{ color: 'var(--text-primary)' }}>
+          <div className="text-sm text-gray-800">
             <span className="font-medium">{user.email}</span>
-            <span className="ml-2 capitalize" style={{ color: 'var(--text-secondary)' }}>({user.role})</span>
+            <span className="ml-2 capitalize text-gray-600">({user.role})</span>
           </div>
         )}
         {mounted && (
           <button
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg transition-all duration-200 hover:scale-105 active:scale-95"
-            style={{
-              color: 'var(--text-primary)',
-              border: '1px solid var(--glass-border)',
-              backgroundColor: 'var(--glass-bg)',
-            }}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 transition-all duration-200 ease-in-out"
             title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
           >
             {theme === "dark" ? (
@@ -56,18 +49,7 @@ export default function Topbar() {
         )}
         <button
           onClick={handleSignOut}
-          className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg transition-all duration-200 hover:scale-105 active:scale-95"
-          style={{
-            color: 'var(--text-primary)',
-            border: '1px solid var(--glass-border)',
-            backgroundColor: 'var(--glass-bg)',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.opacity = '0.9';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.opacity = '1';
-          }}
+          className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 transition-all duration-200 ease-in-out"
           title="Sign out"
         >
           <LogOut className="h-4 w-4" />

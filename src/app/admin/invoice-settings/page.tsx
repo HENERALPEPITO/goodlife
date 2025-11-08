@@ -85,12 +85,8 @@ export default function InvoiceSettingsPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          business_name: formData.business_name,
-          address: formData.address,
-          contact_person: formData.contact_person || undefined,
           phone: formData.phone,
           email: formData.email,
-          tax_id: formData.tax_id,
         }),
       });
 
@@ -140,26 +136,26 @@ export default function InvoiceSettingsPage() {
 
       <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-md p-6 border border-gray-200 space-y-6">
         <div>
-          <Label htmlFor="business_name">Business Name *</Label>
+          <Label htmlFor="business_name">Business Name</Label>
           <Input
             id="business_name"
             value={formData.business_name}
-            onChange={(e) => setFormData({ ...formData, business_name: e.target.value })}
-            required
-            className="mt-1"
+            disabled
+            className="mt-1 bg-slate-50"
           />
+          <p className="text-xs text-slate-500 mt-1">This field is fixed and cannot be edited</p>
         </div>
 
         <div>
-          <Label htmlFor="address">Address *</Label>
+          <Label htmlFor="address">Address</Label>
           <Input
             id="address"
             value={formData.address}
-            onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-            required
-            className="mt-1"
+            disabled
+            className="mt-1 bg-slate-50"
             placeholder="e.g., Profesor Hermida 6, 3-3C, 36960 Sanxenxo (Spain)"
           />
+          <p className="text-xs text-slate-500 mt-1">This field is fixed and cannot be edited</p>
         </div>
 
         <div>
@@ -188,20 +184,20 @@ export default function InvoiceSettingsPage() {
         </div>
 
         <div>
-          <Label htmlFor="tax_id">TAX ID *</Label>
+          <Label htmlFor="tax_id">TAX ID</Label>
           <Input
             id="tax_id"
             value={formData.tax_id}
-            onChange={(e) => setFormData({ ...formData, tax_id: e.target.value })}
-            required
-            className="mt-1"
+            disabled
+            className="mt-1 bg-slate-50"
             placeholder="e.g., B72510704"
           />
+          <p className="text-xs text-slate-500 mt-1">This field is fixed and cannot be edited</p>
         </div>
 
         <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
           <p className="text-sm text-blue-800">
-            <strong>Note:</strong> These settings will be applied to all invoices generated after saving. Existing invoices will not be affected.
+            <strong>Note:</strong> Only phone and email can be edited. Business name, address, and TAX ID are fixed. These settings will be applied to all invoices generated after saving.
           </p>
         </div>
 

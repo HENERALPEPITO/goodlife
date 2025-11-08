@@ -292,11 +292,17 @@ export default function AdminArtistsPage() {
     if (!selectedArtist) return;
 
     try {
+      console.log("handleEditArtist - Selected artist:", selectedArtist);
+      console.log("handleEditArtist - Form data:", formData);
+      
       // Get access token from Supabase session
       const { data: { session } } = await supabase.auth.getSession();
       const accessToken = session?.access_token;
 
-      const response = await fetch(`/api/artists/${selectedArtist.id}`, {
+      const url = `/api/artists/${selectedArtist.id}`;
+      console.log("handleEditArtist - Making PUT request to:", url);
+      
+      const response = await fetch(url, {
         method: "PUT",
         credentials: "include",
         headers: {
@@ -305,11 +311,37 @@ export default function AdminArtistsPage() {
         },
         body: JSON.stringify(formData),
       });
+      
+      console.log("handleEditArtist - Response status:", response.status, response.statusText);
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const errorMessage = errorData.error || errorData.details || `Failed to update artist (${response.status})`;
-        console.error("API Error:", errorData);
+        let errorData: any = {};
+        let errorMessage = `Failed to update artist (${response.status})`;
+        
+        try {
+          const contentType = response.headers.get("content-type");
+          if (contentType?.includes("application/json")) {
+            errorData = await response.json();
+          } else {
+            const text = await response.text();
+            errorData = { error: text || errorMessage };
+          }
+        } catch (parseError) {
+          console.error("Error parsing error response:", parseError);
+          errorData = { error: errorMessage };
+        }
+        
+        errorMessage = errorData.error || errorData.details || errorMessage;
+        
+        console.error("API Error:", {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorData.error,
+          details: errorData.details,
+          code: errorData.code,
+          fullError: errorData
+        });
+        
         throw new Error(errorMessage);
       }
 
@@ -372,8 +404,8 @@ export default function AdminArtistsPage() {
   const openEditModal = (artist: Artist) => {
     setSelectedArtist(artist);
     setFormData({
-      name: artist.name,
-      email: artist.email,
+      name: artist.name || "",
+      email: artist.email || "",
       phone: artist.phone || "",
       address: artist.address || "Profesor Hermida 6, 3-3C, 36960 Sanxenxo, Spain",
     });

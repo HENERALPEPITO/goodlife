@@ -53,14 +53,22 @@ export class PaymentRequestInvoicePDF {
       tax_id: "B72510704",
     };
 
-    // Color constants
+    // Color constants - White minimalist design
     const colors = {
-      text: [17, 24, 39], // #111827
+      background: [255, 255, 255], // #FFFFFF
+      text: [34, 34, 34], // #222222
       secondary: [107, 114, 128], // #6B7280
       border: [229, 231, 235], // #E5E7EB
-      accent: [37, 99, 235], // #2563EB
+      pending: [156, 163, 175], // #9CA3AF
+      approved: [16, 185, 129], // #10B981
+      rejected: [239, 68, 68], // #EF4444
     };
 
+    // Set white background
+    doc.setFillColor(...colors.background);
+    doc.rect(0, 0, pageWidth, doc.internal.pageSize.getHeight(), "F");
+    
+    // Use Inter-like font (Helvetica is closest)
     doc.setFont("helvetica");
 
     // ============================================
@@ -197,14 +205,25 @@ export class PaymentRequestInvoicePDF {
     doc.text("Payment Mode: Bank Transfer", margin, yPosition);
     yPosition += 5;
 
-    // Status
+    // Status with color badge
     const statusText =
       invoice.status === "approved"
         ? "Approved"
         : invoice.status === "rejected"
         ? "Rejected"
         : "Pending";
+    
+    const statusColor = 
+      invoice.status === "approved"
+        ? colors.approved
+        : invoice.status === "rejected"
+        ? colors.rejected
+        : colors.pending;
+    
+    doc.setFontSize(10);
+    doc.setTextColor(...statusColor);
     doc.text(`Status: ${statusText}`, margin, yPosition);
+    doc.setTextColor(...colors.text);
     yPosition += 10;
 
     // ============================================
@@ -240,6 +259,7 @@ export class PaymentRequestInvoicePDF {
     // ============================================
     // FOOTER
     // ============================================
+    // Footer - centered in smaller gray text
     doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(...colors.secondary);

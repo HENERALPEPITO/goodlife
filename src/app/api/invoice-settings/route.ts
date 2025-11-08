@@ -34,25 +34,21 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { business_name, address, contact_person, phone, email, tax_id } = body;
+    const { phone, email } = body;
 
-    // Validate required fields
-    if (!business_name || !address || !phone || !email || !tax_id) {
+    // Validate required fields (only phone and email can be edited)
+    if (!phone || !email) {
       return NextResponse.json(
-        { success: false, error: "All fields are required (except Contact Person)" },
+        { success: false, error: "Phone and email are required" },
         { status: 400 }
       );
     }
 
-    // Update settings
+    // Update only phone and email (other fields are fixed)
     const success = await updateInvoiceSettings(
       {
-        business_name,
-        address,
-        contact_person: contact_person || undefined,
         phone,
         email,
-        tax_id,
       },
       admin.id
     );

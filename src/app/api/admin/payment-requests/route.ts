@@ -209,77 +209,189 @@ export async function POST(request: NextRequest): Promise<NextResponse<UpdatePay
     }
 
     // Update payment request
-    const updateData = {
+    // Build update data - try with approved_by/approved_at first, fallback if columns don't exist
+    let updateData: any = {
       status,
-      remarks: remarks || null,
-      approved_by: admin.id,
-      approved_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     };
 
-    const { data: paymentRequest, error: updateError } = await adminClient
+    // Add remarks if provided
+    if (remarks !== undefined) {
+      updateData.remarks = remarks || null;
+    }
+
+    // Add approved_by and approved_at only if status is approved or rejected
+    if (status === "approved" || status === "rejected") {
+      updateData.approved_by = admin.id;
+      updateData.approved_at = new Date().toISOString();
+    }
+
+    let paymentRequest: any = null;
+    let updateError: any = null;
+
+    // Try update with all fields
+    const { data: updatedRequest, error: updateErr } = await adminClient
       .from("payment_requests")
       .update(updateData)
       .eq("id", id)
       .select()
       .single();
 
+    updateError = updateErr;
+    paymentRequest = updatedRequest;
+
+    // If error is about missing columns, try without approved_by/approved_at
+    if (updateError && (updateError.message?.includes("column") || updateError.code === "42703" || updateError.message?.includes("approved_by") || updateError.message?.includes("approved_at"))) {
+      console.warn("Columns approved_by/approved_at don't exist, updating without them");
+      
+      // Remove approved_by and approved_at and try again
+      const fallbackData: any = {
+        status,
+        updated_at: new Date().toISOString(),
+      };
+      if (remarks !== undefined) {
+        fallbackData.remarks = remarks || null;
+      }
+      
+      const { data: fallbackRequest, error: fallbackError } = await adminClient
+        .from("payment_requests")
+        .update(fallbackData)
+        .eq("id", id)
+        .select()
+        .single();
+      
+      if (fallbackError || !fallbackRequest) {
+        console.error("Error updating payment request (fallback):", fallbackError);
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: `Failed to update payment request: ${fallbackError?.message || "Unknown error"}` 
+          },
+          { status: 500 }
+        );
+      }
+      
+      paymentRequest = fallbackRequest;
+      updateError = null;
+    }
+
     if (updateError || !paymentRequest) {
       console.error("Error updating payment request:", updateError);
+      console.error("Update data:", JSON.stringify(updateData, null, 2));
+      console.error("Payment request ID:", id);
       return NextResponse.json(
-        { success: false, error: "Failed to update payment request" },
+        { 
+          success: false, 
+          error: `Failed to update payment request: ${updateError?.message || "Unknown error"}` 
+        },
         { status: 500 }
       );
     }
 
-    // If approved, create invoice
+    // If approved, generate new PDF invoice with approved status
     if (status === "approved") {
-      // Get artist info
-      const { data: artist } = await adminClient
-        .from("artists")
-        .select("id, name, email")
-        .eq("id", paymentRequest.artist_id)
-        .single();
+      try {
+        // Get artist info
+        const { data: artist } = await adminClient
+          .from("artists")
+          .select("id, name, user_id")
+          .eq("id", paymentRequest.artist_id)
+          .single();
 
-      if (artist) {
-        // Check if invoice already exists
-        const { data: existingInvoice } = await adminClient
-          .from("invoices")
-          .select("id")
-          .eq("payment_request_id", id)
-          .maybeSingle();
+        if (artist) {
+          // Get user profile for email
+          const { data: userProfile } = await adminClient
+            .from("user_profiles")
+            .select("email")
+            .eq("id", artist.user_id)
+            .single();
 
-        if (!existingInvoice) {
-          // Generate invoice reference
-          let invoiceRef: string;
-          try {
-            const { data: refData } = await adminClient.rpc("generate_invoice_ref");
-            invoiceRef = refData || `INV-${Date.now().toString(36).toUpperCase()}`;
-          } catch {
-            invoiceRef = `INV-${Date.now().toString(36).toUpperCase()}`;
-          }
-          
-          // Generate invoice number
-          const invoiceNumber = `INV-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 10000)).padStart(4, "0")}`;
+          const artistEmail = userProfile?.email || "";
 
-          // Create invoice
-          const { error: invoiceError } = await adminClient
+          // Get existing invoice or create new one
+          const { data: existingInvoice } = await adminClient
             .from("invoices")
-            .insert({
-              artist_id: paymentRequest.artist_id,
-              artist_name: artist.name || artist.email,
-              total_net: paymentRequest.amount,
-              amount: paymentRequest.amount,
-              invoice_ref: invoiceRef,
-              invoice_number: invoiceNumber,
-              invoice_date: new Date().toISOString(),
-              status: "pending",
-              payment_request_id: id,
+            .select("*")
+            .eq("payment_request_id", id)
+            .maybeSingle();
+
+          let invoiceNumber = existingInvoice?.invoice_number;
+          if (!invoiceNumber) {
+            // Generate invoice number: INV-[YEAR]-[AUTO_ID]
+            const year = new Date().getFullYear();
+            const autoId = paymentRequest.id.substring(0, 8).toUpperCase();
+            invoiceNumber = `INV-${year}-${autoId}`;
+          }
+
+          // Generate approved PDF invoice
+          const { generatePaymentRequestInvoicePDF } = await import("@/lib/pdfGenerator");
+          const { getInvoiceSettingsAdmin } = await import("@/lib/invoiceSettings");
+          const invoiceSettings = await getInvoiceSettingsAdmin();
+
+          const invoiceDate = existingInvoice?.created_at
+            ? new Date(existingInvoice.created_at).toISOString().split("T")[0]
+            : new Date().toISOString().split("T")[0];
+
+          const invoice = {
+            id: paymentRequest.id,
+            invoice_number: invoiceNumber,
+            invoice_date: invoiceDate,
+            artist_name: artist.name || "Artist",
+            artist_email: artistEmail,
+            total_net: paymentRequest.amount,
+            status: "approved" as const,
+            payment_request_id: paymentRequest.id,
+          };
+
+          const pdfDoc = await generatePaymentRequestInvoicePDF(invoice, {
+            settings: invoiceSettings,
+          });
+
+          // Convert PDF to buffer (server-side compatible)
+          const pdfArrayBuffer = pdfDoc.output("arraybuffer");
+          const pdfBuffer = Buffer.from(pdfArrayBuffer);
+
+          const fileName = `invoices/${paymentRequest.artist_id}/${invoiceNumber}.pdf`;
+          const { error: uploadError } = await adminClient.storage
+            .from("invoices")
+            .upload(fileName, pdfBuffer, {
+              contentType: "application/pdf",
+              upsert: true,
             });
 
-          if (invoiceError) {
-            console.error("Error creating invoice:", invoiceError);
+          if (uploadError) {
+            console.error("Error uploading PDF:", uploadError);
+          }
+
+          // Get public URL
+          const {
+            data: { publicUrl },
+          } = adminClient.storage.from("invoices").getPublicUrl(fileName);
+
+          // Update or create invoice record
+          if (existingInvoice) {
+            await adminClient
+              .from("invoices")
+              .update({
+                status: "approved",
+                file_url: publicUrl,
+              })
+              .eq("id", existingInvoice.id);
+          } else {
+            await adminClient.from("invoices").insert({
+              artist_id: paymentRequest.artist_id,
+              payment_request_id: id,
+              amount: paymentRequest.amount,
+              invoice_number: invoiceNumber,
+              mode_of_payment: "Bank Transfer",
+              status: "approved",
+              file_url: publicUrl,
+            });
           }
         }
+      } catch (error) {
+        console.error("Error generating approved invoice PDF:", error);
+        // Continue even if PDF generation fails
       }
     }
 

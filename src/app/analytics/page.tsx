@@ -359,7 +359,7 @@ export default function AnalyticsPage() {
                   cx="50%"
                   cy="50%"
                   labelLine={false}
-                  label
+                  label={({ source, revenue }) => `${source}: €${Number(revenue).toFixed(2)}`}
                   outerRadius={100}
                   fill="#8884d8"
                   dataKey="revenue"
@@ -371,6 +371,7 @@ export default function AnalyticsPage() {
                 </Pie>
                 <Tooltip
                   contentStyle={tooltipStyle}
+                  formatter={(value: any) => `€${Number(value).toFixed(2)}`}
                 />
               </PieChart>
             </ResponsiveContainer>

@@ -58,12 +58,39 @@ interface ReceiptData {
 
 export async function GET(request: NextRequest): Promise<NextResponse<ReceiptData>> {
   try {
-    // Get current user with request headers
-    const user = await getCurrentUser(request.headers);
+    // Get current user - try headers first, then cookies
+    let user = null;
+    
+    // Try to get user from Authorization header
+    const authHeader = request.headers.get("Authorization");
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      const token = authHeader.replace("Bearer ", "");
+      const supabase = getSupabaseAdmin();
+      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token);
+      
+      if (!authError && authUser) {
+        const { data: profile } = await supabase
+          .from("user_profiles")
+          .select("id, role, email")
+          .eq("id", authUser.id)
+          .single();
+        
+        if (profile) {
+          user = {
+            id: profile.id,
+            role: profile.role,
+            email: profile.email,
+          };
+        }
+      }
+    }
+    
+    // If no user from header, try cookies
     if (!user) {
-      console.log("❌ [PaymentReceipt] Authentication failed", {
-        headers: Object.fromEntries(request.headers.entries())
-      });
+      user = await getCurrentUser(request.headers);
+    }
+    
+    if (!user) {
       return NextResponse.json(
         { success: false, error: "Unauthorized. Please login." },
         { status: 401 }
@@ -84,9 +111,9 @@ export async function GET(request: NextRequest): Promise<NextResponse<ReceiptDat
     // Get admin client
     const admin = getSupabaseAdmin();
 
-    // Fetch payment request with details
+    // Fetch payment request
     const { data: paymentRequest, error: prError } = await admin
-      .from("payment_requests_detailed")
+      .from("payment_requests")
       .select("*")
       .eq("id", paymentRequestId)
       .single();
@@ -99,19 +126,43 @@ export async function GET(request: NextRequest): Promise<NextResponse<ReceiptDat
       );
     }
 
-    // Check authorization
-    if (user.role !== "admin" && paymentRequest.artist_id !== user.id) {
+    // Get artist info
+    const { data: artist, error: artistError } = await admin
+      .from("artists")
+      .select("id, name, user_id")
+      .eq("id", paymentRequest.artist_id)
+      .single();
+
+    if (artistError || !artist) {
+      return NextResponse.json(
+        { success: false, error: "Artist not found" },
+        { status: 404 }
+      );
+    }
+
+    // Get user profile for email
+    const { data: userProfile } = await admin
+      .from("user_profiles")
+      .select("email")
+      .eq("id", artist.user_id)
+      .single();
+
+    const artistEmail = userProfile?.email || "";
+
+    // Check authorization - artist can only view their own receipts
+    if (user.role !== "admin" && artist.user_id !== user.id) {
       return NextResponse.json(
         { success: false, error: "You don't have permission to view this receipt" },
         { status: 403 }
       );
     }
 
-    // Fetch associated royalties
+    // Fetch associated royalties (those marked as paid for this artist)
     const { data: royalties, error: royaltiesError } = await admin
       .from("royalties")
       .select("*")
-      .eq("payment_request_id", paymentRequestId)
+      .eq("artist_id", paymentRequest.artist_id)
+      .eq("is_paid", true)
       .order("broadcast_date", { ascending: false });
 
     if (royaltiesError) {
@@ -144,37 +195,57 @@ export async function GET(request: NextRequest): Promise<NextResponse<ReceiptDat
       }
     );
 
-    // Fetch receipt number if exists
-    const { data: receiptData } = await admin
-      .from("payment_receipts")
-      .select("receipt_number")
+    // Get invoice number if exists
+    const { data: invoice } = await admin
+      .from("invoices")
+      .select("invoice_number")
       .eq("payment_request_id", paymentRequestId)
-      .single();
+      .maybeSingle();
+
+    // Get approver email if exists
+    let approvedByEmail = null;
+    if (paymentRequest.approved_by) {
+      const { data: approver } = await admin
+        .from("user_profiles")
+        .select("email")
+        .eq("id", paymentRequest.approved_by)
+        .single();
+      approvedByEmail = approver?.email || null;
+    }
 
     return NextResponse.json(
       {
         success: true,
         receipt: {
-          receipt_number: receiptData?.receipt_number || "PENDING",
+          receipt_number: invoice?.invoice_number || `INV-${paymentRequest.id.substring(0, 8).toUpperCase()}`,
           payment_request_id: paymentRequest.id,
           artist_id: paymentRequest.artist_id,
-          artist_email: paymentRequest.artist_email,
-          total_amount: parseFloat(paymentRequest.total_amount),
+          artist_email: artistEmail,
+          total_amount: Number(paymentRequest.amount || 0),
           status: paymentRequest.status,
           created_at: paymentRequest.created_at,
-          approved_at: paymentRequest.approved_at,
-          approved_by_email: paymentRequest.approved_by_email,
-          royalties: (royalties as Royalty[] || []).map((r: Royalty) => ({
-            id: r.id,
-            track_title: r.track_title || "Unknown",
-            usage_count: r.usage_count || 0,
-            gross_amount: parseFloat(r.gross_amount || "0"),
-            admin_percent: parseFloat(r.admin_percent || "0"),
-            net_amount: parseFloat(r.net_amount || "0"),
-            broadcast_date: r.broadcast_date || "",
-            platform: r.platform || "",
-            territory: r.territory || "",
-          })),
+          approved_at: paymentRequest.approved_at || null,
+          approved_by_email: approvedByEmail,
+          royalties: (royalties as any[] || []).map((r: any) => {
+            // Get track title from track_id if available
+            let trackTitle = "Unknown";
+            if (r.track_id) {
+              // We could fetch track title here, but for now use a placeholder
+              trackTitle = `Track ${r.track_id.substring(0, 8)}`;
+            }
+            
+            return {
+              id: r.id,
+              track_title: trackTitle,
+              usage_count: r.usage_count || 0,
+              gross_amount: parseFloat(r.gross_amount || "0"),
+              admin_percent: parseFloat(r.admin_percent || "0"),
+              net_amount: parseFloat(r.net_amount || "0"),
+              broadcast_date: r.broadcast_date || "",
+              platform: r.exploitation_source_name || r.platform || "",
+              territory: r.territory || "",
+            };
+          }),
           totals,
         },
       },
