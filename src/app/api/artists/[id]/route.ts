@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { getCurrentUser } from "@/lib/authHelpers";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 function createRequestSupabaseClient(request: NextRequest, response: NextResponse) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://nyxedsuflhvxzijjiktj.supabase.co";
@@ -75,9 +76,13 @@ async function getUserFromRequest(request: NextRequest, response: NextResponse) 
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {
+    // Handle both sync and async params (Next.js 15 compatibility)
+    const resolvedParams = await Promise.resolve(params);
+    const artistId = resolvedParams.id;
+
     const response = NextResponse.next();
     const user = await getUserFromRequest(request, response);
     
@@ -94,7 +99,19 @@ export async function GET(
 
     const supabase = createRequestSupabaseClient(request, response);
 
-    const { data: artist, error } = await supabase
+    // Use admin client for admin users to bypass RLS
+    let supabaseClient = supabase;
+    
+    if (user.role === "admin") {
+      try {
+        supabaseClient = getSupabaseAdmin();
+      } catch (adminError: any) {
+        console.warn("Admin client not available, using regular client:", adminError);
+        // Fall back to regular client
+      }
+    }
+
+    const { data: artist, error } = await supabaseClient
       .from("artists")
       .select(`
         id,
@@ -106,7 +123,7 @@ export async function GET(
         created_at,
         user_id
       `)
-      .eq("id", params.id)
+      .eq("id", artistId)
       .single();
 
     if (error) {
@@ -130,13 +147,21 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {
+    // Handle both sync and async params (Next.js 15 compatibility)
+    const resolvedParams = await Promise.resolve(params);
+    const artistId = resolvedParams.id;
+    
+    console.log("PUT /api/artists/[id] - Artist ID:", artistId);
+    console.log("PUT /api/artists/[id] - Request URL:", request.url);
+    
     const response = NextResponse.next();
     const user = await getUserFromRequest(request, response);
     
     if (!user) {
+      console.log("PUT /api/artists/[id] - Unauthorized: No user found");
       return NextResponse.json(
         { 
           error: "Unauthorized",
@@ -147,24 +172,71 @@ export async function PUT(
       );
     }
 
+    console.log("PUT /api/artists/[id] - User:", { id: user.id, role: user.role, email: user.email });
+
     const supabase = createRequestSupabaseClient(request, response);
 
     const body = await request.json();
     const { name, email, phone, address } = body;
 
+    // Use admin client for admin users to bypass RLS
+    let supabaseClient = supabase;
+    let useAdminClient = false;
+    
+    if (user.role === "admin") {
+      try {
+        supabaseClient = getSupabaseAdmin();
+        useAdminClient = true;
+        console.log("PUT /api/artists/[id] - Using admin client to bypass RLS");
+      } catch (adminError: any) {
+        console.warn("PUT /api/artists/[id] - Admin client not available, using regular client:", adminError.message);
+        // Fall back to regular client
+      }
+    }
+
+    console.log("PUT /api/artists/[id] - Fetching artist with ID:", artistId);
     // Get the artist record to check permissions
-    const { data: artist, error: fetchError } = await supabase
+    const { data: artist, error: fetchError } = await supabaseClient
       .from("artists")
       .select("user_id, address_locked")
-      .eq("id", params.id)
+      .eq("id", artistId)
       .single();
 
-    if (fetchError || !artist) {
+    if (fetchError) {
+      console.error("PUT /api/artists/[id] - Error fetching artist:", {
+        error: fetchError.message,
+        code: fetchError.code,
+        details: fetchError.details,
+        hint: fetchError.hint,
+        artistId,
+        useAdminClient
+      });
       return NextResponse.json(
-        { error: "Artist not found" },
+        { 
+          error: "Artist not found",
+          details: fetchError.message || "The artist record could not be found",
+          code: fetchError.code
+        },
         { status: 404 }
       );
     }
+
+    if (!artist) {
+      console.error("PUT /api/artists/[id] - Artist not found (no data returned):", {
+        artistId,
+        useAdminClient
+      });
+      return NextResponse.json(
+        { 
+          error: "Artist not found",
+          details: "The artist record does not exist",
+          artistId
+        },
+        { status: 404 }
+      );
+    }
+
+    console.log("PUT /api/artists/[id] - Artist found:", { id: artist.user_id, address_locked: artist.address_locked });
 
     // If artist is editing their own address and it's locked, reject
     if (
@@ -204,10 +276,11 @@ export async function PUT(
       }
     }
 
-    const { data: updatedArtist, error: updateError } = await supabase
+    console.log("PUT /api/artists/[id] - Updating artist with data:", updateData);
+    const { data: updatedArtist, error: updateError } = await supabaseClient
       .from("artists")
       .update(updateData)
-      .eq("id", params.id)
+      .eq("id", artistId)
       .select()
       .single();
 
@@ -234,9 +307,13 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {
+    // Handle both sync and async params (Next.js 15 compatibility)
+    const resolvedParams = await Promise.resolve(params);
+    const artistId = resolvedParams.id;
+
     const response = NextResponse.next();
     const user = await getUserFromRequest(request, response);
     
@@ -256,12 +333,20 @@ export async function DELETE(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const supabase = createRequestSupabaseClient(request, response);
+    // Use admin client for admin operations to bypass RLS
+    let supabaseClient;
+    try {
+      supabaseClient = getSupabaseAdmin();
+    } catch (adminError: any) {
+      console.warn("Admin client not available, using regular client:", adminError);
+      const response = NextResponse.next();
+      supabaseClient = createRequestSupabaseClient(request, response);
+    }
 
-    const { error } = await supabase
+    const { error } = await supabaseClient
       .from("artists")
       .delete()
-      .eq("id", params.id);
+      .eq("id", artistId);
 
     if (error) {
       console.error("Error deleting artist:", error);

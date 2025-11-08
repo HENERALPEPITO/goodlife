@@ -33,3 +33,5 @@ CREATE INDEX IF NOT EXISTS idx_artists_email ON artists(email);
 
 
 
+
+
