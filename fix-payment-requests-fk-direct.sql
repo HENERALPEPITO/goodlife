@@ -65,3 +65,4 @@ AND conname = 'payment_requests_artist_id_fkey';
 
 -- The foreign_table_name should be 'artists', not 'users'
 
+

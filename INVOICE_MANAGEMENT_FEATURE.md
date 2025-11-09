@@ -197,3 +197,4 @@ The system uses direct Supabase client calls. All operations are handled through
 - Payment tracking integration
 - Export to CSV/Excel
 
+

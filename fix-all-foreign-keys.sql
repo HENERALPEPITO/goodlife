@@ -56,3 +56,4 @@ WHERE tc.constraint_type = 'FOREIGN KEY'
   AND ccu.table_name = 'artists'
 ORDER BY tc.table_name;
 
+

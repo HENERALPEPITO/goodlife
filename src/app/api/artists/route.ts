@@ -389,12 +389,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { name, email, phone, address } = body;
+    const { name, email, phone, address, password } = body;
 
     // Validate required fields
     if (!name || !email) {
       return NextResponse.json(
         { error: "Name and email are required" },
+        { status: 400 }
+      );
+    }
+
+    // Validate password if provided
+    if (password && password.length < 6) {
+      return NextResponse.json(
+        { error: "Password must be at least 6 characters long" },
+        { status: 400 }
+      );
+    }
+
+    // Password is required for new users
+    if (!password) {
+      return NextResponse.json(
+        { error: "Password is required for new artists" },
         { status: 400 }
       );
     }
@@ -462,10 +478,10 @@ export async function POST(request: NextRequest) {
         }
       }
     } else {
-      // Create new auth user using admin client
+      // Create new auth user using admin client with provided password
       const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
         email,
-        password: "temp_password_123!@#", // Temporary password, should be changed
+        password: password, // Use provided password
         email_confirm: true,
       });
 

@@ -177,7 +177,18 @@ export async function PUT(
     const supabase = createRequestSupabaseClient(request, response);
 
     const body = await request.json();
-    const { name, email, phone, address } = body;
+    const { name, email, phone, address, password } = body;
+
+    // Validate password if provided (for updates)
+    if (password && password.length < 6) {
+      return NextResponse.json(
+        { 
+          error: "Invalid password",
+          details: "Password must be at least 6 characters long"
+        },
+        { status: 400 }
+      );
+    }
 
     // Use admin client for admin users to bypass RLS
     let supabaseClient = supabase;
@@ -276,6 +287,39 @@ export async function PUT(
       }
     }
 
+    // Update password if provided (only admins can update passwords)
+    if (password && user.role === "admin" && artist.user_id) {
+      try {
+        // Use admin client for password updates
+        const adminClient = getSupabaseAdmin();
+        const { error: passwordError } = await adminClient.auth.admin.updateUserById(
+          artist.user_id,
+          { password: password }
+        );
+
+        if (passwordError) {
+          console.error("PUT /api/artists/[id] - Error updating password:", passwordError);
+          return NextResponse.json(
+            { 
+              error: "Failed to update password",
+              details: passwordError.message
+            },
+            { status: 500 }
+          );
+        }
+        console.log("PUT /api/artists/[id] - Password updated successfully");
+      } catch (passwordUpdateError: any) {
+        console.error("PUT /api/artists/[id] - Error updating password:", passwordUpdateError);
+        return NextResponse.json(
+          { 
+            error: "Failed to update password",
+            details: passwordUpdateError?.message || "An error occurred while updating the password"
+          },
+          { status: 500 }
+        );
+      }
+    }
+
     console.log("PUT /api/artists/[id] - Updating artist with data:", updateData);
     const { data: updatedArtist, error: updateError } = await supabaseClient
       .from("artists")
@@ -294,7 +338,7 @@ export async function PUT(
 
     return NextResponse.json({
       artist: updatedArtist,
-      message: "Artist successfully updated",
+      message: "Artist successfully updated" + (password ? " (password updated)" : ""),
     });
   } catch (error: any) {
     console.error("Error in PUT /api/artists/[id]:", error);

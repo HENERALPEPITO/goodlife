@@ -40,6 +40,7 @@ export default function AdminArtistsPage() {
     email: "",
     phone: "",
     address: "Profesor Hermida 6, 3-3C, 36960 Sanxenxo, Spain",
+    password: "",
   });
 
   useEffect(() => {
@@ -136,6 +137,26 @@ export default function AdminArtistsPage() {
         toast({
           title: "Validation Error",
           description: "Name and email are required",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Validate password for new artists (only when adding, not editing)
+      if (!selectedArtist && !formData.password) {
+        toast({
+          title: "Validation Error",
+          description: "Password is required for new artists",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Validate password strength (minimum 6 characters)
+      if (formData.password && formData.password.length < 6) {
+        toast({
+          title: "Validation Error",
+          description: "Password must be at least 6 characters long",
           variant: "destructive",
         });
         return;
@@ -266,6 +287,7 @@ export default function AdminArtistsPage() {
         email: "",
         phone: "",
         address: "Profesor Hermida 6, 3-3C, 36960 Sanxenxo, Spain",
+        password: "",
       });
       await fetchArtists();
     } catch (error: any) {
@@ -294,6 +316,16 @@ export default function AdminArtistsPage() {
     try {
       console.log("handleEditArtist - Selected artist:", selectedArtist);
       console.log("handleEditArtist - Form data:", formData);
+      
+      // Validate password if provided (must be at least 6 characters)
+      if (formData.password && formData.password.length < 6) {
+        toast({
+          title: "Validation Error",
+          description: "Password must be at least 6 characters long",
+          variant: "destructive",
+        });
+        return;
+      }
       
       // Get access token from Supabase session
       const { data: { session } } = await supabase.auth.getSession();
@@ -408,6 +440,7 @@ export default function AdminArtistsPage() {
       email: artist.email || "",
       phone: artist.phone || "",
       address: artist.address || "Profesor Hermida 6, 3-3C, 36960 Sanxenxo, Spain",
+      password: "", // Don't pre-fill password for security
     });
     setEditOpen(true);
   };
@@ -643,7 +676,7 @@ export default function AdminArtistsPage() {
               Add New Artist
             </DialogTitle>
             <DialogDescription style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}>
-              Enter the artist's information below. Name and email are required.
+              Enter the artist's information below. Name, email, and password are required.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -689,6 +722,28 @@ export default function AdminArtistsPage() {
                 className="block text-sm font-medium mb-2" 
                 style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}
               >
+                Password <span style={{ color: "#DC2626" }}>*</span>
+              </label>
+              <Input
+                type="password"
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                placeholder="Enter password (min. 6 characters)"
+                style={{
+                  backgroundColor: isDark ? "#374151" : "#F9FAFB",
+                  borderColor: isDark ? "rgba(255, 255, 255, 0.1)" : "#D1D5DB",
+                  color: isDark ? "#FFFFFF" : "#1F2937",
+                }}
+              />
+              <p className="text-xs mt-1" style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}>
+                The artist will use this password to log in to their account.
+              </p>
+            </div>
+            <div>
+              <label 
+                className="block text-sm font-medium mb-2" 
+                style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}
+              >
                 Phone Number
               </label>
               <Input
@@ -725,7 +780,16 @@ export default function AdminArtistsPage() {
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setAddOpen(false)}
+              onClick={() => {
+                setAddOpen(false);
+                setFormData({
+                  name: "",
+                  email: "",
+                  phone: "",
+                  address: "Profesor Hermida 6, 3-3C, 36960 Sanxenxo, Spain",
+                  password: "",
+                });
+              }}
               style={{
                 borderColor: isDark ? "rgba(255, 255, 255, 0.1)" : "#D1D5DB",
                 color: isDark ? "#FFFFFF" : "#1F2937",
@@ -802,6 +866,28 @@ export default function AdminArtistsPage() {
                   color: isDark ? "#FFFFFF" : "#1F2937",
                 }}
               />
+            </div>
+            <div>
+              <label 
+                className="block text-sm font-medium mb-2" 
+                style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}
+              >
+                New Password (optional)
+              </label>
+              <Input
+                type="password"
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                placeholder="Leave empty to keep current password"
+                style={{
+                  backgroundColor: isDark ? "#374151" : "#F9FAFB",
+                  borderColor: isDark ? "rgba(255, 255, 255, 0.1)" : "#D1D5DB",
+                  color: isDark ? "#FFFFFF" : "#1F2937",
+                }}
+              />
+              <p className="text-xs mt-1" style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}>
+                Only fill this if you want to change the artist's password.
+              </p>
             </div>
             <div>
               <label 
@@ -950,6 +1036,9 @@ export default function AdminArtistsPage() {
             </p>
             <p style={{ color: isDark ? "#FFFFFF" : "#1F2937" }}>
               <strong>Email:</strong> {formData.email || "—"}
+            </p>
+            <p style={{ color: isDark ? "#FFFFFF" : "#1F2937" }}>
+              <strong>Password:</strong> {formData.password ? "••••••••" : "—"}
             </p>
             {formData.phone && (
               <p style={{ color: isDark ? "#FFFFFF" : "#1F2937" }}>

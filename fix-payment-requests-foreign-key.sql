@@ -23,3 +23,4 @@ WHERE tc.table_name = 'payment_requests'
     AND tc.constraint_type = 'FOREIGN KEY'
     AND tc.constraint_name = 'payment_requests_artist_id_fkey';
 
+

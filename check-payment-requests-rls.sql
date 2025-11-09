@@ -26,3 +26,4 @@ WHERE tablename = 'payment_requests';
 -- Or update the policies to allow inserts with artist_id from artists table:
 -- (This is more complex and might require a function to check if user owns the artist record)
 
+

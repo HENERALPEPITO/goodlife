@@ -242,3 +242,4 @@ src/
 - Payment request invoices use the minimalist design with admin-editable business info
 - Regular invoices (created manually) use the original InvoicePDF format
 
+

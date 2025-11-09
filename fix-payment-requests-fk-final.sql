@@ -71,3 +71,4 @@ WHERE tc.constraint_type = 'FOREIGN KEY'
 
 -- The result should show: foreign_table = 'public.artists', foreign_column_name = 'id'
 
+

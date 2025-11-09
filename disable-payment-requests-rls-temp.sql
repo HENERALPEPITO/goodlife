@@ -10,3 +10,4 @@ FROM pg_tables
 WHERE schemaname = 'public' 
   AND tablename = 'payment_requests';
 
+
