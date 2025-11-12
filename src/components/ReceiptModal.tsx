@@ -24,7 +24,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/components/ui/use-toast";
-import { Download, Eye, Loader2 } from "lucide-react";
+import { Download, Eye, Loader2, ChevronRight, ChevronLeft } from "lucide-react";
 import { PDFGenerator } from "./PDFGenerator";
 
 interface RoyaltyItem {
@@ -69,10 +69,13 @@ export function ReceiptModal({
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   useEffect(() => {
     if (open && paymentRequestId) {
       fetchReceiptData();
+      setCurrentPage(1); // Reset to first page when opening modal
     }
   }, [open, paymentRequestId]);
 
@@ -150,6 +153,28 @@ export function ReceiptModal({
     }
   };
 
+  // Pagination calculations
+  const totalPages = receiptData
+    ? Math.ceil(receiptData.royalties.length / itemsPerPage)
+    : 1;
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedRoyalties = receiptData
+    ? receiptData.royalties.slice(startIndex, endIndex)
+    : [];
+
+  const handleNextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
+
+  const handlePreviousPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -218,7 +243,15 @@ export function ReceiptModal({
 
             {/* Royalty Details Table */}
             <div>
-              <h3 className="text-lg font-semibold mb-3">Royalty Details</h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-semibold">Royalty Details</h3>
+                {receiptData.royalties.length > itemsPerPage && (
+                  <span className="text-sm text-slate-600">
+                    Showing {startIndex + 1}-{Math.min(endIndex, receiptData.royalties.length)} of{" "}
+                    {receiptData.royalties.length} items
+                  </span>
+                )}
+              </div>
               <div className="border rounded-lg overflow-hidden">
                 <Table>
                   <TableHeader>
@@ -233,30 +266,73 @@ export function ReceiptModal({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {receiptData.royalties.map((royalty, index) => (
-                      <TableRow key={index}>
-                        <TableCell className="font-medium">
-                          {royalty.track_title}
-                        </TableCell>
-                        <TableCell>{royalty.platform || "—"}</TableCell>
-                        <TableCell>{royalty.territory || "—"}</TableCell>
-                        <TableCell className="text-right">
-                          {royalty.usage_count}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          ${royalty.gross_amount.toFixed(2)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {royalty.admin_percent.toFixed(1)}%
-                        </TableCell>
-                        <TableCell className="text-right font-semibold">
-                          ${royalty.net_amount.toFixed(2)}
+                    {paginatedRoyalties.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center text-slate-500 py-8">
+                          No royalty items to display
                         </TableCell>
                       </TableRow>
-                    ))}
+                    ) : (
+                      paginatedRoyalties.map((royalty, index) => (
+                        <TableRow key={startIndex + index}>
+                          <TableCell className="font-medium">
+                            {royalty.track_title}
+                          </TableCell>
+                          <TableCell>{royalty.platform || "—"}</TableCell>
+                          <TableCell>{royalty.territory || "—"}</TableCell>
+                          <TableCell className="text-right">
+                            {royalty.usage_count}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            ${royalty.gross_amount.toFixed(2)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {royalty.admin_percent.toFixed(1)}%
+                          </TableCell>
+                          <TableCell className="text-right font-semibold">
+                            ${royalty.net_amount.toFixed(2)}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
                   </TableBody>
                 </Table>
               </div>
+              
+              {/* Pagination Controls */}
+              {receiptData.royalties.length > itemsPerPage && (
+                <div className="flex items-center justify-between mt-4">
+                  {currentPage > 1 ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handlePreviousPage}
+                      className="gap-2"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                      Previous
+                    </Button>
+                  ) : (
+                    <div></div>
+                  )}
+                  <span className="text-sm text-slate-600">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  {currentPage < totalPages ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleNextPage}
+                      className="gap-2"
+                    >
+                      Next
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  ) : (
+                    <div></div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Totals */}
