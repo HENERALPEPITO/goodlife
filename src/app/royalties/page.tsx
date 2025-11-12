@@ -1,8 +1,22 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabaseClient";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Download } from "lucide-react";
+import {
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  LineChart,
+  Line,
+} from "recharts";
 
 interface RoyaltyRecord {
   id: string;
@@ -28,6 +42,13 @@ interface Quarter {
 }
 
 type ViewMode = "quarters" | "detail";
+
+interface AnalyticsData {
+  topTracks: { title: string; revenue: number }[];
+  revenueBySource: { source: string; revenue: number; percentage: number }[];
+  revenueByTerritory: { territory: string; revenue: number }[];
+  monthlyRevenue: { month: string; revenue: number }[];
+}
 
 // Utility function to get quarter from a date
 function getQuarterFromDate(date: Date): { year: number; quarter: number } {
@@ -104,6 +125,119 @@ function getSortedQuarters(quarterMap: Map<string, RoyaltyRecord[]>): Quarter[] 
     return b.quarter - a.quarter;
   });
 }
+
+// Format date range for display
+function formatDateRange(startDate: Date, endDate: Date): string {
+  const startMonth = startDate.toLocaleDateString("en-US", { month: "short" });
+  const startDay = startDate.getDate();
+  const endMonth = endDate.toLocaleDateString("en-US", { month: "short" });
+  const endDay = endDate.getDate();
+  const year = startDate.getFullYear();
+  
+  return `${startMonth} ${startDay} - ${endMonth} ${endDay}, ${year}`;
+}
+
+// Calculate analytics for a quarter
+function calculateAnalytics(records: RoyaltyRecord[], selectedQuarter?: Quarter | null): AnalyticsData {
+  // Top Performing Tracks (top 5 by revenue)
+  const trackRevenue = new Map<string, number>();
+  records.forEach((r) => {
+    const existing = trackRevenue.get(r.songTitle) || 0;
+    trackRevenue.set(r.songTitle, existing + r.net);
+  });
+  
+  const topTracks = Array.from(trackRevenue.entries())
+    .map(([title, revenue]) => ({ title, revenue }))
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 5);
+
+  // Revenue by Source
+  const sourceRevenue = new Map<string, number>();
+  records.forEach((r) => {
+    const existing = sourceRevenue.get(r.source) || 0;
+    sourceRevenue.set(r.source, existing + r.net);
+  });
+  
+  const totalRevenue = records.reduce((sum, r) => sum + r.net, 0);
+  const revenueBySource = Array.from(sourceRevenue.entries())
+    .map(([source, revenue]) => ({
+      source,
+      revenue,
+      percentage: totalRevenue > 0 ? (revenue / totalRevenue) * 100 : 0,
+    }))
+    .sort((a, b) => b.revenue - a.revenue);
+
+  // Revenue by Territory
+  const territoryRevenue = new Map<string, number>();
+  records.forEach((r) => {
+    const existing = territoryRevenue.get(r.territory) || 0;
+    territoryRevenue.set(r.territory, existing + r.net);
+  });
+  
+  const revenueByTerritory = Array.from(territoryRevenue.entries())
+    .map(([territory, revenue]) => ({ territory, revenue }))
+    .sort((a, b) => b.revenue - a.revenue);
+
+  // Monthly Revenue Trend
+  const monthRevenue = new Map<string, number>();
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  
+  records.forEach((r) => {
+    if (r.broadcastDate) {
+      const date = new Date(r.broadcastDate);
+      const monthKey = `${monthNames[date.getMonth()]}`;
+      const existing = monthRevenue.get(monthKey) || 0;
+      monthRevenue.set(monthKey, existing + r.net);
+    }
+  });
+  
+  // Get months for the quarter (Q1: Jan-Mar, Q2: Apr-Jun, Q3: Jul-Sep, Q4: Oct-Dec)
+  let quarterMonths: string[] = [];
+  if (selectedQuarter) {
+    // Use the selected quarter to determine months
+    const quarter = selectedQuarter.quarter - 1; // Convert to 0-based (0-3)
+    const startMonth = quarter * 3;
+    for (let i = 0; i < 3; i++) {
+      quarterMonths.push(monthNames[startMonth + i]);
+    }
+  } else if (records.length > 0) {
+    // Fallback: determine quarter from first record
+    const firstRecord = records.find(r => r.broadcastDate);
+    if (firstRecord) {
+      const firstDate = new Date(firstRecord.broadcastDate);
+      const month = firstDate.getMonth(); // 0-11
+      const quarter = Math.floor(month / 3); // 0-3
+      const startMonth = quarter * 3;
+      for (let i = 0; i < 3; i++) {
+        quarterMonths.push(monthNames[startMonth + i]);
+      }
+    }
+  }
+  
+  const monthlyRevenue = quarterMonths.map((month) => ({
+    month,
+    revenue: monthRevenue.get(month) || 0,
+  }));
+
+  return {
+    topTracks,
+    revenueBySource,
+    revenueByTerritory,
+    monthlyRevenue,
+  };
+}
+
+// Chart colors for pie/donut chart
+const PIE_COLORS = [
+  "#3B82F6", // Blue
+  "#10B981", // Green
+  "#F59E0B", // Amber
+  "#EF4444", // Red
+  "#8B5CF6", // Purple
+  "#EC4899", // Pink
+  "#06B6D4", // Cyan
+  "#F97316", // Orange
+];
 
 export default function RoyaltiesPage() {
   const { user } = useAuth();
@@ -204,6 +338,29 @@ export default function RoyaltiesPage() {
     }
   }, [user]);
 
+  // Get quarter records (always call hooks before conditional returns)
+  const getQuarterRecords = (): RoyaltyRecord[] => {
+    if (!selectedQuarter) return [];
+    const quarterKey = `${selectedQuarter.year}-Q${selectedQuarter.quarter}`;
+    return quarterData.get(quarterKey) || [];
+  };
+
+  const quarterRecords = getQuarterRecords();
+  
+  // Calculate analytics (must be called unconditionally before any early returns)
+  const analytics = useMemo(() => {
+    if (viewMode === "detail" && quarterRecords.length > 0) {
+      return calculateAnalytics(quarterRecords, selectedQuarter);
+    }
+    // Return empty analytics when not in detail view
+    return {
+      topTracks: [],
+      revenueBySource: [],
+      revenueByTerritory: [],
+      monthlyRevenue: [],
+    };
+  }, [quarterRecords, selectedQuarter, viewMode]);
+
   const handleQuarterClick = (quarter: Quarter) => {
     setSelectedQuarter(quarter);
     setViewMode("detail");
@@ -214,10 +371,67 @@ export default function RoyaltiesPage() {
     setSelectedQuarter(null);
   };
 
-  const getQuarterRecords = (): RoyaltyRecord[] => {
-    if (!selectedQuarter) return [];
+  const handleExportCSV = () => {
+    if (!selectedQuarter) {
+      return;
+    }
+
+    // Get records for the selected quarter
     const quarterKey = `${selectedQuarter.year}-Q${selectedQuarter.quarter}`;
-    return quarterData.get(quarterKey) || [];
+    const records = quarterData.get(quarterKey) || [];
+
+    if (records.length === 0) {
+      return;
+    }
+
+    // Define CSV headers
+    const headers = [
+      "Song Title",
+      "Source",
+      "Territory",
+      "Usage Count",
+      "Gross",
+      "Admin %",
+      "Net",
+      "Date",
+      "ISWC",
+      "Composer",
+    ];
+
+    // Convert records to CSV rows
+    const rows = records.map((r) => [
+      r.songTitle,
+      r.source,
+      r.territory,
+      r.usageCount.toString(),
+      r.gross.toFixed(2),
+      r.adminPercent.toFixed(1),
+      r.net.toFixed(2),
+      r.date,
+      r.iswc,
+      r.composer,
+    ]);
+
+    // Create CSV content
+    const csvContent = [headers, ...rows]
+      .map((row) =>
+        row
+          .map((cell) => `"${String(cell).replace(/"/g, '""')}"`)
+          .join(",")
+      )
+      .join("\n");
+
+    // Create blob and download
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const quarterLabel = selectedQuarter.label.replace(/\s+/g, "-");
+    a.download = `royalties-${quarterLabel}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   // Quarter List View
@@ -253,22 +467,20 @@ export default function RoyaltiesPage() {
                 const records = quarterData.get(quarterKey) || [];
                 const totalRecords = records.length;
                 const totalNet = records.reduce((sum, r) => sum + r.net, 0);
+                const dateRange = formatDateRange(quarter.startDate, quarter.endDate);
 
                 return (
                   <button
                     key={quarterKey}
                     onClick={() => handleQuarterClick(quarter)}
-                    className="bg-[#F9FAFB] hover:bg-[#F3F4F6] rounded-xl p-6 text-left transition-all duration-200 ease-in-out shadow-sm hover:shadow-md transform hover:-translate-y-1 cursor-pointer"
+                    className="bg-[#F9FAFB] hover:bg-[#F3F4F6] rounded-2xl p-6 text-left transition-all duration-200 ease-in-out shadow-sm hover:shadow-md transform hover:-translate-y-1 cursor-pointer"
                   >
-                    <div className="font-bold text-lg text-gray-800 mb-1">{quarter.label}</div>
+                    <div className="font-semibold text-lg text-gray-900 mb-2">{quarter.label}</div>
+                    <div className="text-xl font-bold text-blue-600 mb-2">€{totalNet.toFixed(2)}</div>
+                    <div className="text-sm text-gray-500 mb-2">{dateRange}</div>
                     <div className="text-sm text-gray-600 mt-2">
                       {totalRecords} {totalRecords === 1 ? "record" : "records"}
                     </div>
-                    {totalNet > 0 && (
-                      <div className="text-sm font-medium text-gray-700 mt-1">
-                        Total Net: €{totalNet.toFixed(2)}
-                      </div>
-                    )}
                     <div className="text-xs text-gray-500 mt-3">Click to view details</div>
                   </button>
                 );
@@ -281,7 +493,7 @@ export default function RoyaltiesPage() {
   }
 
   // Quarter Detail View
-  const quarterRecords = getQuarterRecords();
+
 
   return (
     <div 
@@ -291,16 +503,28 @@ export default function RoyaltiesPage() {
       <div className="max-w-7xl mx-auto p-4 md:p-6">
         {/* Header with Back Button */}
         <div className="mb-6">
-          <button
-            onClick={handleBackToQuarters}
-            className="flex items-center gap-2 text-blue-600 hover:text-blue-700 mb-4 transition-colors duration-200 font-medium"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Back to Quarters</span>
-          </button>
-          <h1 className="text-2xl font-bold text-gray-800">
+          <div className="flex items-center justify-between mb-4">
+            <button
+              onClick={handleBackToQuarters}
+              className="flex items-center gap-2 text-blue-600 hover:text-blue-700 transition-colors duration-200 font-medium"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back to Quarters</span>
+            </button>
+            {selectedQuarter && quarterRecords.length > 0 && (
+              <button
+                onClick={handleExportCSV}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 transition-all duration-200 ease-in-out"
+              >
+                <Download className="w-4 h-4" />
+                <span>Export CSV</span>
+              </button>
+            )}
+          </div>
+          <h1 className="text-2xl font-semibold text-gray-800 mb-2">
             Royalties — {selectedQuarter?.label || ""}
           </h1>
+          <p className="text-sm text-gray-600">Detailed breakdown and analytics for this quarter.</p>
         </div>
 
         {/* Table */}
@@ -378,9 +602,185 @@ export default function RoyaltiesPage() {
           </div>
         </div>
 
+        {/* Analytics Dashboard */}
+        <div className="mt-8">
+          <div className="border-t border-[#E5E7EB] pt-6">
+            <h2 className="text-xl font-semibold text-gray-800 mb-6">Analytics Dashboard</h2>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Top Performing Tracks */}
+              <div className="bg-white rounded-xl shadow-sm p-5 border border-[#E5E7EB]">
+                <h3 className="text-gray-800 font-semibold mb-3">Top Performing Tracks</h3>
+                {analytics.topTracks.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart
+                      data={analytics.topTracks}
+                      layout="vertical"
+                      margin={{ top: 5, right: 30, left: 150, bottom: 5 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" opacity={0.3} />
+                      <XAxis type="number" tick={{ fill: "#6B7280", fontSize: 12 }} />
+                      <YAxis
+                        type="category"
+                        dataKey="title"
+                        width={140}
+                        tick={{ fill: "#6B7280", fontSize: 11 }}
+                        interval={0}
+                      />
+                      <Tooltip 
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                            const data = payload[0].payload;
+                            return (
+                              <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3">
+                                <p className="font-semibold text-gray-800 mb-1">{data.title}</p>
+                                <p className="text-sm text-gray-600">Revenue: €{data.revenue.toFixed(2)}</p>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <Bar dataKey="revenue" fill="#3B82F6" radius={[0, 8, 8, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-[300px] flex items-center justify-center text-gray-500">
+                    No data available
+                  </div>
+                )}
+              </div>
+
+              {/* Revenue by Source */}
+              <div className="bg-white rounded-xl shadow-sm p-5 border border-[#E5E7EB]">
+                <h3 className="text-gray-800 font-semibold mb-3">Revenue by Source</h3>
+                {analytics.revenueBySource.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <PieChart>
+                      <Pie
+                        data={analytics.revenueBySource}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ percentage }) => percentage > 5 ? `${percentage.toFixed(1)}%` : ''}
+                        outerRadius={80}
+                        innerRadius={40}
+                        fill="#8884d8"
+                        dataKey="revenue"
+                      >
+                        {analytics.revenueBySource.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                            const data = payload[0].payload;
+                            return (
+                              <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3">
+                                <p className="font-semibold text-gray-800">{data.source}</p>
+                                <p className="text-sm text-gray-600">Revenue: €{data.revenue.toFixed(2)}</p>
+                                <p className="text-sm text-gray-600">Share: {data.percentage.toFixed(1)}%</p>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-[300px] flex items-center justify-center text-gray-500">
+                    No data available
+                  </div>
+                )}
+              </div>
+
+              {/* Revenue by Territory */}
+              <div className="bg-white rounded-xl shadow-sm p-5 border border-[#E5E7EB]">
+                <h3 className="text-gray-800 font-semibold mb-3">Revenue by Territory</h3>
+                {analytics.revenueByTerritory.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={analytics.revenueByTerritory} margin={{ top: 5, right: 30, left: 20, bottom: 60 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" opacity={0.3} />
+                      <XAxis 
+                        dataKey="territory" 
+                        tick={{ fill: "#6B7280", fontSize: 11 }}
+                        angle={-45}
+                        textAnchor="end"
+                        height={80}
+                      />
+                      <YAxis tick={{ fill: "#6B7280", fontSize: 12 }} />
+                      <Tooltip 
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                            const data = payload[0].payload;
+                            return (
+                              <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3">
+                                <p className="font-semibold text-gray-800 mb-1">{data.territory}</p>
+                                <p className="text-sm text-gray-600">Revenue: €{data.revenue.toFixed(2)}</p>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <Bar dataKey="revenue" fill="#10B981" radius={[8, 8, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-[300px] flex items-center justify-center text-gray-500">
+                    No data available
+                  </div>
+                )}
+              </div>
+
+              {/* Monthly Revenue Trend */}
+              <div className="bg-white rounded-xl shadow-sm p-5 border border-[#E5E7EB]">
+                <h3 className="text-gray-800 font-semibold mb-3">Monthly Revenue Trend</h3>
+                {analytics.monthlyRevenue.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart data={analytics.monthlyRevenue} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" opacity={0.3} />
+                      <XAxis dataKey="month" tick={{ fill: "#6B7280", fontSize: 12 }} />
+                      <YAxis tick={{ fill: "#6B7280", fontSize: 12 }} />
+                      <Tooltip 
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                            const data = payload[0].payload;
+                            return (
+                              <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3">
+                                <p className="font-semibold text-gray-800 mb-1">{data.month}</p>
+                                <p className="text-sm text-gray-600">Revenue: €{data.revenue.toFixed(2)}</p>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="revenue"
+                        stroke="#F59E0B"
+                        strokeWidth={2}
+                        dot={{ fill: "#F59E0B", r: 4 }}
+                        activeDot={{ r: 6 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-[300px] flex items-center justify-center text-gray-500">
+                    No data available
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Footer */}
-        <div className="mt-6 text-center text-sm text-gray-500">
-          <p>Royalties data are automatically generated by Good Life Music Portal.</p>
+        <div className="mt-8 text-center text-sm text-gray-500">
+          <p>Royalties and analytics are automatically generated by Good Life Music Portal.</p>
         </div>
       </div>
     </div>
