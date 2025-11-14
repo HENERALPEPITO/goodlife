@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { requireAdmin } from "@/lib/authHelpers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import {
+  sendPaymentApprovedEmailToArtist,
+  sendPaymentRejectedEmailToArtist,
+} from "@/lib/emailService";
 
 interface PaymentRequestDetailed {
   id: string;
@@ -421,6 +425,64 @@ export async function POST(request: NextRequest): Promise<NextResponse<UpdatePay
         .eq("id", artist.user_id)
         .single();
       artistEmail = profile?.email || artist.email || "Unknown";
+    }
+
+    // Send email notification for approval or rejection
+    if ((status === "approved" || status === "rejected") && artistEmail !== "Unknown") {
+      try {
+        // Get invoice details for the email
+        const { data: invoice } = await adminClient
+          .from("invoices")
+          .select("invoice_number")
+          .eq("payment_request_id", id)
+          .maybeSingle();
+
+        const invoiceNumber = invoice?.invoice_number || `INV-${new Date().getFullYear()}-${paymentRequest.id.substring(0, 8).toUpperCase()}`;
+
+        // Try to fetch PDF from storage for attachment
+        let pdfBuffer: Buffer | undefined;
+        try {
+          const fileName = `invoices/${paymentRequest.artist_id}/${invoiceNumber}.pdf`;
+          const { data: pdfData, error: downloadError } = await adminClient.storage
+            .from("invoices")
+            .download(fileName);
+
+          if (!downloadError && pdfData) {
+            pdfBuffer = Buffer.from(await pdfData.arrayBuffer());
+          }
+        } catch (error) {
+          console.error("Error fetching PDF for email:", error);
+          // Continue without PDF attachment
+        }
+
+        if (status === "approved") {
+          const approvalDate = new Date().toLocaleDateString("en-US", {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+          });
+
+          await sendPaymentApprovedEmailToArtist({
+            artistName: artist?.name || "Artist",
+            artistEmail: artistEmail,
+            amount: paymentRequest.amount,
+            invoiceNumber: invoiceNumber,
+            approvalDate: approvalDate,
+            pdfBuffer: pdfBuffer,
+          });
+        } else if (status === "rejected") {
+          await sendPaymentRejectedEmailToArtist({
+            artistName: artist?.name || "Artist",
+            artistEmail: artistEmail,
+            amount: paymentRequest.amount,
+            invoiceNumber: invoiceNumber,
+            pdfBuffer: pdfBuffer,
+          });
+        }
+      } catch (emailError) {
+        console.error("Error sending payment status email:", emailError);
+        // Don't fail the request if email fails
+      }
     }
 
     // Count royalties
