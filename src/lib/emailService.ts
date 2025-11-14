@@ -3,8 +3,7 @@ import { Resend } from "resend";
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 const ADMIN_EMAIL = "carlitoelipan@gmail.com";
-const SENDER_EMAIL = "Good Life Music Portal <onboarding@resend.dev>";
-// TODO: Update to "Good Life Music Portal <no-reply@goodlife-publishing.com>" once domain is verified
+const EMAIL_FROM = process.env.EMAIL_FROM || "Good Life Music Portal <noreply@goodlife-publishing.com>";
 
 /**
  * Email templates
@@ -142,7 +141,7 @@ export async function sendNewPaymentRequestEmailToAdmin(data: {
     const html = getNewRequestEmailForAdmin(data);
 
     const response = await resend.emails.send({
-      from: SENDER_EMAIL,
+      from: EMAIL_FROM,
       to: ADMIN_EMAIL,
       subject: `🎵 New Payment Request Received — ${data.artistName}`,
       html,
@@ -184,7 +183,7 @@ export async function sendPaymentApprovedEmailToArtist(data: {
     const html = getApprovedEmailForArtist(data);
 
     const response = await resend.emails.send({
-      from: SENDER_EMAIL,
+      from: EMAIL_FROM,
       to: data.artistEmail,
       subject: `✅ Payment Request Approved — ${data.artistName}`,
       html,
@@ -225,7 +224,7 @@ export async function sendPaymentRejectedEmailToArtist(data: {
     const html = getRejectedEmailForArtist(data);
 
     const response = await resend.emails.send({
-      from: SENDER_EMAIL,
+      from: EMAIL_FROM,
       to: data.artistEmail,
       subject: `❌ Payment Request Rejected — ${data.artistName}`,
       html,
@@ -248,6 +247,46 @@ export async function sendPaymentRejectedEmailToArtist(data: {
     return { success: true, messageId: response.data?.id };
   } catch (error) {
     console.error("Error in sendPaymentRejectedEmailToArtist:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+/**
+ * Send test email
+ */
+export async function sendTestEmail(to: string, message: string): Promise<{ success: boolean; error?: string; messageId?: string }> {
+  try {
+    const html = `
+      <div style="font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width:600px; margin:auto; padding:20px;">
+        <div style="background-color: #2563EB; padding: 30px; border-radius: 8px 8px 0 0; color: white;">
+          <h2 style="margin: 0; font-size: 24px;">🧪 Test Email</h2>
+        </div>
+        <div style="background-color: white; border: 1px solid #e5e7eb; border-top: none; padding: 30px; border-radius: 0 0 8px 8px;">
+          <p style="color: #374151; margin-top: 0;">Test Message:</p>
+          <p style="color: #374151; font-size: 16px; font-weight: 500;">${message}</p>
+          <p style="color: #6b7280; font-size: 12px; margin-top: 20px;">Sent at: ${new Date().toISOString()}</p>
+        </div>
+      </div>
+    `;
+
+    const response = await resend.emails.send({
+      from: EMAIL_FROM,
+      to: to,
+      subject: "🧪 Test Email",
+      html,
+    });
+
+    if (response.error) {
+      console.error("Error sending test email:", response.error);
+      return { success: false, error: response.error.message };
+    }
+
+    return { success: true, messageId: response.data?.id };
+  } catch (error) {
+    console.error("Error in sendTestEmail:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",

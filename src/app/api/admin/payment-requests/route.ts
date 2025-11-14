@@ -462,7 +462,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<UpdatePay
             day: "numeric",
           });
 
-          await sendPaymentApprovedEmailToArtist({
+          const emailResult = await sendPaymentApprovedEmailToArtist({
             artistName: artist?.name || "Artist",
             artistEmail: artistEmail,
             amount: paymentRequest.amount,
@@ -470,14 +470,26 @@ export async function POST(request: NextRequest): Promise<NextResponse<UpdatePay
             approvalDate: approvalDate,
             pdfBuffer: pdfBuffer,
           });
+
+          if (emailResult?.success) {
+            console.log(`Payment approved email sent for request ${id}: messageId=${emailResult.messageId}`);
+          } else {
+            console.error(`Failed to send payment approved email for request ${id}:`, emailResult?.error || "Unknown error");
+          }
         } else if (status === "rejected") {
-          await sendPaymentRejectedEmailToArtist({
+          const emailResult = await sendPaymentRejectedEmailToArtist({
             artistName: artist?.name || "Artist",
             artistEmail: artistEmail,
             amount: paymentRequest.amount,
             invoiceNumber: invoiceNumber,
             pdfBuffer: pdfBuffer,
           });
+
+          if (emailResult?.success) {
+            console.log(`Payment rejected email sent for request ${id}: messageId=${emailResult.messageId}`);
+          } else {
+            console.error(`Failed to send payment rejected email for request ${id}:`, emailResult?.error || "Unknown error");
+          }
         }
       } catch (emailError) {
         console.error("Error sending payment status email:", emailError);
