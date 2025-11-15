@@ -36,6 +36,7 @@ export default function Sidebar() {
     { href: "/artist/profile", label: "My Profile", icon: User, show: !isAdmin },
     { href: "/artists", label: "Artists", icon: Users, show: isAdmin },
     { href: "/admin/artists", label: "Manage Artists", icon: Users, show: isAdmin },
+    { href: "/admin/royalties", label: "Royalties Management", icon: DollarSign, show: isAdmin },
     { href: "/admin/payment-requests", label: "Payment Requests", icon: DollarSign, show: isAdmin },
     { href: "/admin/invoice-settings", label: "Invoice Settings", icon: Settings, show: isAdmin },
     { href: "/admin/artist-tracks", label: "Track Catalog", icon: Upload, show: isAdmin },
