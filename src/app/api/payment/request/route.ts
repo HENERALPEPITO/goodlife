@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getInvoiceSettingsAdmin } from "@/lib/invoiceSettings";
 import { generatePaymentRequestInvoicePDF } from "@/lib/pdfGenerator";
+import { sendNewPaymentRequestEmailToAdmin } from "@/lib/emailService";
 
 interface PaymentRequestBody {
   artist_id: string;
@@ -95,7 +96,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get user profile for email
-    const { data: userProfile, error: profileError } = await adminClient
+    const { data: userProfile } = await adminClient
       .from("user_profiles")
       .select("email")
       .eq("id", artist.user_id)
@@ -213,6 +214,27 @@ export async function POST(request: NextRequest) {
       // Continue - invoice record is optional
     }
 
+    // 11. Send email notification to admin
+    try {
+      const requestDate = new Date(paymentRequest.created_at).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+
+      await sendNewPaymentRequestEmailToAdmin({
+        artistName: artist.name || "Artist",
+        artistEmail: artistEmail,
+        amount: totalAmount,
+        invoiceNumber: invoiceNumber,
+        requestDate: requestDate,
+        pdfBuffer: pdfBuffer,
+      });
+    } catch (emailError) {
+      console.error("Error sending admin notification email:", emailError);
+      // Don't fail the request if email fails
+    }
+
     return NextResponse.json(
       {
         success: true,
@@ -221,10 +243,10 @@ export async function POST(request: NextRequest) {
       },
       { status: 200 }
     );
-  } catch (error: any) {
+  } catch (error) {
     console.error("Unexpected error in payment request:", error);
     return NextResponse.json(
-      { success: false, error: error?.message || "Internal server error" },
+      { success: false, error: error instanceof Error ? error.message : "Internal server error" },
       { status: 500 }
     );
   }

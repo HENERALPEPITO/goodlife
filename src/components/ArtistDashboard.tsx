@@ -95,7 +95,7 @@ export default function ArtistDashboard() {
     {
       label: "Total Revenue",
       value: `€${stats.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      sub: "All time earnings",
+      sub: "Total Earnings",
       icon: DollarSign,
       color: "#4ADE80",
     },

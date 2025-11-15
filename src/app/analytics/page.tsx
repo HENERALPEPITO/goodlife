@@ -257,7 +257,7 @@ export default function AnalyticsPage() {
           <div className="mt-2 text-3xl font-semibold transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>
             €{stats.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
-          <div className="text-xs mt-1 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>All time earnings</div>
+          <div className="text-xs mt-1 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Total Earnings</div>
         </div>
 
         <div 
