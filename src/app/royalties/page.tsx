@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabaseClient";
 import { ArrowLeft, Download } from "lucide-react";
@@ -241,6 +242,7 @@ const PIE_COLORS = [
 
 export default function RoyaltiesPage() {
   const { user } = useAuth();
+  const router = useRouter();
   const [allRoyalties, setAllRoyalties] = useState<RoyaltyRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>("quarters");
@@ -248,9 +250,21 @@ export default function RoyaltiesPage() {
   const [quarters, setQuarters] = useState<Quarter[]>([]);
   const [quarterData, setQuarterData] = useState<Map<string, RoyaltyRecord[]>>(new Map());
 
+  // Redirect admins - only artists can view royalties
+  useEffect(() => {
+    if (user && user.role === "admin") {
+      router.push("/admin/users");
+    }
+  }, [user, router]);
+
   async function loadAllRoyalties() {
     if (!user) {
       setLoading(false);
+      return;
+    }
+
+    // Skip loading if admin (will redirect)
+    if (user.role === "admin") {
       return;
     }
 

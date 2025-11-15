@@ -7,7 +7,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Admin Dashboard - Goodlife",
-  description: "Administrative dashboard for managing users and royalties",
+  description: "Administrative dashboard for managing users and system settings",
 };
 
 export default function AdminLayout({
@@ -22,7 +22,7 @@ export default function AdminLayout({
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold text-slate-900">Admin Dashboard</h1>
-              <p className="text-sm text-slate-600">Manage users, royalties, and system settings</p>
+              <p className="text-sm text-slate-600">Manage users and system settings</p>
             </div>
             <div className="flex gap-4">
               <a
@@ -30,12 +30,6 @@ export default function AdminLayout({
                 className="text-sm font-medium text-slate-700 hover:text-slate-900 transition-colors"
               >
                 Users
-              </a>
-              <a
-                href="/admin/royalties"
-                className="text-sm font-medium text-slate-700 hover:text-slate-900 transition-colors"
-              >
-                Royalties
               </a>
               <a
                 href="/"

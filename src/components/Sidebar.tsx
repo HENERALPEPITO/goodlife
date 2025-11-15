@@ -29,7 +29,7 @@ export default function Sidebar() {
   const navItems = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard, show: true },
     { href: "/analytics", label: "Analytics", icon: BarChart3, show: true },
-    { href: "/royalties", label: "Royalties", icon: DollarSign, show: true },
+    { href: "/royalties", label: "Royalties", icon: DollarSign, show: !isAdmin },
     { href: "/artist/payment-request", label: "Payment Request", icon: DollarSign, show: !isAdmin },
     { href: "/artist/payments", label: "My Payments", icon: DollarSign, show: !isAdmin },
     { href: "/artist/catalog", label: "My Catalog", icon: Music, show: !isAdmin },
