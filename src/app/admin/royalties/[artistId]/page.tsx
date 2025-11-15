@@ -7,9 +7,17 @@ import Link from "next/link";
 import { useToast } from "@/components/ui/use-toast";
 import { EditableRoyaltyTable } from "@/components/royalties/EditableRoyaltyTable";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader, AlertCircle, Trash2 } from "lucide-react";
+import { ArrowLeft, Loader, AlertCircle, Trash2, ChevronDown, ChevronRight, Download } from "lucide-react";
 import type { Royalty } from "@/types";
 import { supabase } from "@/lib/supabaseClient";
+
+interface QuarterGroup {
+  quarter: string;
+  year: number;
+  royalties: Royalty[];
+  totalNet: number;
+  totalGross: number;
+}
 
 export default function ArtistRoyaltiesPage() {
   const { user, loading } = useAuth();
@@ -23,6 +31,125 @@ export default function ArtistRoyaltiesPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
+  const [expandedQuarters, setExpandedQuarters] = useState<Set<string>>(new Set());
+  const [deleteQuarterConfirm, setDeleteQuarterConfirm] = useState<string | null>(null);
+
+  // Group royalties by quarter
+  const groupByQuarter = (royalties: Royalty[]): QuarterGroup[] => {
+    const groups = new Map<string, QuarterGroup>();
+
+    royalties.forEach((royalty) => {
+      if (!royalty.broadcast_date) return;
+
+      const date = new Date(royalty.broadcast_date);
+      const year = date.getFullYear();
+      const month = date.getMonth();
+      const quarter = Math.floor(month / 3) + 1;
+      const key = `${year}-Q${quarter}`;
+
+      if (!groups.has(key)) {
+        groups.set(key, {
+          quarter: `Q${quarter}`,
+          year,
+          royalties: [],
+          totalNet: 0,
+          totalGross: 0,
+        });
+      }
+
+      const group = groups.get(key)!;
+      group.royalties.push(royalty);
+      group.totalNet += royalty.net_amount || 0;
+      group.totalGross += royalty.gross_amount || 0;
+    });
+
+    // Sort by year and quarter (most recent first)
+    return Array.from(groups.values()).sort((a, b) => {
+      if (a.year !== b.year) return b.year - a.year;
+      return parseInt(b.quarter.substring(1)) - parseInt(a.quarter.substring(1));
+    });
+  };
+
+  const quarterGroups = groupByQuarter(royalties);
+
+  const toggleQuarter = (key: string) => {
+    setExpandedQuarters((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const exportQuarterToCSV = (quarterKey: string, royalties: Royalty[]) => {
+    // CSV Headers
+    const headers = [
+      "Song Title",
+      "ISWC",
+      "Composer",
+      "Date",
+      "Territory",
+      "Source",
+      "Usage Count",
+      "Gross",
+      "Admin %",
+      "Net"
+    ];
+
+    // Convert royalties to CSV rows
+    const rows = royalties.map((royalty) => {
+      const date = royalty.broadcast_date 
+        ? new Date(royalty.broadcast_date).toLocaleDateString("en-US")
+        : "";
+      
+      return [
+        royalty.track_title || "",
+        royalty.track_id || "",
+        royalty.payment_request_id || "",
+        date,
+        royalty.territory || "",
+        royalty.exploitation_source_name || "",
+        royalty.usage_count?.toString() || "0",
+        royalty.gross_amount?.toFixed(2) || "0.00",
+        royalty.admin_percent?.toFixed(1) || "0.0",
+        royalty.net_amount?.toFixed(2) || "0.00"
+      ];
+    });
+
+    // Combine headers and rows
+    const csvContent = [
+      headers.join(","),
+      ...rows.map((row) => 
+        row.map((cell) => {
+          // Escape cells that contain commas, quotes, or newlines
+          if (cell.includes(",") || cell.includes('"') || cell.includes("\n")) {
+            return `"${cell.replace(/"/g, '""')}"`;
+          }
+          return cell;
+        }).join(",")
+      )
+    ].join("\n");
+
+    // Create blob and download
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute("href", url);
+    link.setAttribute("download", `royalties-${quarterKey}.csv`);
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    toast({
+      title: "Success",
+      description: `Exported ${royalties.length} record(s) from ${quarterKey}`,
+    });
+  };
 
   // Check authorization and fetch royalties
   useEffect(() => {
@@ -192,6 +319,57 @@ export default function ArtistRoyaltiesPage() {
     }
   };
 
+  const handleDeleteQuarter = async (quarterKey: string, royaltyIds: string[]) => {
+    try {
+      setIsSaving(true);
+      
+      // Get the session token to send in Authorization header
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      const headers: HeadersInit = {};
+      
+      if (session?.access_token) {
+        headers["Authorization"] = `Bearer ${session.access_token}`;
+      }
+
+      // Delete all royalties in the quarter one by one
+      const deletePromises = royaltyIds.map((id) =>
+        fetch(`/api/admin/royalties/record/${id}`, {
+          method: "DELETE",
+          headers,
+          credentials: "include",
+        })
+      );
+
+      const results = await Promise.all(deletePromises);
+      
+      // Check if all deletes were successful
+      const failedDeletes = results.filter((r) => !r.ok);
+      if (failedDeletes.length > 0) {
+        throw new Error(`Failed to delete ${failedDeletes.length} record(s)`);
+      }
+
+      // Update local state to remove deleted royalties
+      setRoyalties((prev) => prev.filter((r) => !royaltyIds.includes(r.id)));
+      setDeleteQuarterConfirm(null);
+
+      toast({
+        title: "Success",
+        description: `Deleted ${royaltyIds.length} record(s) from ${quarterKey}`,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to delete quarter records";
+      toast({
+        title: "Error",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+      setDeleteQuarterConfirm(null);
+    }
+  };
+
   const handleDeleteAll = async () => {
     if (!confirm(
       "Are you sure you want to delete ALL royalty records for this artist? This action cannot be undone."
@@ -301,22 +479,148 @@ export default function ArtistRoyaltiesPage() {
         {!isLoading && (
           <>
             {/* Info Bar */}
-            <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <p className="text-sm text-blue-900">
-                <strong>{royalties.length}</strong> royalty {royalties.length === 1 ? "record" : "records"} found.
-                Click any cell to edit values. Press Enter to save or Escape to cancel.
-              </p>
+            <div className="mb-6 flex items-center justify-between gap-4">
+              <div className="flex-1 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p className="text-sm text-blue-900">
+                  <strong>{royalties.length}</strong> royalty {royalties.length === 1 ? "record" : "records"} organized into{" "}
+                  <strong>{quarterGroups.length}</strong> {quarterGroups.length === 1 ? "quarter" : "quarters"}.
+                  Click any quarter to expand and view records. Click any cell to edit values.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => setExpandedQuarters(new Set(quarterGroups.map(g => `${g.year}-${g.quarter}`)))}
+                  variant="outline"
+                  size="sm"
+                  className="whitespace-nowrap"
+                >
+                  Expand All
+                </Button>
+                <Button
+                  onClick={() => setExpandedQuarters(new Set())}
+                  variant="outline"
+                  size="sm"
+                  className="whitespace-nowrap"
+                >
+                  Collapse All
+                </Button>
+              </div>
             </div>
 
-            {/* Table or Empty State */}
+            {/* Quarterly Groups or Empty State */}
             {royalties.length > 0 ? (
               <>
-                <EditableRoyaltyTable
-                  royalties={royalties}
-                  onUpdate={handleUpdateRoyalty}
-                  onDelete={handleDeleteRoyalty}
-                  isLoading={isSaving}
-                />
+                <div className="space-y-6">
+                  {quarterGroups.map((group) => {
+                    const key = `${group.year}-${group.quarter}`;
+                    const isExpanded = expandedQuarters.has(key);
+
+                    return (
+                      <div
+                        key={key}
+                        className="bg-white border border-slate-200 rounded-lg overflow-hidden"
+                      >
+                        {/* Quarter Header */}
+                        <div className="px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
+                          <button
+                            onClick={() => toggleQuarter(key)}
+                            className="flex items-center gap-3 flex-1"
+                          >
+                            {isExpanded ? (
+                              <ChevronDown className="w-5 h-5 text-slate-600" />
+                            ) : (
+                              <ChevronRight className="w-5 h-5 text-slate-600" />
+                            )}
+                            <div className="text-left">
+                              <h3 className="text-lg font-semibold text-slate-900">
+                                {group.quarter} {group.year}
+                              </h3>
+                              <p className="text-sm text-slate-600">
+                                {group.royalties.length} {group.royalties.length === 1 ? "record" : "records"}
+                              </p>
+                            </div>
+                          </button>
+                          <div className="flex items-center gap-4">
+                            <div className="text-right">
+                              <p className="text-sm text-slate-600">Gross</p>
+                              <p className="text-lg font-semibold text-slate-900">
+                                €{group.totalGross.toFixed(2)}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm text-slate-600">Net</p>
+                              <p className="text-lg font-semibold text-green-600">
+                                €{group.totalNet.toFixed(2)}
+                              </p>
+                            </div>
+                            <Button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                exportQuarterToCSV(key, group.royalties);
+                              }}
+                              variant="ghost"
+                              size="sm"
+                              className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                              title="Export to CSV"
+                            >
+                              <Download className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDeleteQuarterConfirm(key);
+                              }}
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              title="Delete quarter"
+                              disabled={isSaving}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+
+                        {/* Delete Quarter Confirmation */}
+                        {deleteQuarterConfirm === key && (
+                          <div className="px-6 py-3 bg-red-50 border-t border-red-200 flex items-center justify-between">
+                            <p className="text-sm font-medium text-red-900">
+                              Delete all {group.royalties.length} record(s) from {group.quarter} {group.year}?
+                            </p>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => handleDeleteQuarter(key, group.royalties.map(r => r.id))}
+                                disabled={isSaving}
+                                className="px-3 py-1.5 bg-red-600 text-white text-sm rounded font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
+                              >
+                                {isSaving ? "Deleting..." : "Delete"}
+                              </button>
+                              <button
+                                onClick={() => setDeleteQuarterConfirm(null)}
+                                disabled={isSaving}
+                                className="px-3 py-1.5 bg-slate-200 text-slate-900 text-sm rounded font-medium hover:bg-slate-300 disabled:opacity-50 transition-colors"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Quarter Content */}
+                        {isExpanded && (
+                          <div className="border-t border-slate-200">
+                            <EditableRoyaltyTable
+                              royalties={group.royalties}
+                              onUpdate={handleUpdateRoyalty}
+                              onDelete={handleDeleteRoyalty}
+                              isLoading={isSaving}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
 
                 {/* Delete All Button */}
                 <div className="mt-8 flex justify-end">
