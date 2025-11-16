@@ -6,6 +6,7 @@ import { ReactNode } from "react";
 import Providers from "./providers";
 import Topbar from "@/components/Topbar";
 import Sidebar from "@/components/Sidebar";
+import Footer from "@/components/Footer";
 import { Toaster } from "@/components/ui/toaster";
 
 const inter = Inter({
@@ -34,9 +35,12 @@ export default function RootLayout({
               <div className="flex-1 flex flex-col ml-64 overflow-hidden bg-background">
                 <Topbar />
                 <div className="flex-1 overflow-auto bg-background">
-                  <section className="flex-1 overflow-auto p-8 bg-background">
-                    {children}
-                  </section>
+                  <div className="flex flex-col min-h-full">
+                    <section className="flex-1 p-8 bg-background">
+                      {children}
+                    </section>
+                    <Footer />
+                  </div>
                 </div>
               </div>
             </main>

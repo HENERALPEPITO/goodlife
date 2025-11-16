@@ -238,16 +238,26 @@ function calculateAnalytics(records: RoyaltyRecord[], selectedQuarter?: Quarter 
   };
 }
 
-// Chart colors for pie/donut chart
+// Unified Green Color Palette for Analytics
+const GREEN_PALETTE = {
+  primary: "#1ABC9C",      // Primary Green
+  secondary: "#48C9B0",    // Secondary Green
+  dark: "#16A085",         // Dark Green
+  light: "#7DCEA0",        // Light Green
+  lighter: "#A9DFBF",      // Lighter Green
+  lightest: "#D5F4E6",     // Lightest Green
+  neutral: "#F8F9FA",      // Neutral Gray
+  grid: "#E5E7EB",         // Light Gridline Gray
+};
+
+// Green gradient for pie/donut charts (monochrome green theme)
 const PIE_COLORS = [
-  "#3B82F6", // Blue
-  "#10B981", // Green
-  "#F59E0B", // Amber
-  "#EF4444", // Red
-  "#8B5CF6", // Purple
-  "#EC4899", // Pink
-  "#06B6D4", // Cyan
-  "#F97316", // Orange
+  GREEN_PALETTE.primary,   // Primary Green
+  GREEN_PALETTE.secondary, // Secondary Green
+  GREEN_PALETTE.light,     // Light Green
+  GREEN_PALETTE.lighter,   // Lighter Green
+  GREEN_PALETTE.dark,      // Dark Green
+  GREEN_PALETTE.lightest,  // Lightest Green
 ];
 
 export default function RoyaltiesPage() {
@@ -1013,29 +1023,35 @@ export default function RoyaltiesPage() {
           </div>
         </div>
 
-        {/* Analytics Dashboard */}
-        <div className="mt-8">
-          <div className="border-t border-[#E5E7EB] pt-6">
-            <h2 className="text-xl font-semibold text-gray-800 mb-6">Analytics Dashboard</h2>
+        {/* Analytics Dashboard - Premium Green Theme */}
+        <div className="mt-10">
+          <div className="border-t-2 border-gray-200 pt-8">
+            <div className="mb-8">
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Analytics Dashboard</h2>
+              <div className="h-1 w-24 bg-gradient-to-r from-emerald-500 to-emerald-300 rounded-full"></div>
+            </div>
             
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Top Performing Tracks */}
-              <div className="bg-white rounded-xl shadow-sm p-5 border border-[#E5E7EB]">
-                <h3 className="text-gray-800 font-semibold mb-3">Top Performing Tracks</h3>
+              <div className="bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow duration-300 p-6 border border-gray-200">
+                <div className="mb-5 pb-3 border-b border-gray-100">
+                  <h3 className="text-lg font-bold text-gray-900">Top Performing Tracks</h3>
+                  <p className="text-xs text-gray-500 mt-1">Revenue by track performance</p>
+                </div>
                 {analytics.topTracks.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={300}>
+                  <ResponsiveContainer width="100%" height={320}>
                     <BarChart
                       data={analytics.topTracks}
                       layout="vertical"
                       margin={{ top: 5, right: 30, left: 150, bottom: 5 }}
                     >
-                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" opacity={0.3} />
-                      <XAxis type="number" tick={{ fill: "#6B7280", fontSize: 12 }} />
+                      <CartesianGrid strokeDasharray="3 3" stroke={GREEN_PALETTE.grid} opacity={0.5} />
+                      <XAxis type="number" tick={{ fill: "#374151", fontSize: 12, fontWeight: 500 }} />
                       <YAxis
                         type="category"
                         dataKey="title"
                         width={140}
-                        tick={{ fill: "#6B7280", fontSize: 11 }}
+                        tick={{ fill: "#374151", fontSize: 11 }}
                         interval={0}
                       />
                       <Tooltip 
@@ -1043,41 +1059,50 @@ export default function RoyaltiesPage() {
                           if (active && payload && payload.length) {
                             const data = payload[0].payload;
                             return (
-                              <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3">
-                                <p className="font-semibold text-gray-800 mb-1">{data.title}</p>
-                                <p className="text-sm text-gray-600">Revenue: €{data.revenue.toFixed(2)}</p>
+                              <div className="bg-white border-2 border-emerald-200 rounded-xl shadow-xl p-4">
+                                <p className="font-bold text-gray-900 mb-2">{data.title}</p>
+                                <p className="text-sm text-emerald-700 font-semibold">Revenue: €{data.revenue.toFixed(2)}</p>
                               </div>
                             );
                           }
                           return null;
                         }}
                       />
-                      <Bar dataKey="revenue" fill="#3B82F6" radius={[0, 8, 8, 0]} />
+                      <Bar dataKey="revenue" fill={GREEN_PALETTE.primary} radius={[0, 8, 8, 0]}>
+                        {analytics.topTracks.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={index % 2 === 0 ? GREEN_PALETTE.primary : GREEN_PALETTE.secondary} />
+                        ))}
+                      </Bar>
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
-                  <div className="h-[300px] flex items-center justify-center text-gray-500">
-                    No data available
+                  <div className="h-[320px] flex flex-col items-center justify-center text-gray-400">
+                    <div className="text-4xl mb-2">📊</div>
+                    <p className="text-sm">No data available</p>
                   </div>
                 )}
               </div>
 
               {/* Revenue by Source */}
-              <div className="bg-white rounded-xl shadow-sm p-5 border border-[#E5E7EB]">
-                <h3 className="text-gray-800 font-semibold mb-3">Revenue by Source</h3>
+              <div className="bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow duration-300 p-6 border border-gray-200">
+                <div className="mb-5 pb-3 border-b border-gray-100">
+                  <h3 className="text-lg font-bold text-gray-900">Revenue by Source</h3>
+                  <p className="text-xs text-gray-500 mt-1">Distribution across platforms</p>
+                </div>
                 {analytics.revenueBySource.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={300}>
+                  <ResponsiveContainer width="100%" height={320}>
                     <PieChart>
                       <Pie
                         data={analytics.revenueBySource}
                         cx="50%"
                         cy="50%"
                         labelLine={false}
-                        label={({ percentage }) => percentage > 5 ? `${percentage.toFixed(1)}%` : ''}
-                        outerRadius={80}
-                        innerRadius={40}
-                        fill="#8884d8"
+                        label={({ percentage }: any) => percentage > 5 ? `${percentage.toFixed(1)}%` : ''}
+                        outerRadius={90}
+                        innerRadius={50}
                         dataKey="revenue"
+                        stroke="#fff"
+                        strokeWidth={2}
                       >
                         {analytics.revenueBySource.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
@@ -1088,10 +1113,10 @@ export default function RoyaltiesPage() {
                           if (active && payload && payload.length) {
                             const data = payload[0].payload;
                             return (
-                              <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3">
-                                <p className="font-semibold text-gray-800">{data.source}</p>
-                                <p className="text-sm text-gray-600">Revenue: €{data.revenue.toFixed(2)}</p>
-                                <p className="text-sm text-gray-600">Share: {data.percentage.toFixed(1)}%</p>
+                              <div className="bg-white border-2 border-emerald-200 rounded-xl shadow-xl p-4">
+                                <p className="font-bold text-gray-900 mb-1">{data.source}</p>
+                                <p className="text-sm text-emerald-700 font-semibold">Revenue: €{data.revenue.toFixed(2)}</p>
+                                <p className="text-xs text-gray-600 mt-1">Share: {data.percentage.toFixed(1)}%</p>
                               </div>
                             );
                           }
@@ -1101,68 +1126,80 @@ export default function RoyaltiesPage() {
                     </PieChart>
                   </ResponsiveContainer>
                 ) : (
-                  <div className="h-[300px] flex items-center justify-center text-gray-500">
-                    No data available
+                  <div className="h-[320px] flex flex-col items-center justify-center text-gray-400">
+                    <div className="text-4xl mb-2">📊</div>
+                    <p className="text-sm">No data available</p>
                   </div>
                 )}
               </div>
 
               {/* Revenue by Territory */}
-              <div className="bg-white rounded-xl shadow-sm p-5 border border-[#E5E7EB]">
-                <h3 className="text-gray-800 font-semibold mb-3">Revenue by Territory</h3>
+              <div className="bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow duration-300 p-6 border border-gray-200">
+                <div className="mb-5 pb-3 border-b border-gray-100">
+                  <h3 className="text-lg font-bold text-gray-900">Revenue by Territory</h3>
+                  <p className="text-xs text-gray-500 mt-1">Geographic revenue breakdown</p>
+                </div>
                 {analytics.revenueByTerritory.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={300}>
+                  <ResponsiveContainer width="100%" height={320}>
                     <BarChart data={analytics.revenueByTerritory} margin={{ top: 5, right: 30, left: 20, bottom: 60 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" opacity={0.3} />
+                      <CartesianGrid strokeDasharray="3 3" stroke={GREEN_PALETTE.grid} opacity={0.5} />
                       <XAxis 
                         dataKey="territory" 
-                        tick={{ fill: "#6B7280", fontSize: 11 }}
+                        tick={{ fill: "#374151", fontSize: 11, fontWeight: 500 }}
                         angle={-45}
                         textAnchor="end"
                         height={80}
                       />
-                      <YAxis tick={{ fill: "#6B7280", fontSize: 12 }} />
+                      <YAxis tick={{ fill: "#374151", fontSize: 12, fontWeight: 500 }} />
                       <Tooltip 
                         content={({ active, payload }) => {
                           if (active && payload && payload.length) {
                             const data = payload[0].payload;
                             return (
-                              <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3">
-                                <p className="font-semibold text-gray-800 mb-1">{data.territory}</p>
-                                <p className="text-sm text-gray-600">Revenue: €{data.revenue.toFixed(2)}</p>
+                              <div className="bg-white border-2 border-emerald-200 rounded-xl shadow-xl p-4">
+                                <p className="font-bold text-gray-900 mb-2">{data.territory}</p>
+                                <p className="text-sm text-emerald-700 font-semibold">Revenue: €{data.revenue.toFixed(2)}</p>
                               </div>
                             );
                           }
                           return null;
                         }}
                       />
-                      <Bar dataKey="revenue" fill="#10B981" radius={[8, 8, 0, 0]} />
+                      <Bar dataKey="revenue" fill={GREEN_PALETTE.primary} radius={[8, 8, 0, 0]}>
+                        {analytics.revenueByTerritory.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={index % 2 === 0 ? GREEN_PALETTE.dark : GREEN_PALETTE.primary} />
+                        ))}
+                      </Bar>
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
-                  <div className="h-[300px] flex items-center justify-center text-gray-500">
-                    No data available
+                  <div className="h-[320px] flex flex-col items-center justify-center text-gray-400">
+                    <div className="text-4xl mb-2">🌍</div>
+                    <p className="text-sm">No data available</p>
                   </div>
                 )}
               </div>
 
               {/* Monthly Revenue Trend */}
-              <div className="bg-white rounded-xl shadow-sm p-5 border border-[#E5E7EB]">
-                <h3 className="text-gray-800 font-semibold mb-3">Monthly Revenue Trend</h3>
+              <div className="bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow duration-300 p-6 border border-gray-200">
+                <div className="mb-5 pb-3 border-b border-gray-100">
+                  <h3 className="text-lg font-bold text-gray-900">Monthly Revenue Trend</h3>
+                  <p className="text-xs text-gray-500 mt-1">Revenue progression over time</p>
+                </div>
                 {analytics.monthlyRevenue.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={300}>
+                  <ResponsiveContainer width="100%" height={320}>
                     <LineChart data={analytics.monthlyRevenue} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" opacity={0.3} />
-                      <XAxis dataKey="month" tick={{ fill: "#6B7280", fontSize: 12 }} />
-                      <YAxis tick={{ fill: "#6B7280", fontSize: 12 }} />
+                      <CartesianGrid strokeDasharray="3 3" stroke={GREEN_PALETTE.grid} opacity={0.5} />
+                      <XAxis dataKey="month" tick={{ fill: "#374151", fontSize: 12, fontWeight: 500 }} />
+                      <YAxis tick={{ fill: "#374151", fontSize: 12, fontWeight: 500 }} />
                       <Tooltip 
                         content={({ active, payload }) => {
                           if (active && payload && payload.length) {
                             const data = payload[0].payload;
                             return (
-                              <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3">
-                                <p className="font-semibold text-gray-800 mb-1">{data.month}</p>
-                                <p className="text-sm text-gray-600">Revenue: €{data.revenue.toFixed(2)}</p>
+                              <div className="bg-white border-2 border-emerald-200 rounded-xl shadow-xl p-4">
+                                <p className="font-bold text-gray-900 mb-2">{data.month}</p>
+                                <p className="text-sm text-emerald-700 font-semibold">Revenue: €{data.revenue.toFixed(2)}</p>
                               </div>
                             );
                           }
@@ -1172,16 +1209,17 @@ export default function RoyaltiesPage() {
                       <Line
                         type="monotone"
                         dataKey="revenue"
-                        stroke="#F59E0B"
-                        strokeWidth={2}
-                        dot={{ fill: "#F59E0B", r: 4 }}
-                        activeDot={{ r: 6 }}
+                        stroke={GREEN_PALETTE.primary}
+                        strokeWidth={3}
+                        dot={{ fill: GREEN_PALETTE.secondary, r: 5, strokeWidth: 2, stroke: "#fff" }}
+                        activeDot={{ r: 7, fill: GREEN_PALETTE.dark }}
                       />
                     </LineChart>
                   </ResponsiveContainer>
                 ) : (
-                  <div className="h-[300px] flex items-center justify-center text-gray-500">
-                    No data available
+                  <div className="h-[320px] flex flex-col items-center justify-center text-gray-400">
+                    <div className="text-4xl mb-2">📈</div>
+                    <p className="text-sm">No data available</p>
                   </div>
                 )}
               </div>
