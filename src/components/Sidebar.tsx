@@ -29,18 +29,17 @@ export default function Sidebar() {
   const navItems = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard, show: true },
     { href: "/analytics", label: "Analytics", icon: BarChart3, show: true },
-    { href: "/royalties", label: "Royalties", icon: DollarSign, show: true },
-    { href: "/artist/payment-request", label: "Payment Request", icon: DollarSign, show: !isAdmin },
+    { href: "/royalties", label: "Royalties", icon: DollarSign, show: !isAdmin },
     { href: "/artist/payments", label: "My Payments", icon: DollarSign, show: !isAdmin },
     { href: "/artist/catalog", label: "My Catalog", icon: Music, show: !isAdmin },
     { href: "/artist/profile", label: "My Profile", icon: User, show: !isAdmin },
     { href: "/artists", label: "Artists", icon: Users, show: isAdmin },
     { href: "/admin/artists", label: "Manage Artists", icon: Users, show: isAdmin },
+    { href: "/admin/royalties", label: "Royalties Management", icon: DollarSign, show: isAdmin },
     { href: "/admin/payment-requests", label: "Payment Requests", icon: DollarSign, show: isAdmin },
     { href: "/admin/invoice-settings", label: "Invoice Settings", icon: Settings, show: isAdmin },
     { href: "/admin/artist-tracks", label: "Track Catalog", icon: Upload, show: isAdmin },
     { href: "/royalty-uploader", label: "Upload Royalties", icon: FileUp, show: isAdmin },
-    { href: "/settings", label: "Settings", icon: Settings, show: true },
   ];
 
   const isActive = (href: string) => {
