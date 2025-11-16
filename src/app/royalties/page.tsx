@@ -3,7 +3,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabaseClient";
-import { ArrowLeft, Download, DollarSign, Loader2, AlertCircle } from "lucide-react";
+import { ArrowLeft, Download, DollarSign, Loader2, AlertCircle, Eye, FileText, Search, Filter, ChevronDown } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import {
@@ -266,6 +266,10 @@ export default function RoyaltiesPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [requesting, setRequesting] = useState(false);
   const [hasPendingRequest, setHasPendingRequest] = useState(false);
+  
+  // Filter State
+  const [searchQuery, setSearchQuery] = useState("");
+  const [yearFilter, setYearFilter] = useState<string>("all");
 
   // Redirect admins - only artists can view royalties
   useEffect(() => {
@@ -534,6 +538,22 @@ export default function RoyaltiesPage() {
     setSelectedQuarter(null);
   };
 
+  // Get unique years for filter dropdown
+  const availableYears = useMemo(() => {
+    const years = new Set(quarters.map(q => q.year));
+    return Array.from(years).sort((a, b) => b - a);
+  }, [quarters]);
+
+  // Filter quarters based on search and year
+  const filteredQuarters = useMemo(() => {
+    return quarters.filter(quarter => {
+      const matchesYear = yearFilter === "all" || quarter.year.toString() === yearFilter;
+      const matchesSearch = searchQuery === "" || 
+        quarter.label.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchesYear && matchesSearch;
+    });
+  }, [quarters, yearFilter, searchQuery]);
+
   const handleExportCSV = () => {
     if (!selectedQuarter) {
       return;
@@ -597,136 +617,284 @@ export default function RoyaltiesPage() {
     URL.revokeObjectURL(url);
   };
 
-  // Quarter List View
+  // Quarter List View - Enterprise Responsive Table
   if (viewMode === "quarters") {
     return (
-      <div 
-        className="min-h-screen bg-white p-4 md:p-6 transition-opacity duration-300" 
-        style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
-      >
-        <div className="max-w-6xl mx-auto">
-          {/* Header Section with Payment Request Button */}
-          <div className="mb-8">
-            <div className="flex items-start justify-between gap-4 flex-wrap">
-              <div>
-                <h1 className="text-2xl font-bold text-gray-800 mb-2">Royalties</h1>
-                <p className="text-sm text-gray-600">View royalty data grouped by quarters</p>
+      <div className="min-h-screen bg-gray-50">
+        {/* Sticky Top Bar */}
+        <div className="bg-white border-b border-gray-200 sticky top-0 z-20 shadow-sm">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+              <div className="flex-shrink-0">
+                <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">Royalty Statements</h1>
+                <p className="text-sm text-gray-600 mt-1">Manage and review your quarterly royalty statements</p>
               </div>
               
-              {/* Payment Request Section */}
-              <div className="flex flex-col items-end gap-2">
-                <div className="text-right mb-2">
-                  <p className="text-xs text-gray-500">Available Balance</p>
-                  <p className="text-2xl font-bold text-green-600">€{balance.toFixed(2)}</p>
+              <div className="flex items-center gap-4 flex-shrink-0">
+                <div className="text-right">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Available Balance</p>
+                  <p className="text-2xl font-bold text-emerald-600 mt-0.5 tabular-nums">€{balance.toFixed(2)}</p>
                 </div>
                 <Button
                   onClick={() => setConfirmOpen(true)}
                   disabled={!canRequest}
-                  size="lg"
-                  className="bg-green-600 hover:bg-green-700"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm font-medium px-5 py-2.5"
                 >
-                  <DollarSign className="w-5 h-5 mr-2" />
-                  Request Payment
+                  <DollarSign className="w-4 h-4 mr-2" />
+                  <span className="hidden sm:inline">Request Payment</span>
+                  <span className="sm:hidden">Request</span>
                 </Button>
-                {hasPendingRequest && (
-                  <p className="text-xs text-yellow-600 flex items-center gap-1 mt-1">
-                    <AlertCircle className="w-3 h-3" />
-                    Pending request in progress
-                  </p>
-                )}
-                {!canRequest && !hasPendingRequest && balance < minBalance && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    Minimum €{minBalance} required
-                  </p>
-                )}
+              </div>
+            </div>
+
+            {hasPendingRequest && (
+              <div className="mt-4">
+                <div className="px-4 py-3 bg-yellow-50 border border-yellow-200 rounded-xl flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                  <p className="text-sm text-yellow-900 font-medium">Payment request pending approval</p>
+                </div>
+              </div>
+            )}
+            {!canRequest && !hasPendingRequest && balance < minBalance && (
+              <div className="mt-4">
+                <div className="px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                  <p className="text-sm text-blue-900 font-medium">Minimum balance of €{minBalance} required for payment requests</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Main Content */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          {/* Filters */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 mb-6">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search quarters..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-shadow"
+                />
+              </div>
+              
+              <div className="relative sm:w-48">
+                <Filter className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                <select
+                  value={yearFilter}
+                  onChange={(e) => setYearFilter(e.target.value)}
+                  className="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 appearance-none bg-white cursor-pointer transition-shadow"
+                >
+                  <option value="all">All Years</option>
+                  {availableYears.map(year => (
+                    <option key={year} value={year}>{year}</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              </div>
+
+              <div className="flex items-center justify-center sm:justify-start text-sm px-4 py-2.5 bg-gray-50 rounded-lg border border-gray-200 whitespace-nowrap">
+                <span className="font-semibold text-gray-900">{filteredQuarters.length}</span>
+                <span className="ml-1.5 text-gray-600">{filteredQuarters.length === 1 ? 'statement' : 'statements'}</span>
               </div>
             </div>
           </div>
 
-          {/* Quarters Grid */}
           {loading ? (
-            <div className="flex items-center justify-center py-16">
-              <div className="flex items-center gap-3">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400"></div>
-                <span className="text-gray-600">Loading quarters...</span>
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+              <div className="flex flex-col items-center justify-center py-32">
+                <div className="animate-spin rounded-full h-10 w-10 border-3 border-gray-200 border-t-emerald-600 mb-4"></div>
+                <span className="text-sm text-gray-600 font-medium">Loading statements...</span>
               </div>
             </div>
-          ) : quarters.length === 0 ? (
-            <div className="text-center py-16">
-              <p className="text-gray-600">No royalty data available</p>
+          ) : filteredQuarters.length === 0 ? (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+              <div className="text-center py-32">
+                <FileText className="w-14 h-14 text-gray-300 mx-auto mb-4" />
+                <p className="text-base text-gray-900 font-semibold">No statements found</p>
+                <p className="text-sm text-gray-500 mt-2">Try adjusting your filters or search criteria</p>
+              </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-              {quarters.map((quarter) => {
-                const quarterKey = `${quarter.year}-Q${quarter.quarter}`;
-                const records = quarterData.get(quarterKey) || [];
-                const totalRecords = records.length;
-                const totalNet = records.reduce((sum, r) => sum + r.net, 0);
-                const dateRange = formatDateRange(quarter.startDate, quarter.endDate);
+            <>
+              {/* Desktop Table */}
+              <div className="hidden lg:block bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                {/* TABLE HEADER - ALWAYS AT TOP */}
+                <div className="bg-gradient-to-b from-gray-100 to-gray-50 border-b-2 border-gray-300">
+                  <div className="grid grid-cols-12 gap-6 px-6 py-4">
+                    <div className="col-span-2 text-xs font-bold text-gray-800 uppercase tracking-wider">Quarter</div>
+                    <div className="col-span-3 text-xs font-bold text-gray-800 uppercase tracking-wider">Date Range</div>
+                    <div className="col-span-2 text-xs font-bold text-gray-800 uppercase tracking-wider text-right">Total Amount (€)</div>
+                    <div className="col-span-2 text-xs font-bold text-gray-800 uppercase tracking-wider text-center">Records</div>
+                    <div className="col-span-2 text-xs font-bold text-gray-800 uppercase tracking-wider text-center">Status</div>
+                    <div className="col-span-1 text-xs font-bold text-gray-800 uppercase tracking-wider text-center">Actions</div>
+                  </div>
+                </div>
 
-                return (
-                  <button
-                    key={quarterKey}
-                    onClick={() => handleQuarterClick(quarter)}
-                    className="bg-[#F9FAFB] hover:bg-[#F3F4F6] rounded-2xl p-6 text-left transition-all duration-200 ease-in-out shadow-sm hover:shadow-md transform hover:-translate-y-1 cursor-pointer"
-                  >
-                    <div className="font-semibold text-lg text-gray-900 mb-2">{quarter.label}</div>
-                    <div className="text-xl font-bold text-blue-600 mb-2">€{totalNet.toFixed(2)}</div>
-                    <div className="text-sm text-gray-500 mb-2">{dateRange}</div>
-                    <div className="text-sm text-gray-600 mt-2">
-                      {totalRecords} {totalRecords === 1 ? "record" : "records"}
+                {/* TABLE BODY */}
+                <div className="bg-white">
+                  {filteredQuarters.map((quarter, index) => {
+                    const quarterKey = `${quarter.year}-Q${quarter.quarter}`;
+                    const records = quarterData.get(quarterKey) || [];
+                    const totalRecords = records.length;
+                    const totalNet = records.reduce((sum, r) => sum + r.net, 0);
+                    const dateRange = formatDateRange(quarter.startDate, quarter.endDate);
+
+                    return (
+                      <div
+                        key={quarterKey}
+                        className={`grid grid-cols-12 gap-6 px-6 py-5 border-b border-gray-100 hover:bg-emerald-50/30 transition-all cursor-pointer ${
+                          index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
+                        }`}
+                        onClick={() => handleQuarterClick(quarter)}
+                      >
+                        <div className="col-span-2 flex items-center">
+                          <div>
+                            <div className="text-sm font-semibold text-gray-900">{quarter.label}</div>
+                            <div className="text-xs text-gray-500 mt-0.5">FY {quarter.year}</div>
+                          </div>
+                        </div>
+
+                        <div className="col-span-3 flex items-center">
+                          <span className="text-sm text-gray-700">{dateRange}</span>
+                        </div>
+
+                        <div className="col-span-2 flex items-center justify-end">
+                          <span className="text-sm font-bold text-gray-900 tabular-nums">€{totalNet.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        </div>
+
+                        <div className="col-span-2 flex items-center justify-center">
+                          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
+                            {totalRecords}
+                          </span>
+                        </div>
+
+                        <div className="col-span-2 flex items-center justify-center">
+                          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
+                            Available
+                          </span>
+                        </div>
+
+                        <div className="col-span-1 flex items-center justify-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => handleQuarterClick(quarter)}
+                            className="p-2 rounded-lg hover:bg-emerald-100 hover:shadow-sm transition-all group"
+                            title="View Details"
+                            aria-label="View quarter details"
+                          >
+                            <Eye className="w-4 h-4 text-gray-600 group-hover:text-emerald-700" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedQuarter(quarter);
+                              setTimeout(handleExportCSV, 100);
+                            }}
+                            className="p-2 rounded-lg hover:bg-emerald-100 hover:shadow-sm transition-all group"
+                            title="Download CSV"
+                            aria-label="Download CSV report"
+                          >
+                            <Download className="w-4 h-4 text-gray-600 group-hover:text-emerald-700" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Mobile Card View */}
+              <div className="lg:hidden space-y-4">
+                {filteredQuarters.map((quarter) => {
+                  const quarterKey = `${quarter.year}-Q${quarter.quarter}`;
+                  const records = quarterData.get(quarterKey) || [];
+                  const totalRecords = records.length;
+                  const totalNet = records.reduce((sum, r) => sum + r.net, 0);
+                  const dateRange = formatDateRange(quarter.startDate, quarter.endDate);
+
+                  return (
+                    <div key={quarterKey} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                      <div className="px-5 py-4 border-b border-gray-100">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <h3 className="text-base font-semibold text-gray-900">{quarter.label}</h3>
+                            <p className="text-sm text-gray-500 mt-1">{dateRange}</p>
+                          </div>
+                          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 ml-3">
+                            Available
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="px-5 py-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-gray-600">Total Amount</span>
+                          <span className="text-lg font-bold text-gray-900 tabular-nums">€{totalNet.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-gray-600">Records</span>
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                            {totalRecords}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-gray-600">Fiscal Year</span>
+                          <span className="text-sm text-gray-900">{quarter.year}</span>
+                        </div>
+                      </div>
+
+                      <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex items-center gap-2">
+                        <button
+                          onClick={() => handleQuarterClick(quarter)}
+                          className="flex-1 inline-flex items-center justify-center px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+                        >
+                          <Eye className="w-4 h-4 mr-2" />
+                          View Details
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedQuarter(quarter);
+                            setTimeout(handleExportCSV, 100);
+                          }}
+                          className="px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+                          title="Download CSV"
+                        >
+                          <Download className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
-                    <div className="text-xs text-gray-500 mt-3">Click to view details</div>
-                  </button>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            </>
           )}
         </div>
 
-        {/* Payment Request Confirmation Dialog */}
+        {/* Dialog */}
         <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Confirm Payment Request</DialogTitle>
-              <DialogDescription>
-                Are you sure you want to request payment?
-              </DialogDescription>
+              <DialogDescription>Are you sure you want to request payment?</DialogDescription>
             </DialogHeader>
             <div className="py-4">
-              <p className="text-sm text-gray-600 mb-4">
-                This will withdraw your entire balance and reset it to €0.
-              </p>
+              <p className="text-sm text-gray-600 mb-4">This will withdraw your entire balance and reset it to €0.</p>
               <div className="bg-gray-50 p-4 rounded-md">
                 <div className="flex justify-between items-center">
                   <span className="text-sm font-medium">Amount to withdraw:</span>
-                  <span className="text-lg font-bold text-green-600">
-                    €{balance.toFixed(2)}
-                  </span>
+                  <span className="text-lg font-bold text-emerald-600 tabular-nums">€{balance.toFixed(2)}</span>
                 </div>
               </div>
             </div>
             <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setConfirmOpen(false)}
-                disabled={requesting}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleRequestPayment}
-                disabled={requesting}
-                className="bg-green-600 hover:bg-green-700"
-              >
-                {requesting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Processing...
-                  </>
-                ) : (
-                  "Confirm"
-                )}
+              <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={requesting}>Cancel</Button>
+              <Button onClick={handleRequestPayment} disabled={requesting} className="bg-emerald-600 hover:bg-emerald-700">
+                {requesting ? (<><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processing...</>) : ("Confirm")}
               </Button>
             </DialogFooter>
           </DialogContent>
