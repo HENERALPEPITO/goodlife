@@ -40,7 +40,6 @@ export default function Sidebar() {
     { href: "/admin/invoice-settings", label: "Invoice Settings", icon: Settings, show: isAdmin },
     { href: "/admin/artist-tracks", label: "Track Catalog", icon: Upload, show: isAdmin },
     { href: "/royalty-uploader", label: "Upload Royalties", icon: FileUp, show: isAdmin },
-    { href: "/settings", label: "Settings", icon: Settings, show: true },
   ];
 
   const isActive = (href: string) => {
