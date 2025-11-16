@@ -3,7 +3,17 @@ import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabaseClient";
-import { ArrowLeft, Download } from "lucide-react";
+import { ArrowLeft, Download, DollarSign, Loader2, AlertCircle } from "lucide-react";
+import { useToast } from "@/components/ui/use-toast";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   BarChart,
   Bar,
@@ -243,12 +253,19 @@ const PIE_COLORS = [
 export default function RoyaltiesPage() {
   const { user } = useAuth();
   const router = useRouter();
+  const { toast } = useToast();
   const [allRoyalties, setAllRoyalties] = useState<RoyaltyRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>("quarters");
   const [selectedQuarter, setSelectedQuarter] = useState<Quarter | null>(null);
   const [quarters, setQuarters] = useState<Quarter[]>([]);
   const [quarterData, setQuarterData] = useState<Map<string, RoyaltyRecord[]>>(new Map());
+  
+  // Payment Request State
+  const [balance, setBalance] = useState(0);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [requesting, setRequesting] = useState(false);
+  const [hasPendingRequest, setHasPendingRequest] = useState(false);
 
   // Redirect admins - only artists can view royalties
   useEffect(() => {
@@ -256,6 +273,136 @@ export default function RoyaltiesPage() {
       router.push("/admin/users");
     }
   }, [user, router]);
+
+  // Payment Request Functions
+  const fetchBalance = async () => {
+    try {
+      if (!user) return;
+
+      // First, get the artist ID from the artists table
+      const { data: artist, error: artistError } = await supabase
+        .from("artists")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (artistError || !artist) {
+        setBalance(0);
+        return;
+      }
+
+      // Call the database function to get unpaid royalties total
+      const { data, error } = await supabase.rpc("get_unpaid_royalties_total", {
+        artist_uuid: artist.id,
+      });
+
+      if (error) {
+        console.error("Error fetching balance:", error);
+        setBalance(0);
+      } else {
+        setBalance(Number(data || 0));
+      }
+    } catch (error) {
+      console.error("Error fetching balance:", error);
+      setBalance(0);
+    }
+  };
+
+  const checkPendingRequest = async () => {
+    try {
+      if (!user) return;
+
+      // First, get the artist ID from the artists table
+      const { data: artist, error: artistError } = await supabase
+        .from("artists")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (artistError || !artist) {
+        return;
+      }
+
+      // Check if there's a pending or approved request
+      const { data, error } = await supabase
+        .from("payment_requests")
+        .select("id")
+        .eq("artist_id", artist.id)
+        .in("status", ["pending", "approved"])
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Error checking pending request:", error);
+        return;
+      }
+
+      setHasPendingRequest(!!data);
+    } catch (error) {
+      console.error("Error checking pending request:", error);
+    }
+  };
+
+  const handleRequestPayment = async () => {
+    if (!user) return;
+
+    try {
+      setRequesting(true);
+
+      // First, get the artist ID from the artists table
+      const { data: artist, error: artistError } = await supabase
+        .from("artists")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (artistError || !artist) {
+        throw new Error("Artist record not found");
+      }
+
+      // Call the API to create payment request
+      const response = await fetch("/api/payment/request", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          artist_id: artist.id,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "Failed to create payment request");
+      }
+
+      toast({
+        title: "Payment Request Created",
+        description: "Your payment request has been submitted successfully.",
+      });
+
+      // Refresh balance and check for pending requests
+      await fetchBalance();
+      await checkPendingRequest();
+      setConfirmOpen(false);
+
+      // Redirect to payments page
+      router.push("/artist/payments");
+    } catch (error: any) {
+      console.error("Error creating payment request:", error);
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to create payment request",
+        variant: "destructive",
+      });
+    } finally {
+      setRequesting(false);
+    }
+  };
+
+  const canRequest = balance >= 100 && !hasPendingRequest;
+  const minBalance = 100;
 
   async function loadAllRoyalties() {
     if (!user) {
@@ -349,6 +496,8 @@ export default function RoyaltiesPage() {
   useEffect(() => {
     if (user) {
       loadAllRoyalties();
+      fetchBalance();
+      checkPendingRequest();
     }
   }, [user]);
 
@@ -456,10 +605,42 @@ export default function RoyaltiesPage() {
         style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
       >
         <div className="max-w-6xl mx-auto">
-          {/* Header Section */}
+          {/* Header Section with Payment Request Button */}
           <div className="mb-8">
-            <h1 className="text-2xl font-bold text-gray-800 mb-2">Royalties</h1>
-            <p className="text-sm text-gray-600">View royalty data grouped by quarters</p>
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-800 mb-2">Royalties</h1>
+                <p className="text-sm text-gray-600">View royalty data grouped by quarters</p>
+              </div>
+              
+              {/* Payment Request Section */}
+              <div className="flex flex-col items-end gap-2">
+                <div className="text-right mb-2">
+                  <p className="text-xs text-gray-500">Available Balance</p>
+                  <p className="text-2xl font-bold text-green-600">€{balance.toFixed(2)}</p>
+                </div>
+                <Button
+                  onClick={() => setConfirmOpen(true)}
+                  disabled={!canRequest}
+                  size="lg"
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  <DollarSign className="w-5 h-5 mr-2" />
+                  Request Payment
+                </Button>
+                {hasPendingRequest && (
+                  <p className="text-xs text-yellow-600 flex items-center gap-1 mt-1">
+                    <AlertCircle className="w-3 h-3" />
+                    Pending request in progress
+                  </p>
+                )}
+                {!canRequest && !hasPendingRequest && balance < minBalance && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Minimum €{minBalance} required
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Quarters Grid */}
@@ -502,6 +683,54 @@ export default function RoyaltiesPage() {
             </div>
           )}
         </div>
+
+        {/* Payment Request Confirmation Dialog */}
+        <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Confirm Payment Request</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to request payment?
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <p className="text-sm text-gray-600 mb-4">
+                This will withdraw your entire balance and reset it to €0.
+              </p>
+              <div className="bg-gray-50 p-4 rounded-md">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium">Amount to withdraw:</span>
+                  <span className="text-lg font-bold text-green-600">
+                    €{balance.toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setConfirmOpen(false)}
+                disabled={requesting}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleRequestPayment}
+                disabled={requesting}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                {requesting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  "Confirm"
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     );
   }
@@ -797,6 +1026,54 @@ export default function RoyaltiesPage() {
           <p>Royalties and analytics are automatically generated by Good Life Music Portal.</p>
         </div>
       </div>
+
+      {/* Payment Request Confirmation Dialog */}
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Payment Request</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to request payment?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-gray-600 mb-4">
+              This will withdraw your entire balance and reset it to €0.
+            </p>
+            <div className="bg-gray-50 p-4 rounded-md">
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium">Amount to withdraw:</span>
+                <span className="text-lg font-bold text-green-600">
+                  €{balance.toFixed(2)}
+                </span>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmOpen(false)}
+              disabled={requesting}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleRequestPayment}
+              disabled={requesting}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {requesting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                "Confirm"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

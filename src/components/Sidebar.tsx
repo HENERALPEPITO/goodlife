@@ -30,7 +30,6 @@ export default function Sidebar() {
     { href: "/", label: "Dashboard", icon: LayoutDashboard, show: true },
     { href: "/analytics", label: "Analytics", icon: BarChart3, show: true },
     { href: "/royalties", label: "Royalties", icon: DollarSign, show: !isAdmin },
-    { href: "/artist/payment-request", label: "Payment Request", icon: DollarSign, show: !isAdmin },
     { href: "/artist/payments", label: "My Payments", icon: DollarSign, show: !isAdmin },
     { href: "/artist/catalog", label: "My Catalog", icon: Music, show: !isAdmin },
     { href: "/artist/profile", label: "My Profile", icon: User, show: !isAdmin },
