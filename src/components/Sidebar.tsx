@@ -51,10 +51,10 @@ export default function Sidebar() {
 
   return (
     <aside 
-      className="hidden md:flex flex-col w-64 fixed h-screen bg-white transition-colors"
+      className="hidden md:flex flex-col w-64 fixed h-screen transition-colors shadow-md"
       style={{
-        borderRight: '1px solid #E5E7EB',
-        boxShadow: '2px 0 20px rgba(0, 0, 0, 0.05)',
+        backgroundColor: '#ECECEC',
+        borderRight: '1px solid #D5D5D5',
       }}
     >
       <div className="p-6 flex-shrink-0">
@@ -87,22 +87,23 @@ export default function Sidebar() {
                 }`}
                 style={{
                   backgroundColor: active 
-                    ? '#EFF6FF' 
+                    ? '#DADADA' 
                     : 'transparent',
                   color: active 
-                    ? '#2563EB' 
-                    : '#6B7280',
+                    ? '#111' 
+                    : '#1A1A1A',
+                  borderLeft: active ? '3px solid #111' : '3px solid transparent',
                 }}
                 onMouseEnter={(e) => {
                   if (!active) {
-                    e.currentTarget.style.backgroundColor = '#EFF6FF';
-                    e.currentTarget.style.color = '#2563EB';
+                    e.currentTarget.style.backgroundColor = '#DADADA';
+                    e.currentTarget.style.color = '#111';
                   }
                 }}
                 onMouseLeave={(e) => {
                   if (!active) {
                     e.currentTarget.style.backgroundColor = 'transparent';
-                    e.currentTarget.style.color = '#6B7280';
+                    e.currentTarget.style.color = '#1A1A1A';
                   }
                 }}
               >
@@ -116,12 +117,12 @@ export default function Sidebar() {
 
       <div 
         className="mt-auto p-6 border-t flex-shrink-0 transition-colors"
-        style={{ borderColor: '#E5E7EB' }}
+        style={{ borderColor: '#D5D5D5' }}
       >
         {user && (
           <div className="text-xs">
-            <p className="font-medium mb-1 truncate text-gray-800">{user.email}</p>
-            <p className="capitalize text-gray-600">{user.role}</p>
+            <p className="font-medium mb-1 truncate" style={{ color: '#111' }}>{user.email}</p>
+            <p className="capitalize" style={{ color: '#1A1A1A' }}>{user.role}</p>
           </div>
         )}
       </div>
