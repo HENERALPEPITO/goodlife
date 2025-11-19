@@ -643,7 +643,7 @@ export default function ArtistRoyaltiesPage() {
                         {isExpanded && (
                           <div className="border-t border-slate-200">
                             <EditableRoyaltyTable
-                              royalties={group.displayedRoyalties}
+                              royalties={group.displayedRoyalties || group.royalties}
                               onUpdate={handleUpdateRoyalty}
                               onDelete={handleDeleteRoyalty}
                               isLoading={isSaving}
@@ -663,7 +663,7 @@ export default function ArtistRoyaltiesPage() {
                       variant="outline"
                       className="px-6"
                     >
-                      Load More Records ({royalties.length - displayLimit} remaining)
+                      Load 10 More ({royalties.length - displayLimit} remaining)
                     </Button>
                   </div>
                 )}
