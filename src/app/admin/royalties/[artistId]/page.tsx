@@ -17,6 +17,7 @@ interface QuarterGroup {
   royalties: Royalty[];
   totalNet: number;
   totalGross: number;
+  displayedRoyalties?: Royalty[];
 }
 
 export default function ArtistRoyaltiesPage() {
@@ -33,6 +34,7 @@ export default function ArtistRoyaltiesPage() {
   const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
   const [expandedQuarters, setExpandedQuarters] = useState<Set<string>>(new Set());
   const [deleteQuarterConfirm, setDeleteQuarterConfirm] = useState<string | null>(null);
+  const [displayLimit, setDisplayLimit] = useState(10);
 
   // Group royalties by quarter
   const groupByQuarter = (royalties: Royalty[]): QuarterGroup[] => {
@@ -70,7 +72,25 @@ export default function ArtistRoyaltiesPage() {
     });
   };
 
-  const quarterGroups = groupByQuarter(royalties);
+  // Group ALL royalties by quarter (for correct totals)
+  const allQuarterGroups = groupByQuarter(royalties);
+  
+  // Limit which royalties to display (first N records globally)
+  let displayedCount = 0;
+  const quarterGroups = allQuarterGroups.map(group => {
+    const remainingToDisplay = displayLimit - displayedCount;
+    const royaltiesToShow = group.royalties.slice(0, remainingToDisplay);
+    displayedCount += royaltiesToShow.length;
+    
+    return {
+      ...group,
+      // Keep original totals (from all records in quarter)
+      // But limit displayed royalties
+      displayedRoyalties: royaltiesToShow
+    };
+  }).filter(group => group.displayedRoyalties.length > 0);
+  
+  const hasMore = royalties.length > displayLimit;
 
   const toggleQuarter = (key: string) => {
     setExpandedQuarters((prev) => {
@@ -482,9 +502,9 @@ export default function ArtistRoyaltiesPage() {
             <div className="mb-6 flex items-center justify-between gap-4">
               <div className="flex-1 bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <p className="text-sm text-blue-900">
-                  <strong>{royalties.length}</strong> royalty {royalties.length === 1 ? "record" : "records"} organized into{" "}
-                  <strong>{quarterGroups.length}</strong> {quarterGroups.length === 1 ? "quarter" : "quarters"}.
-                  Click any quarter to expand and view records. Click any cell to edit values.
+                  Showing first <strong>{Math.min(displayLimit, royalties.length)}</strong> of <strong>{royalties.length}</strong> royalty {royalties.length === 1 ? "record" : "records"} organized into{" "}
+                  <strong>{allQuarterGroups.length}</strong> {allQuarterGroups.length === 1 ? "quarter" : "quarters"}.
+                  <strong>Quarter totals show all records</strong>, but only displaying first {displayLimit}. Click any quarter to expand.
                 </p>
               </div>
               <div className="flex gap-2">
@@ -537,6 +557,9 @@ export default function ArtistRoyaltiesPage() {
                               </h3>
                               <p className="text-sm text-slate-600">
                                 {group.royalties.length} {group.royalties.length === 1 ? "record" : "records"}
+                                {group.displayedRoyalties && group.displayedRoyalties.length < group.royalties.length && (
+                                  <span className="text-blue-600"> (showing {group.displayedRoyalties.length})</span>
+                                )}
                               </p>
                             </div>
                           </button>
@@ -556,7 +579,11 @@ export default function ArtistRoyaltiesPage() {
                             <Button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                exportQuarterToCSV(key, group.royalties);
+                                // Export ALL royalties in this quarter, not just displayed ones
+                                const fullGroup = allQuarterGroups.find(g => `${g.year}-${g.quarter}` === key);
+                                if (fullGroup) {
+                                  exportQuarterToCSV(key, fullGroup.royalties);
+                                }
                               }}
                               variant="ghost"
                               size="sm"
@@ -589,7 +616,13 @@ export default function ArtistRoyaltiesPage() {
                             </p>
                             <div className="flex gap-2">
                               <button
-                                onClick={() => handleDeleteQuarter(key, group.royalties.map(r => r.id))}
+                                onClick={() => {
+                                  // Delete ALL royalties in this quarter
+                                  const fullGroup = allQuarterGroups.find(g => `${g.year}-${g.quarter}` === key);
+                                  if (fullGroup) {
+                                    handleDeleteQuarter(key, fullGroup.royalties.map(r => r.id));
+                                  }
+                                }}
                                 disabled={isSaving}
                                 className="px-3 py-1.5 bg-red-600 text-white text-sm rounded font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
                               >
@@ -610,7 +643,7 @@ export default function ArtistRoyaltiesPage() {
                         {isExpanded && (
                           <div className="border-t border-slate-200">
                             <EditableRoyaltyTable
-                              royalties={group.royalties}
+                              royalties={group.displayedRoyalties}
                               onUpdate={handleUpdateRoyalty}
                               onDelete={handleDeleteRoyalty}
                               isLoading={isSaving}
@@ -621,6 +654,19 @@ export default function ArtistRoyaltiesPage() {
                     );
                   })}
                 </div>
+
+                {/* Load More Button */}
+                {hasMore && (
+                  <div className="mt-6 flex justify-center">
+                    <Button
+                      onClick={() => setDisplayLimit(prev => prev + 10)}
+                      variant="outline"
+                      className="px-6"
+                    >
+                      Load More Records ({royalties.length - displayLimit} remaining)
+                    </Button>
+                  </div>
+                )}
 
                 {/* Delete All Button */}
                 <div className="mt-8 flex justify-end">
