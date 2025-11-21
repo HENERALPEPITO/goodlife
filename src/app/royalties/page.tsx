@@ -280,6 +280,7 @@ export default function RoyaltiesPage() {
   // Filter State
   const [searchQuery, setSearchQuery] = useState("");
   const [yearFilter, setYearFilter] = useState<string>("all");
+  const [displayLimit, setDisplayLimit] = useState(10);
 
   // Redirect admins - only artists can view royalties
   useEffect(() => {
@@ -522,12 +523,14 @@ export default function RoyaltiesPage() {
     return quarterData.get(quarterKey) || [];
   };
 
-  const quarterRecords = getQuarterRecords();
+  const allQuarterRecords = getQuarterRecords();
+  const quarterRecords = allQuarterRecords.slice(0, displayLimit);
+  const hasMoreRecords = allQuarterRecords.length > displayLimit;
   
   // Calculate analytics (must be called unconditionally before any early returns)
   const analytics = useMemo(() => {
-    if (viewMode === "detail" && quarterRecords.length > 0) {
-      return calculateAnalytics(quarterRecords, selectedQuarter);
+    if (viewMode === "detail" && allQuarterRecords.length > 0) {
+      return calculateAnalytics(allQuarterRecords, selectedQuarter);
     }
     // Return empty analytics when not in detail view
     return {
@@ -536,11 +539,12 @@ export default function RoyaltiesPage() {
       revenueByTerritory: [],
       monthlyRevenue: [],
     };
-  }, [quarterRecords, selectedQuarter, viewMode]);
+  }, [allQuarterRecords, selectedQuarter, viewMode]);
 
   const handleQuarterClick = (quarter: Quarter) => {
     setSelectedQuarter(quarter);
     setViewMode("detail");
+    setDisplayLimit(10); // Reset to 10 records when switching quarters
   };
 
   const handleBackToQuarters = () => {
@@ -1021,6 +1025,26 @@ export default function RoyaltiesPage() {
                 </tbody>
               </table>
           </div>
+          
+          {/* Info and Load More */}
+          {allQuarterRecords.length > 0 && (
+            <div className="px-4 py-3 bg-gray-50 border-t border-gray-200">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-600">
+                  Showing {Math.min(displayLimit, allQuarterRecords.length)} of {allQuarterRecords.length} records
+                </span>
+                {hasMoreRecords && (
+                  <Button
+                    onClick={() => setDisplayLimit(prev => prev + 10)}
+                    variant="outline"
+                    size="sm"
+                  >
+                    Load 10 More ({allQuarterRecords.length - displayLimit} remaining)
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Analytics Dashboard - Premium Green Theme */}
