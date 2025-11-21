@@ -9,7 +9,7 @@ export default function LayoutWrapper({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   
   // Pages that should not show navigation
-  const isAuthPage = pathname === "/login" || pathname === "/signup";
+  const isAuthPage = pathname === "/login" || pathname === "/signup" || pathname === "/forgot-password" || pathname === "/reset-password";
 
   if (isAuthPage) {
     // Return children without any navigation for auth pages
