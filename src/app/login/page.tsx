@@ -3,6 +3,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { useState } from "react";
 import { ArrowRight } from "lucide-react";
+import Image from "next/image";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -38,6 +39,18 @@ export default function LoginPage() {
       {/* Left Side - Login Form */}
       <div className="w-full lg:w-2/5 bg-white flex items-center justify-center p-6 lg:p-8 min-h-[50vh] lg:min-h-screen">
         <div className="w-full max-w-md">
+          {/* Logo */}
+          <div className="flex justify-center mb-8">
+            <Image
+              src="/logo.png"
+              alt="Good Life Music Logo"
+              width={120}
+              height={120}
+              className="w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 object-contain"
+              priority
+            />
+          </div>
+
           <form onSubmit={onSubmit} className="space-y-5">
             {/* Username Input */}
             <div>
@@ -98,6 +111,7 @@ export default function LoginPage() {
             <div className="text-right pt-1">
               <button
                 type="button"
+                onClick={() => router.push("/forgot-password")}
                 className="text-xs text-gray-500 hover:text-gray-900 hover:underline transition-colors"
               >
                 Forgot Password?
@@ -111,13 +125,13 @@ export default function LoginPage() {
       <div className="w-full lg:w-3/5 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-8 lg:p-12 min-h-[50vh] lg:min-h-screen">
         <div className="text-center px-4 lg:px-12">
           {/* Main Title */}
-          <h1 className="text-5xl sm:text-6xl lg:text-7xl xl:text-8xl font-bold text-white mb-4 lg:mb-5 tracking-tight leading-none">
-            GOOD LIFE MUSIC
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl xl:text-6xl font-bold text-white mb-3 lg:mb-4 tracking-tight leading-none">
+            Good Life Music Client Portal
           </h1>
           
-          {/* Subtitle */}
-          <p className="text-lg sm:text-xl lg:text-2xl xl:text-3xl text-slate-300 font-light tracking-wider">
-            Client Portal
+          {/* Quote */}
+          <p className="text-base sm:text-lg lg:text-xl text-slate-400 font-light italic tracking-wide">
+            "Empowering artists worldwide"
           </p>
         </div>
       </div>

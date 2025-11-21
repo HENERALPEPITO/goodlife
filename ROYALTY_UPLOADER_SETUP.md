@@ -1,5 +1,54 @@
 # Royalty Uploader Setup Guide
 
+## ⚠️ UPDATED: Server-Side CSV Processing
+
+The CSV uploader has been refactored to handle large files (up to 10MB) on the server-side:
+- ✅ No more browser memory crashes
+- ✅ Files uploaded to Supabase Storage first
+- ✅ Processing happens in Next.js API Route
+- ✅ Batched database inserts (500 rows at a time)
+- ✅ Better error handling and progress notifications
+
+## Prerequisites
+
+### 1. Supabase Storage Bucket Setup
+
+**IMPORTANT**: You must create a storage bucket named `royalties` in your Supabase project.
+
+#### Steps to create the bucket:
+1. Go to your Supabase Dashboard
+2. Navigate to **Storage** in the left sidebar
+3. Click **New bucket**
+4. Name it: `royalties`
+5. Set it to **Private** (recommended) or **Public** based on your needs
+6. Click **Create bucket**
+
+#### Storage Policies (if using private bucket):
+```sql
+-- Allow authenticated users to upload CSV files
+create policy "Allow authenticated users to upload"
+on storage.objects for insert
+to authenticated
+with check (bucket_id = 'royalties');
+
+-- Allow service role to download files (for API route)
+create policy "Allow service role to read"
+on storage.objects for select
+to service_role
+using (bucket_id = 'royalties');
+```
+
+### 2. Environment Variables
+
+Make sure your `.env.local` file contains:
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+```
+
+**NOTE**: The `SUPABASE_SERVICE_ROLE_KEY` is required for the API route to bypass RLS.
+
 ## Database Setup
 
 1. **Create the user_profiles table first:**
@@ -79,12 +128,13 @@
 - Logout functionality in the top-right corner
 
 ### Royalty Uploader Page (`/royalty-uploader`)
-- **CSV Upload**: Upload CSV files with royalty data
-- **Data Table**: View all uploaded royalty records
-- **Inline Editing**: Click the edit button to modify any record
-- **Delete Records**: Click the delete button with confirmation modal
+- **CSV Upload**: Upload CSV files with royalty data (up to 10MB)
+- **Server-Side Processing**: Files are processed on the server to handle large datasets
+- **Progress Notifications**: Real-time updates during upload and processing
+- **Artist Selection**: Admins can upload royalties for specific artists
+- **Automatic Track Creation**: Creates tracks if they don't exist
+- **Batched Inserts**: Inserts royalties in batches of 500 for performance
 - **Toast Notifications**: Success/error messages for all operations
-- **User Isolation**: Each user can only see and manage their own data
 
 ### CSV Format
 The CSV should include these columns:
@@ -131,38 +181,93 @@ The CSV should include these columns:
 ```
 src/
 ├── app/
+│   ├── api/
+│   │   └── royalties/
+│   │       └── ingest/
+│   │           └── route.ts    # NEW: Server-side CSV ingestion API
 │   ├── login/
-│   │   └── page.tsx          # Login page
+│   │   └── page.tsx            # Login page
 │   └── royalty-uploader/
-│       └── page.tsx          # Main royalty uploader page
+│       └── page.tsx            # UPDATED: Frontend uploader (no client parsing)
 ├── components/
-│   └── ui/                   # Shadcn UI components
+│   └── ui/                     # Shadcn UI components
 │       ├── button.tsx
 │       ├── input.tsx
 │       ├── toast.tsx
-│       ├── dialog.tsx
 │       └── ...
 └── lib/
-    ├── auth.tsx             # Authentication context
-    ├── supabaseClient.ts    # Supabase client
-    └── utils.ts             # Utility functions
+    ├── auth.tsx                # Authentication context
+    ├── supabaseClient.ts       # Supabase client (browser)
+    ├── supabaseAdmin.ts        # Supabase admin client (server)
+    └── utils.ts                # Utility functions
 ```
 
-## Dependencies Added
+## Dependencies
 
-- `@radix-ui/react-toast` - Toast notifications
-- `@radix-ui/react-dialog` - Modal dialogs
-- `@radix-ui/react-dropdown-menu` - Dropdown menus
-- `@radix-ui/react-label` - Form labels
-- `@radix-ui/react-slot` - Slot component
-- `class-variance-authority` - CSS class variants
-- `tailwind-merge` - Tailwind class merging
-- `papaparse` - CSV parsing (already installed)
+- `papaparse` - CSV parsing (client & server)
+- `@types/papaparse` - TypeScript types for PapaParse
+- `@supabase/supabase-js` - Supabase client
+- `@supabase/ssr` - Supabase server-side utilities
+- All existing UI dependencies (Radix UI, etc.)
 
-## Environment Variables
+No new dependencies needed - everything is already installed!
 
-Make sure your `.env.local` file contains:
-```
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-```
+## How It Works
+
+### Upload Flow:
+1. **Frontend** (`page.tsx`):
+   - User selects artist
+   - User selects CSV file (validated: max 10MB)
+   - File is uploaded to Supabase Storage bucket `royalties`
+   - Frontend calls `/api/royalties/ingest` with `artistId` and `filePath`
+
+2. **API Route** (`/api/royalties/ingest/route.ts`):
+   - Downloads CSV from Supabase Storage
+   - Parses CSV using PapaParse (server-side)
+   - Normalizes data fields
+   - Creates tracks if they don't exist (unique by `artist_id` + `song_title`)
+   - Inserts royalties in batches of 500
+   - Returns success response with count
+
+3. **Frontend Response**:
+   - Shows success toast with number of records inserted
+   - Resets form
+   - Clears file selection
+
+### Error Handling:
+- File validation (type, size)
+- Storage upload errors
+- CSV parsing errors
+- Database insertion errors
+- All errors shown via toast notifications
+
+## Testing
+
+### Test with a large CSV:
+1. Create a CSV with 5,000+ rows
+2. Upload through the interface
+3. Monitor the progress notifications
+4. Verify all records are inserted successfully
+
+### Expected behavior:
+- File uploads to storage quickly
+- "Processing CSV on server..." message appears
+- Success toast shows total records inserted
+- No browser memory issues or crashes
+
+## Troubleshooting
+
+### Error: "Failed to download file from storage"
+- ✅ Check that the `royalties` bucket exists
+- ✅ Check storage policies allow service role access
+- ✅ Verify `SUPABASE_SERVICE_ROLE_KEY` is set correctly
+
+### Error: "Failed to upload file"
+- ✅ Check that the `royalties` bucket exists
+- ✅ Check storage policies allow authenticated user uploads
+- ✅ Verify file is a valid CSV and under 10MB
+
+### Error: "Failed to create track"
+- ✅ Check `tracks` table exists and has correct columns
+- ✅ Verify `artist_id` is valid
+- ✅ Check database policies allow inserts

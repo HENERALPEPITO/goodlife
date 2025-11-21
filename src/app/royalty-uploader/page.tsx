@@ -7,22 +7,9 @@ import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
-import Papa from "papaparse";
-import { Upload, AlertCircle } from "lucide-react";
+import { Upload, AlertCircle, FileText } from "lucide-react";
 import type { UserProfile } from "@/types";
 
-interface ParsedRoyaltyData {
-  songTitle: string;
-  iswc: string;
-  composer: string;
-  date: string;
-  territory: string;
-  source: string;
-  usageCount: number;
-  gross: number;
-  adminPercent: number;
-  net: number;
-}
 
 export default function RoyaltyUploaderPage() {
   const { user, loading } = useAuth();
@@ -33,9 +20,10 @@ export default function RoyaltyUploaderPage() {
   
   const [artists, setArtists] = useState<Array<{ id: string; email: string; name: string }>>([]);
   const [selectedArtist, setSelectedArtist] = useState<string>("");
-  const [parsedData, setParsedData] = useState<ParsedRoyaltyData[]>([]);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [loadingArtists, setLoadingArtists] = useState(true);
+  const [uploadProgress, setUploadProgress] = useState<string>("");
 
   useEffect(() => {
     setMounted(true);
@@ -84,73 +72,38 @@ export default function RoyaltyUploaderPage() {
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      setSelectedFile(null);
+      return;
+    }
 
-    Papa.parse(file, {
-        header: true, 
-        skipEmptyLines: true,
-      complete: (results) => {
-        try {
-          // Debug: Log available column names from first row
-          if (results.data && results.data.length > 0) {
-            const firstRow = results.data[0] as Record<string, string>;
-            console.log("📋 Available CSV columns:", Object.keys(firstRow));
-          }
+    // Validate file type
+    if (!file.name.endsWith('.csv')) {
+      toast({
+        title: "Invalid File",
+        description: "Please upload a CSV file",
+        variant: "destructive",
+      });
+      setSelectedFile(null);
+      return;
+    }
 
-          // Helper function to get column value with multiple possible names (case-insensitive)
-          const getColumn = (row: Record<string, string>, possibleNames: string[]) => {
-            // First try exact match
-            for (const name of possibleNames) {
-              if (row[name] !== undefined && row[name] !== null && row[name] !== "") {
-                return row[name];
-              }
-            }
-            // Then try case-insensitive match
-            const rowKeys = Object.keys(row);
-            for (const name of possibleNames) {
-              const foundKey = rowKeys.find(key => key.toLowerCase() === name.toLowerCase());
-              if (foundKey && row[foundKey] !== undefined && row[foundKey] !== null && row[foundKey] !== "") {
-                return row[foundKey];
-              }
-            }
-            return "";
-          };
+    // Validate file size (10MB limit)
+    const maxSize = 10 * 1024 * 1024; // 10MB in bytes
+    if (file.size > maxSize) {
+      toast({
+        title: "File Too Large",
+        description: "File size must be less than 10MB",
+        variant: "destructive",
+      });
+      setSelectedFile(null);
+      return;
+    }
 
-          const parsed = (results.data as Record<string, string>[]).map((row) => ({
-            songTitle: getColumn(row, ["Song Title", "song title", "Song Title", "title", "Title"]) || "",
-            iswc: getColumn(row, ["ISWC", "iswc", "Iswc", "ISWC Code", "ISWC Code"]) || "",
-            composer: getColumn(row, ["Composer", "composer", "Composer Name", "Composer"]) || "",
-            date: getColumn(row, ["Date", "date", "Broadcast Date", "broadcast_date"]) || "",
-            territory: getColumn(row, ["Territory", "territory"]) || "",
-            source: getColumn(row, ["Source", "source", "Platform", "platform", "Exploitation Source"]) || "",
-            usageCount: parseInt(getColumn(row, ["Usage Count", "usage count", "Usage Cou", "Usage", "usage"]) || "0") || 0,
-            gross: parseFloat(getColumn(row, ["Gross", "gross", "Gross Amount", "Gross"]) || "0") || 0,
-            adminPercent: parseFloat(getColumn(row, ["Admin %", "admin %", "Admin %", "Admin Percent", "Admin %"]) || "0") || 0,
-            net: parseFloat(getColumn(row, ["Net", "net", "Net Amount", "Net"]) || "0") || 0,
-          }));
-
-          setParsedData(parsed);
-          toast({
-            title: "CSV Parsed",
-            description: `Successfully parsed ${parsed.length} rows`,
-          });
-        } catch (error) {
-          console.error("Error parsing CSV:", error);
-          toast({
-            title: "Parse Error",
-            description: "Failed to parse CSV file. Check the format.",
-            variant: "destructive",
-          });
-        }
-      },
-      error: (error) => {
-        console.error("Papa parse error:", error);
-        toast({
-          title: "Parse Error",
-          description: "Failed to read CSV file",
-          variant: "destructive",
-        });
-      },
+    setSelectedFile(file);
+    toast({
+      title: "File Selected",
+      description: `${file.name} (${(file.size / 1024).toFixed(2)} KB)`,
     });
   };
 
@@ -164,118 +117,77 @@ export default function RoyaltyUploaderPage() {
       return;
     }
 
-    if (parsedData.length === 0) {
+    if (!selectedFile) {
       toast({
-        title: "No Data",
-        description: "Please upload a CSV file first",
+        title: "No File Selected",
+        description: "Please select a CSV file first",
         variant: "destructive",
       });
       return;
     }
 
     setUploading(true);
+    setUploadProgress("Uploading file to storage...");
 
     try {
-      // Group by song title to create/find tracks
-      const tracksByTitle = new Map<string, string>();
+      // Step 1: Upload CSV file to Supabase Storage
+      const timestamp = Date.now();
+      const fileName = `uploads/${timestamp}-${selectedFile.name}`;
 
-      for (const row of parsedData) {
-        // Check if track exists or create new one
-        let trackId: string;
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from("royalties")
+        .upload(fileName, selectedFile, {
+          cacheControl: "3600",
+          upsert: false,
+        });
 
-        const { data: existingTrack } = await supabase
-          .from("tracks")
-          .select("id")
-          .eq("song_title", row.songTitle)
-          .eq("artist_id", selectedArtist)
-          .maybeSingle();
-
-        if (existingTrack) {
-          trackId = existingTrack.id;
-        } else {
-          // Create new track
-          const trackData: any = {
-            artist_id: selectedArtist,
-            song_title: row.songTitle || "Unknown",
-            artist_name: "", // Will be populated from artist record
-            split: "100%",
-            uploaded_by: user.id,
-          };
-          
-          // Only include composer_name and isrc if they have values
-          if (row.composer && row.composer.trim() !== "") {
-            trackData.composer_name = row.composer;
-          }
-          
-          if (row.iswc && row.iswc.trim() !== "") {
-            trackData.isrc = row.iswc;
-          }
-          
-          // If title column exists, populate it too (for backward compatibility)
-          if (row.songTitle) {
-            trackData.title = row.songTitle;
-          }
-
-          const { data: newTrack, error: trackError } = await supabase
-            .from("tracks")
-            .insert(trackData)
-            .select()
-            .single();
-
-          if (trackError) {
-            console.error("Track creation error:", trackError);
-            throw trackError;
-          }
-          trackId = newTrack.id;
-        }
-
-        tracksByTitle.set(row.songTitle, trackId);
+      if (uploadError) {
+        console.error("Storage upload error:", uploadError);
+        throw new Error(`Failed to upload file: ${uploadError.message}`);
       }
 
-      // Now insert royalties
-      const royaltiesToInsert = parsedData.map((row) => ({
-        track_id: tracksByTitle.get(row.songTitle),
-        artist_id: selectedArtist,
-        usage_count: row.usageCount,
-        gross_amount: row.gross,
-        admin_percent: row.adminPercent,
-        net_amount: row.net,
-        broadcast_date: row.date || null,
-        exploitation_source_name: row.source,
-        territory: row.territory,
-      }));
+      console.log("File uploaded to storage:", uploadData.path);
+      setUploadProgress("Processing CSV on server...");
 
-      const { error: royaltiesError } = await supabase
-        .from("royalties")
-        .insert(royaltiesToInsert);
+      // Step 2: Call API route to process CSV
+      const response = await fetch("/api/royalties/ingest", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          artistId: selectedArtist,
+          filePath: uploadData.path,
+        }),
+      });
 
-      if (royaltiesError) throw royaltiesError;
+      const result = await response.json();
 
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || result.details || "Failed to process CSV");
+      }
+
+      // Step 3: Success!
       toast({
         title: "Upload Successful",
-        description: `Successfully uploaded ${parsedData.length} royalty records`,
+        description: `Successfully uploaded and processed ${result.inserted} royalty records`,
       });
 
       // Reset form
-      setParsedData([]);
+      setSelectedFile(null);
       setSelectedArtist("");
+      setUploadProgress("");
       const fileInput = document.getElementById("csv-file-input") as HTMLInputElement;
       if (fileInput) fileInput.value = "";
     } catch (error: any) {
       console.error("Upload error:", error);
-      console.error("Error details:", {
-        message: error?.message,
-        code: error?.code,
-        details: error?.details,
-        hint: error?.hint,
-      });
       
-      const errorMessage = error?.message || "Unknown error occurred";
       toast({
         title: "Upload Failed",
-        description: errorMessage,
+        description: error?.message || "Unknown error occurred",
         variant: "destructive",
       });
+      setUploadProgress("");
     } finally {
       setUploading(false);
     }
@@ -388,87 +300,53 @@ export default function RoyaltyUploaderPage() {
         </div>
       </section>
 
-      {/* Preview */}
-      {parsedData.length > 0 && (
+      {/* File Selected and Upload Button */}
+      {selectedFile && (
         <section 
-          className="rounded-lg border overflow-hidden transition-colors"
+          className="rounded-lg border p-6 transition-colors"
           style={{
             backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
             borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
           }}
         >
-          <div 
-            className="px-6 py-4 border-b flex items-center justify-between transition-colors"
-            style={{
-              borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
-            }}
-          >
-            <h2 className="text-lg font-semibold transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>Preview ({parsedData.length} rows)</h2>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <FileText className="h-8 w-8 transition-colors" style={{ color: '#3B82F6' }} />
+              <div>
+                <h3 className="font-semibold transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>
+                  {selectedFile.name}
+                </h3>
+                <p className="text-sm transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
+                  {(selectedFile.size / 1024).toFixed(2)} KB
+                </p>
+              </div>
+            </div>
+            
             <Button
               onClick={handleUpload}
               disabled={uploading || !selectedArtist}
               className="bg-green-600 hover:bg-green-700 text-white"
             >
               {uploading ? (
-                <>Uploading...</>
+                <>Processing...</>
               ) : (
                 <>
                   <Upload className="h-4 w-4 mr-2" />
-                  Upload to Database
+                  Upload & Process
                 </>
               )}
             </Button>
           </div>
-          
-            <div className="overflow-x-auto">
-            <table className="min-w-full divide-y transition-colors">
-              <thead 
-                className="transition-colors"
-                style={{
-                  backgroundColor: isDark ? 'rgba(31, 41, 55, 0.5)' : '#F9FAFB',
-                }}
-              >
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Song Title</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>ISWC</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Composer</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Date</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Territory</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Source</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Usage</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Gross</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Admin %</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Net</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y transition-colors" style={{ borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)' }}>
-                {parsedData.slice(0, 10).map((row, idx) => (
-                  <tr key={idx} className="transition-colors">
-                    <td className="px-4 py-3 text-sm transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>{row.songTitle}</td>
-                    <td className="px-4 py-3 text-sm transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>{row.iswc}</td>
-                    <td className="px-4 py-3 text-sm transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>{row.composer}</td>
-                    <td className="px-4 py-3 text-sm transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>{row.date}</td>
-                    <td className="px-4 py-3 text-sm transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>{row.territory}</td>
-                    <td className="px-4 py-3 text-sm transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>{row.source}</td>
-                    <td className="px-4 py-3 text-sm transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>{row.usageCount.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-sm transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>€{row.gross.toFixed(2)}</td>
-                    <td className="px-4 py-3 text-sm transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>{row.adminPercent}%</td>
-                    <td className="px-4 py-3 text-sm font-semibold transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>€{row.net.toFixed(2)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-      </div>
 
-          {parsedData.length > 10 && (
+          {uploadProgress && (
             <div 
-              className="px-6 py-3 text-sm text-center transition-colors"
+              className="mt-4 p-3 rounded transition-colors"
               style={{
-                backgroundColor: isDark ? 'rgba(31, 41, 55, 0.5)' : '#F9FAFB',
-                color: isDark ? '#9CA3AF' : '#6B7280',
+                backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#DBEAFE',
+                color: isDark ? '#DBEAFE' : '#1E40AF',
               }}
             >
-              Showing first 10 of {parsedData.length} rows
+              {uploadProgress}
             </div>
           )}
         </section>
