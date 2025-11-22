@@ -116,7 +116,12 @@ export async function GET(
 
     const { data: royalties, error } = await adminClient
       .from("royalties")
-      .select("*")
+      .select(`
+        *,
+        tracks:track_id (
+          title
+        )
+      `)
       .eq("artist_id", artistId)
       .order("broadcast_date", { ascending: false });
 
@@ -131,7 +136,14 @@ export async function GET(
       );
     }
 
-    return NextResponse.json(royalties || [], { status: 200 });
+    // Transform the response to flatten track title
+    const transformedRoyalties = (royalties || []).map((royalty: any) => ({
+      ...royalty,
+      track_title: royalty.tracks?.title || null,
+      tracks: undefined, // Remove the nested object
+    }));
+
+    return NextResponse.json(transformedRoyalties, { status: 200 });
   } catch (error) {
     console.error("Error in admin royalties artist endpoint:", error);
     return NextResponse.json(

@@ -15,8 +15,8 @@ interface QuarterGroup {
   quarter: string;
   year: number;
   royalties: Royalty[];
-  totalNet: number;
-  totalGross: number;
+  totalNet: string;
+  totalGross: string;
   displayedRoyalties?: Royalty[];
 }
 
@@ -54,15 +54,18 @@ export default function ArtistRoyaltiesPage() {
           quarter: `Q${quarter}`,
           year,
           royalties: [],
-          totalNet: 0,
-          totalGross: 0,
+          totalNet: "0",
+          totalGross: "0",
         });
       }
 
       const group = groups.get(key)!;
       group.royalties.push(royalty);
-      group.totalNet += royalty.net_amount || 0;
-      group.totalGross += royalty.gross_amount || 0;
+      // Use string-based addition to preserve precision
+      const netValue = String(royalty.net_amount || 0);
+      const grossValue = String(royalty.gross_amount || 0);
+      group.totalNet = (parseFloat(group.totalNet) + parseFloat(netValue)).toString();
+      group.totalGross = (parseFloat(group.totalGross) + parseFloat(grossValue)).toString();
     });
 
     // Sort by year and quarter (most recent first)
@@ -567,13 +570,13 @@ export default function ArtistRoyaltiesPage() {
                             <div className="text-right">
                               <p className="text-sm text-slate-600">Gross</p>
                               <p className="text-lg font-semibold text-slate-900">
-                                €{group.totalGross.toFixed(2)}
+                                €{parseFloat(group.totalGross).toFixed(2)}
                               </p>
                             </div>
                             <div className="text-right">
                               <p className="text-sm text-slate-600">Net</p>
                               <p className="text-lg font-semibold text-green-600">
-                                €{group.totalNet.toFixed(2)}
+                                €{parseFloat(group.totalNet).toFixed(2)}
                               </p>
                             </div>
                             <Button
