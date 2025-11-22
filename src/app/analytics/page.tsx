@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import { TrendingUp, Music, DollarSign, Globe } from "lucide-react";
+import { TrendingUp, Music, DollarSign, Globe, X } from "lucide-react";
 
 interface TrackPerformance {
   title: string;
@@ -37,6 +37,7 @@ export default function AnalyticsPage() {
   const [sourceBreakdown, setSourceBreakdown] = useState<SourceData[]>([]);
   const [monthlyRevenue, setMonthlyRevenue] = useState<MonthlyData[]>([]);
   const [loadingData, setLoadingData] = useState(true);
+  const [showAllSourcesModal, setShowAllSourcesModal] = useState(false);
 
   const [stats, setStats] = useState({
     totalRevenue: 0,
@@ -341,34 +342,87 @@ export default function AnalyticsPage() {
           </div>
           <div className="p-6">
             {sourceBreakdown.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={sourceBreakdown as unknown as { [key: string]: string | number }[]}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ source, revenue }) => `${source}: €${Number(revenue).toFixed(2)}`}
-                    outerRadius={100}
-                    fill={GREEN_PALETTE.primary}
-                    dataKey="revenue"
-                    nameKey="source"
-                  >
-                    {sourceBreakdown.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={GREEN_GRADIENT[index % GREEN_GRADIENT.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#FFFFFF',
-                      border: '1px solid #E5E7EB',
-                      borderRadius: '8px',
-                      boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-                    }}
-                    formatter={(value: any) => `€${Number(value).toFixed(2)}`}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
+              <div className="space-y-4">
+                <div className="flex flex-col lg:flex-row gap-6 items-center">
+                  {/* Pie Chart - Left Side */}
+                  <div className="w-full lg:w-1/2 flex justify-center">
+                    <ResponsiveContainer width="100%" height={300}>
+                      <PieChart>
+                        <Pie
+                          data={sourceBreakdown.slice(0, 5) as unknown as { [key: string]: string | number }[]}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          label={false}
+                          outerRadius={100}
+                          fill={GREEN_PALETTE.primary}
+                          dataKey="revenue"
+                          nameKey="source"
+                        >
+                          {sourceBreakdown.slice(0, 5).map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={GREEN_GRADIENT[index % GREEN_GRADIENT.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: '#FFFFFF',
+                            border: '1px solid #E5E7EB',
+                            borderRadius: '8px',
+                            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+                          }}
+                          formatter={(value: any) => `€${Number(value).toFixed(2)}`}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* Legend - Right Side */}
+                  <div className="w-full lg:w-1/2">
+                    <div className="flex flex-col gap-3">
+                      {sourceBreakdown.slice(0, 5).map((item, index) => {
+                        const totalRevenue = sourceBreakdown.reduce((sum, s) => sum + s.revenue, 0);
+                        const percentage = ((item.revenue / totalRevenue) * 100).toFixed(1);
+                        return (
+                          <div 
+                            key={item.source}
+                            className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 transition-colors"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div 
+                                className="w-4 h-4 rounded-full flex-shrink-0"
+                                style={{ backgroundColor: GREEN_GRADIENT[index % GREEN_GRADIENT.length] }}
+                              />
+                              <span className="text-sm font-medium text-gray-700">
+                                {item.source}
+                              </span>
+                            </div>
+                            <div className="flex flex-col items-end">
+                              <span className="text-sm font-semibold text-gray-900">
+                                €{item.revenue.toFixed(2)}
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                {percentage}%
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* See More Button */}
+                {sourceBreakdown.length > 5 && (
+                  <div className="flex justify-center">
+                    <button
+                      onClick={() => setShowAllSourcesModal(true)}
+                      className="px-6 py-2 bg-gradient-to-r from-green-500 to-teal-500 text-white rounded-lg font-medium hover:from-green-600 hover:to-teal-600 transition-all duration-300 shadow-md hover:shadow-lg"
+                    >
+                      See More ({sourceBreakdown.length - 5} more sources)
+                    </button>
+                  </div>
+                )}
+              </div>
             ) : (
               <div className="h-[300px] flex items-center justify-center text-gray-500">
                 No data available
@@ -465,6 +519,101 @@ export default function AnalyticsPage() {
           </div>
         </div>
       </section>
+
+      {/* All Sources Modal */}
+      {showAllSourcesModal && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-fadeIn"
+          onClick={() => setShowAllSourcesModal(false)}
+        >
+          <div 
+            className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden animate-slideUp"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-green-50 to-teal-50">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">All Revenue Sources</h2>
+                <p className="text-sm text-gray-600 mt-1">Complete platform breakdown</p>
+              </div>
+              <button
+                onClick={() => setShowAllSourcesModal(false)}
+                className="p-2 hover:bg-white rounded-lg transition-colors"
+              >
+                <X className="h-6 w-6 text-gray-600" />
+              </button>
+            </div>
+            
+            {/* Modal Content - Scrollable */}
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
+              <div className="space-y-3">
+                {sourceBreakdown.map((item, index) => {
+                  const totalRevenue = sourceBreakdown.reduce((sum, s) => sum + s.revenue, 0);
+                  const percentage = ((item.revenue / totalRevenue) * 100).toFixed(1);
+                  return (
+                    <div 
+                      key={item.source}
+                      className="flex items-center justify-between p-4 rounded-xl border border-gray-200 hover:border-green-300 hover:shadow-md transition-all duration-200 bg-gradient-to-r from-white to-gray-50"
+                    >
+                      <div className="flex items-center gap-4 flex-1">
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-green-100 to-teal-100 text-green-700 font-bold text-sm">
+                          {index + 1}
+                        </div>
+                        <div 
+                          className="w-4 h-4 rounded-full flex-shrink-0 shadow-sm"
+                          style={{ backgroundColor: GREEN_GRADIENT[index % GREEN_GRADIENT.length] }}
+                        />
+                        <span className="text-sm font-semibold text-gray-800">
+                          {item.source}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-6">
+                        <div className="text-right">
+                          <div className="text-sm font-bold text-gray-900">
+                            €{item.revenue.toFixed(2)}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {percentage}% of total
+                          </div>
+                        </div>
+                        <div className="w-16">
+                          <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-gradient-to-r from-green-500 to-teal-500 rounded-full transition-all duration-500"
+                              style={{ width: `${percentage}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Summary Footer */}
+              <div className="mt-6 p-4 bg-gradient-to-r from-green-50 to-teal-50 rounded-xl border border-green-200">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold text-gray-700">Total Revenue</span>
+                  <span className="text-lg font-bold text-green-700">
+                    €{sourceBreakdown.reduce((sum, s) => sum + s.revenue, 0).toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between mt-2">
+                  <span className="text-sm font-semibold text-gray-700">Total Sources</span>
+                  <span className="text-lg font-bold text-teal-700">
+                    {sourceBreakdown.length}
+                  </span>
+                </div>
+              </div>
+            </div>
+            
+            {/* Modal Footer */}
+            <div className="flex justify-end p-6 border-t border-gray-200 bg-gray-50">
+                
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
