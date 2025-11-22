@@ -36,6 +36,9 @@ export interface Royalty {
   paid_status: "unpaid" | "pending" | "paid";
   payment_request_id: string | null;
   created_at: string;
+  // Track metadata (joined from tracks table)
+  isrc: string | null;
+  composer_name: string | null;
 }
 
 export interface PaymentRequest {

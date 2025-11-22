@@ -119,7 +119,9 @@ export async function GET(
       .select(`
         *,
         tracks:track_id (
-          title
+          title,
+          composer_name,
+          isrc
         )
       `)
       .eq("artist_id", artistId)
@@ -136,10 +138,17 @@ export async function GET(
       );
     }
 
-    // Transform the response to flatten track title
+    // Debug: Log first royalty record to see structure
+    if (royalties && royalties.length > 0) {
+      console.log("📊 Sample royalty record:", JSON.stringify(royalties[0], null, 2));
+    }
+
+    // Transform the response to flatten track title and composer
     const transformedRoyalties = (royalties || []).map((royalty: any) => ({
       ...royalty,
       track_title: royalty.tracks?.title || null,
+      composer_name: royalty.tracks?.composer_name || null,
+      isrc: royalty.tracks?.isrc || null,
       tracks: undefined, // Remove the nested object
     }));
 
