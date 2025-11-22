@@ -201,9 +201,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<IngestRes
       exploitation_source_name: row.source,
       territory: row.territory,
     }));
-
-    // Step 6: Insert royalties in batches of 500
-    const BATCH_SIZE = 500;
+    const BATCH_SIZE = 1000;
     let totalInserted = 0;
 
     console.log(`💾 Inserting ${royaltiesToInsert.length} royalty records in batches of ${BATCH_SIZE}...`);
