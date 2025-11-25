@@ -74,9 +74,9 @@ export default function ArtistCatalogAdminPage() {
     const q = search.toLowerCase();
     return tracks.filter(
       (t) =>
-        t.song_title.toLowerCase().includes(q) ||
-        t.composer_name.toLowerCase().includes(q) ||
-        t.isrc.toLowerCase().includes(q)
+        (t.song_title?.toLowerCase() || '').includes(q) ||
+        (t.composer_name?.toLowerCase() || '').includes(q) ||
+        (t.isrc?.toLowerCase() || '').includes(q)
     );
   }, [tracks, search]);
 
@@ -284,45 +284,6 @@ export default function ArtistCatalogAdminPage() {
     </div>
   );
 }
-
-"use client";
-
-import { useEffect, useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { useAuth } from "@/lib/auth";
-import { supabase } from "@/lib/supabaseClient";
-import { useToast } from "@/components/ui/use-toast";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Upload, Search, Trash2, AlertCircle } from "lucide-react";
-import { parseCatalogCsv } from "@/lib/catalogCsv";
-import type { CatalogTrack, CatalogUpload } from "@/types";
-
-export default function ArtistCatalogAdminPage() {
-  const params = useParams<{ artistId: string }>();
-  const artistId = params?.artistId as string;
-  const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
-  const { toast } = useToast();
-
-  const [artistEmail, setArtistEmail] = useState<string>("");
-  const [tracks, setTracks] = useState<CatalogTrack[]>([]);
-  const [uploads, setUploads] = useState<CatalogUpload[]>([]);
-  const [search, setSearch] = useState<string>("");
-  const [loading, setLoading] = useState<boolean>(true);
-  const [file, setFile] = useState<File | null>(null);
-  const [parsedCount, setParsedCount] = useState<number>(0);
-  const [deleteAllOpen, setDeleteAllOpen] = useState<boolean>(false);
-
-  useEffect(() => {
-    if (!authLoading && (!user || user.role !== "admin")) {
-      router.push("/");
-    }
-  }, [user, authLoading, router]);
-
-  useEffect(() => {
-    if (!artistId) return;
     fetchArtist();
     fetchTracks();
     fetchUploads();
@@ -368,9 +329,9 @@ export default function ArtistCatalogAdminPage() {
     const q = search.toLowerCase();
     return tracks.filter(
       (t) =>
-        t.song_title.toLowerCase().includes(q) ||
-        t.composer_name.toLowerCase().includes(q) ||
-        t.isrc.toLowerCase().includes(q)
+        (t.song_title?.toLowerCase() || '').includes(q) ||
+        (t.composer_name?.toLowerCase() || '').includes(q) ||
+        (t.isrc?.toLowerCase() || '').includes(q)
     );
   }, [tracks, search]);
 
