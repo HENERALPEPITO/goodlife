@@ -284,29 +284,6 @@ export default function ArtistCatalogAdminPage() {
     </div>
   );
 }
-  const params = useParams<{ artistId: string }>();
-  const artistId = params?.artistId as string;
-  const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
-  const { toast } = useToast();
-
-  const [artistEmail, setArtistEmail] = useState<string>("");
-  const [tracks, setTracks] = useState<CatalogTrack[]>([]);
-  const [uploads, setUploads] = useState<CatalogUpload[]>([]);
-  const [search, setSearch] = useState<string>("");
-  const [loading, setLoading] = useState<boolean>(true);
-  const [file, setFile] = useState<File | null>(null);
-  const [parsedCount, setParsedCount] = useState<number>(0);
-  const [deleteAllOpen, setDeleteAllOpen] = useState<boolean>(false);
-
-  useEffect(() => {
-    if (!authLoading && (!user || user.role !== "admin")) {
-      router.push("/");
-    }
-  }, [user, authLoading, router]);
-
-  useEffect(() => {
-    if (!artistId) return;
     fetchArtist();
     fetchTracks();
     fetchUploads();
