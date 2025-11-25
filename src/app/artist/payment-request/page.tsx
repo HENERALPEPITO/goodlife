@@ -67,16 +67,22 @@ export default function PaymentRequestPage() {
         return;
       }
 
-      // Call the database function to get unpaid royalties total
-      const { data, error } = await supabase.rpc("get_unpaid_royalties_total", {
-        artist_uuid: artist.id,
-      });
+      // Get unpaid royalties for this artist
+      const { data: royaltiesData, error } = await supabase
+        .from("royalties")
+        .select("net_amount, is_paid")
+        .eq("artist_id", artist.id)
+        .eq("is_paid", false); // Only get unpaid royalties
 
       if (error) {
         console.error("Error fetching balance:", error);
         setBalance(0);
       } else {
-        setBalance(Number(data || 0));
+        // Calculate total from unpaid royalties
+        const total = (royaltiesData || []).reduce((sum, royalty) => {
+          return sum + Number(royalty.net_amount || 0);
+        }, 0);
+        setBalance(total);
       }
     } catch (error) {
       console.error("Error fetching balance:", error);

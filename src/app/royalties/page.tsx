@@ -3,7 +3,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabaseClient";
-import { ArrowLeft, Download, DollarSign, Loader2, AlertCircle, Eye, FileText, Search, Filter, ChevronDown } from "lucide-react";
+import { ArrowLeft, Download, DollarSign, Loader2, AlertCircle, Eye, FileText, Search, Filter, ChevronDown, X } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,9 +35,9 @@ interface RoyaltyRecord {
   source: string;
   territory: string;
   usageCount: number;
-  gross: number;
-  adminPercent: number;
-  net: number;
+  gross: string | number;  // Keep as string for precision
+  adminPercent: string | number;  // Keep as string for precision
+  net: string | number;  // Keep as string for precision
   date: string;
   iswc: string;
   composer: string;
@@ -148,13 +148,22 @@ function formatDateRange(startDate: Date, endDate: Date): string {
   return `${startMonth} ${startDay} - ${endMonth} ${endDay}, ${year}`;
 }
 
+// Helper to convert string | number to number safely
+function toNumber(value: string | number): number {
+  if (typeof value === 'string') {
+    const num = parseFloat(value);
+    return isNaN(num) ? 0 : num;
+  }
+  return value;
+}
+
 // Calculate analytics for a quarter
 function calculateAnalytics(records: RoyaltyRecord[], selectedQuarter?: Quarter | null): AnalyticsData {
   // Top Performing Tracks (top 5 by revenue)
   const trackRevenue = new Map<string, number>();
   records.forEach((r) => {
     const existing = trackRevenue.get(r.songTitle) || 0;
-    trackRevenue.set(r.songTitle, existing + r.net);
+    trackRevenue.set(r.songTitle, existing + toNumber(r.net));
   });
   
   const topTracks = Array.from(trackRevenue.entries())
@@ -166,10 +175,10 @@ function calculateAnalytics(records: RoyaltyRecord[], selectedQuarter?: Quarter 
   const sourceRevenue = new Map<string, number>();
   records.forEach((r) => {
     const existing = sourceRevenue.get(r.source) || 0;
-    sourceRevenue.set(r.source, existing + r.net);
+    sourceRevenue.set(r.source, existing + toNumber(r.net));
   });
   
-  const totalRevenue = records.reduce((sum, r) => sum + r.net, 0);
+  const totalRevenue = records.reduce((sum, r) => sum + toNumber(r.net), 0);
   const revenueBySource = Array.from(sourceRevenue.entries())
     .map(([source, revenue]) => ({
       source,
@@ -182,7 +191,7 @@ function calculateAnalytics(records: RoyaltyRecord[], selectedQuarter?: Quarter 
   const territoryRevenue = new Map<string, number>();
   records.forEach((r) => {
     const existing = territoryRevenue.get(r.territory) || 0;
-    territoryRevenue.set(r.territory, existing + r.net);
+    territoryRevenue.set(r.territory, existing + toNumber(r.net));
   });
   
   const revenueByTerritory = Array.from(territoryRevenue.entries())
@@ -198,7 +207,7 @@ function calculateAnalytics(records: RoyaltyRecord[], selectedQuarter?: Quarter 
       const date = new Date(r.broadcastDate);
       const monthKey = `${monthNames[date.getMonth()]}`;
       const existing = monthRevenue.get(monthKey) || 0;
-      monthRevenue.set(monthKey, existing + r.net);
+      monthRevenue.set(monthKey, existing + toNumber(r.net));
     }
   });
   
@@ -214,7 +223,7 @@ function calculateAnalytics(records: RoyaltyRecord[], selectedQuarter?: Quarter 
   } else if (records.length > 0) {
     // Fallback: determine quarter from first record
     const firstRecord = records.find(r => r.broadcastDate);
-    if (firstRecord) {
+    if (firstRecord && firstRecord.broadcastDate) {
       const firstDate = new Date(firstRecord.broadcastDate);
       const month = firstDate.getMonth(); // 0-11
       const quarter = Math.floor(month / 3); // 0-3
@@ -281,6 +290,9 @@ export default function RoyaltiesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [yearFilter, setYearFilter] = useState<string>("all");
   const [displayLimit, setDisplayLimit] = useState(10);
+  
+  // Analytics Modal State
+  const [showAllSourcesModal, setShowAllSourcesModal] = useState(false);
 
   // Redirect admins - only artists can view royalties
   useEffect(() => {
@@ -290,6 +302,8 @@ export default function RoyaltiesPage() {
   }, [user, router]);
 
   // Payment Request Functions
+  // Fixed fetchBalance function for both payment-request/page.tsx and royalties/page.tsx
+
   const fetchBalance = async () => {
     try {
       if (!user) return;
@@ -306,16 +320,24 @@ export default function RoyaltiesPage() {
         return;
       }
 
-      // Call the database function to get unpaid royalties total
-      const { data, error } = await supabase.rpc("get_unpaid_royalties_total", {
-        artist_uuid: artist.id,
-      });
+      // Get unpaid royalties for this artist
+      // According to schema: royalties has is_paid (boolean), not paid_status
+      // And there's no payment_request_id field in royalties table
+      const { data: royaltiesData, error } = await supabase
+        .from("royalties")
+        .select("net_amount, is_paid")
+        .eq("artist_id", artist.id)
+        .eq("is_paid", false); // Only get unpaid royalties
 
       if (error) {
         console.error("Error fetching balance:", error);
         setBalance(0);
       } else {
-        setBalance(Number(data || 0));
+        // Calculate total from unpaid royalties
+        const total = (royaltiesData || []).reduce((sum, royalty) => {
+          return sum + Number(royalty.net_amount || 0);
+        }, 0);
+        setBalance(total);
       }
     } catch (error) {
       console.error("Error fetching balance:", error);
@@ -323,6 +345,11 @@ export default function RoyaltiesPage() {
     }
   };
 
+// Alternative approach if you want to check for linked payment requests:
+// You would need to add a payment_request_id column to the royalties table,
+// or create a junction table to track which royalties are included in which payment requests.
+
+// For now, the fix above uses the existing is_paid field which should work.
   const checkPendingRequest = async () => {
     try {
       if (!user) return;
@@ -432,8 +459,15 @@ export default function RoyaltiesPage() {
 
     setLoading(true);
     try {
-      // Build query based on role - select all fields from royalties
-      let query = supabase.from("royalties").select("*");
+      // Build query based on role - select all fields from royalties and join with tracks
+      let query = supabase.from("royalties").select(`
+        *,
+        tracks:track_id (
+          title,
+          composer_name,
+          isrc
+        )
+      `);
 
       // If artist, filter by their artist_id
       if (user.role === "artist") {
@@ -469,7 +503,7 @@ export default function RoyaltiesPage() {
       // Transform data to match the table format
       const records: RoyaltyRecord[] = (royalties || [])
         .filter((royalty) => royalty.broadcast_date) // Only include royalties with dates
-        .map((royalty) => {
+        .map((royalty: any) => {
           // Format date
           let dateStr = "N/A";
           if (royalty.broadcast_date) {
@@ -479,16 +513,16 @@ export default function RoyaltiesPage() {
 
           return {
             id: royalty.id,
-            songTitle: royalty.track_title || royalty.song_title || "Unknown",
-            source: royalty.exploitation_source_name || royalty.platform || "Unknown",
+            songTitle: royalty.tracks?.title || "Unknown",
+            source: royalty.exploitation_source_name || "Unknown",
             territory: royalty.territory || "Unknown",
             usageCount: royalty.usage_count || 0,
-            gross: Number(royalty.gross_amount || 0),
-            adminPercent: Number(royalty.admin_percent || royalty.administration_percent || 0),
-            net: Number(royalty.net_amount || 0),
+            gross: royalty.gross_amount || "0",  // Keep as string for precision
+            adminPercent: royalty.admin_percent || "0",  // Keep as string for precision
+            net: royalty.net_amount || "0",  // Keep as string for precision
             date: dateStr,
-            iswc: royalty.iswc || "—",
-            composer: royalty.song_composers || royalty.composers || "—",
+            iswc: royalty.tracks?.isrc || "—",
+            composer: royalty.tracks?.composer_name || "—",
             broadcastDate: royalty.broadcast_date || null,
           };
         });
@@ -601,9 +635,9 @@ export default function RoyaltiesPage() {
       r.source,
       r.territory,
       r.usageCount.toString(),
-      r.gross.toFixed(2),
-      r.adminPercent.toFixed(1),
-      r.net.toFixed(2),
+      r.gross.toString(),  // Keep full precision
+      r.adminPercent.toString(),  // Keep full precision
+      r.net.toString(),  // Keep full precision
       r.date,
       r.iswc,
       r.composer,
@@ -755,7 +789,7 @@ export default function RoyaltiesPage() {
                     const quarterKey = `${quarter.year}-Q${quarter.quarter}`;
                     const records = quarterData.get(quarterKey) || [];
                     const totalRecords = records.length;
-                    const totalNet = records.reduce((sum, r) => sum + r.net, 0);
+                    const totalNet = records.reduce((sum, r) => sum + toNumber(r.net), 0);
                     const dateRange = formatDateRange(quarter.startDate, quarter.endDate);
 
                     return (
@@ -826,7 +860,7 @@ export default function RoyaltiesPage() {
                   const quarterKey = `${quarter.year}-Q${quarter.quarter}`;
                   const records = quarterData.get(quarterKey) || [];
                   const totalRecords = records.length;
-                  const totalNet = records.reduce((sum, r) => sum + r.net, 0);
+                  const totalNet = records.reduce((sum, r) => sum + toNumber(r.net), 0);
                   const dateRange = formatDateRange(quarter.startDate, quarter.endDate);
 
                   return (
@@ -1010,11 +1044,11 @@ export default function RoyaltiesPage() {
                         <td className="px-3 md:px-4 py-3 text-[#222] whitespace-nowrap">{r.territory}</td>
                         <td className="px-3 md:px-4 py-3 text-[#222] whitespace-nowrap">{r.usageCount.toLocaleString()}</td>
                         <td className="px-3 md:px-4 py-3 text-right text-[#222] font-medium whitespace-nowrap">
-                          €{r.gross.toFixed(2)}
+                          €{r.gross.toString()}
                         </td>
-                        <td className="px-3 md:px-4 py-3 text-[#222] whitespace-nowrap">{r.adminPercent.toFixed(1)}%</td>
+                        <td className="px-3 md:px-4 py-3 text-[#222] whitespace-nowrap">{r.adminPercent.toString()}%</td>
                         <td className="px-3 md:px-4 py-3 text-right text-[#222] font-semibold whitespace-nowrap">
-                          €{r.net.toFixed(2)}
+                          €{r.net.toString()}
                         </td>
                         <td className="px-3 md:px-4 py-3 text-[#222] whitespace-nowrap">{r.date}</td>
                         <td className="px-3 md:px-4 py-3 text-[#222] whitespace-nowrap">{r.iswc}</td>
@@ -1085,7 +1119,7 @@ export default function RoyaltiesPage() {
                             return (
                               <div className="bg-white border-2 border-emerald-200 rounded-xl shadow-xl p-4">
                                 <p className="font-bold text-gray-900 mb-2">{data.title}</p>
-                                <p className="text-sm text-emerald-700 font-semibold">Revenue: €{data.revenue.toFixed(2)}</p>
+                                <p className="text-sm text-emerald-700 font-semibold">Revenue: €{data.revenue.toString()}</p>
                               </div>
                             );
                           }
@@ -1114,41 +1148,90 @@ export default function RoyaltiesPage() {
                   <p className="text-xs text-gray-500 mt-1">Distribution across platforms</p>
                 </div>
                 {analytics.revenueBySource.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={320}>
-                    <PieChart>
-                      <Pie
-                        data={analytics.revenueBySource}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        label={({ percentage }: any) => percentage > 5 ? `${percentage.toFixed(1)}%` : ''}
-                        outerRadius={90}
-                        innerRadius={50}
-                        dataKey="revenue"
-                        stroke="#fff"
-                        strokeWidth={2}
-                      >
-                        {analytics.revenueBySource.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        content={({ active, payload }) => {
-                          if (active && payload && payload.length) {
-                            const data = payload[0].payload;
-                            return (
-                              <div className="bg-white border-2 border-emerald-200 rounded-xl shadow-xl p-4">
-                                <p className="font-bold text-gray-900 mb-1">{data.source}</p>
-                                <p className="text-sm text-emerald-700 font-semibold">Revenue: €{data.revenue.toFixed(2)}</p>
-                                <p className="text-xs text-gray-600 mt-1">Share: {data.percentage.toFixed(1)}%</p>
+                  <div className="flex flex-col lg:flex-row gap-6 items-center">
+                    {/* Pie Chart - Left Side */}
+                    <div className="w-full lg:w-1/2 flex justify-center">
+                      <ResponsiveContainer width="100%" height={320}>
+                        <PieChart>
+                          <Pie
+                            data={analytics.revenueBySource}
+                            cx="50%"
+                            cy="50%"
+                            labelLine={false}
+                            label={false}
+                            outerRadius={100}
+                            innerRadius={60}
+                            dataKey="revenue"
+                            stroke="#fff"
+                            strokeWidth={2}
+                          >
+                            {analytics.revenueBySource.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            content={({ active, payload }) => {
+                              if (active && payload && payload.length) {
+                                const data = payload[0].payload;
+                                return (
+                                  <div className="bg-white border-2 border-emerald-200 rounded-xl shadow-xl p-4">
+                                    <p className="font-bold text-gray-900 mb-1">{data.source}</p>
+                                    <p className="text-sm text-emerald-700 font-semibold">Revenue: €{toNumber(data.revenue).toFixed(2)}</p>
+                                    <p className="text-xs text-gray-600 mt-1">Share: {data.percentage.toFixed(1)}%</p>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    {/* Legend - Right Side */}
+                    <div className="w-full lg:w-1/2">
+                      <div className="flex flex-col gap-3">
+                        {analytics.revenueBySource.slice(0, 5).map((item, index) => {
+                          return (
+                            <div
+                              key={item.source}
+                              className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 transition-colors"
+                            >
+                              <div className="flex items-center gap-3">
+                                <div
+                                  className="w-4 h-4 rounded-full flex-shrink-0"
+                                  style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }}
+                                />
+                                <span className="text-sm font-medium text-gray-700">
+                                  {item.source}
+                                </span>
                               </div>
-                            );
-                          }
-                          return null;
-                        }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
+                              <div className="flex flex-col items-end">
+                                <span className="text-sm font-semibold text-gray-900">
+                                  €{toNumber(item.revenue).toFixed(2)}
+                                </span>
+                                <span className="text-xs text-gray-500">
+                                  {item.percentage.toFixed(1)}%
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      
+                      {/* See More Button */}
+                      {analytics.revenueBySource.length > 5 && (
+                        <div className="flex justify-center mt-4">
+                          <button
+                            onClick={() => setShowAllSourcesModal(true)}
+                            className="px-6 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-lg font-medium hover:from-emerald-600 hover:to-teal-600 transition-all duration-300 shadow-md hover:shadow-lg"
+                          >
+                            See More ({analytics.revenueBySource.length - 5} more sources)
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 ) : (
                   <div className="h-[320px] flex flex-col items-center justify-center text-gray-400">
                     <div className="text-4xl mb-2">📊</div>
@@ -1182,7 +1265,7 @@ export default function RoyaltiesPage() {
                             return (
                               <div className="bg-white border-2 border-emerald-200 rounded-xl shadow-xl p-4">
                                 <p className="font-bold text-gray-900 mb-2">{data.territory}</p>
-                                <p className="text-sm text-emerald-700 font-semibold">Revenue: €{data.revenue.toFixed(2)}</p>
+                                <p className="text-sm text-emerald-700 font-semibold">Revenue: €{data.revenue.toString()}</p>
                               </div>
                             );
                           }
@@ -1223,7 +1306,7 @@ export default function RoyaltiesPage() {
                             return (
                               <div className="bg-white border-2 border-emerald-200 rounded-xl shadow-xl p-4">
                                 <p className="font-bold text-gray-900 mb-2">{data.month}</p>
-                                <p className="text-sm text-emerald-700 font-semibold">Revenue: €{data.revenue.toFixed(2)}</p>
+                                <p className="text-sm text-emerald-700 font-semibold">Revenue: €{data.revenue.toString()}</p>
                               </div>
                             );
                           }
@@ -1304,6 +1387,99 @@ export default function RoyaltiesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* All Sources Modal */}
+      {showAllSourcesModal && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-fadeIn"
+          onClick={() => setShowAllSourcesModal(false)}
+        >
+          <div 
+            className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden animate-slideUp"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-emerald-50 to-teal-50">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">All Revenue Sources</h2>
+                <p className="text-sm text-gray-600 mt-1">Complete platform breakdown</p>
+              </div>
+              <button
+                onClick={() => setShowAllSourcesModal(false)}
+                className="p-2 hover:bg-white rounded-lg transition-colors"
+              >
+                <X className="h-6 w-6 text-gray-600" />
+              </button>
+            </div>
+            
+            {/* Modal Content - Scrollable */}
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
+              <div className="space-y-3">
+                {analytics.revenueBySource.map((item, index) => {
+                  return (
+                    <div 
+                      key={item.source}
+                      className="flex items-center justify-between p-4 rounded-xl border border-gray-200 hover:border-emerald-300 hover:shadow-md transition-all duration-200 bg-gradient-to-r from-white to-gray-50"
+                    >
+                      <div className="flex items-center gap-4 flex-1">
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-emerald-100 to-teal-100 text-emerald-700 font-bold text-sm">
+                          {index + 1}
+                        </div>
+                        <div 
+                          className="w-4 h-4 rounded-full flex-shrink-0 shadow-sm"
+                          style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }}
+                        />
+                        <span className="text-sm font-semibold text-gray-800">
+                          {item.source}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-6">
+                        <div className="text-right">
+                          <div className="text-sm font-bold text-gray-900">
+                            €{item.revenue.toString()}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {item.percentage.toFixed(1)}% of total
+                          </div>
+                        </div>
+                        <div className="w-16">
+                          <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full transition-all duration-500"
+                              style={{ width: `${item.percentage}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Summary Footer */}
+              <div className="mt-6 p-4 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl border border-emerald-200">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold text-gray-700">Total Revenue</span>
+                  <span className="text-lg font-bold text-emerald-700">
+                    €{analytics.revenueBySource.reduce((sum, s) => sum + s.revenue, 0).toString()}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between mt-2">
+                  <span className="text-sm font-semibold text-gray-700">Total Sources</span>
+                  <span className="text-lg font-bold text-teal-700">
+                    {analytics.revenueBySource.length}
+                  </span>
+                </div>
+              </div>
+            </div>
+            
+            {/* Modal Footer */}
+            <div className="flex justify-end p-6 border-t border-gray-200 bg-gray-50">
+             
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

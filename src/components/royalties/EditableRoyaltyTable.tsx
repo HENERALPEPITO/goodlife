@@ -87,14 +87,20 @@ export function EditableRoyaltyTable({
     }
   };
 
-  const formatCurrency = (value: number | null | undefined) => {
-    if (value === null || value === undefined) return "—";
-    return `€${Number(value).toFixed(2)}`;
+  const formatCurrency = (value: number | string | null | undefined) => {
+    if (value === null || value === undefined || value === "") return "—";
+    // Keep exact precision - use toString() to show full value
+    const numValue = typeof value === "string" ? parseFloat(value) : value;
+    if (isNaN(numValue)) return "—";
+    return `€${numValue.toString()}`;  // Shows exact value like €0.0000178
   };
 
-  const formatPercent = (value: number | null | undefined) => {
-    if (value === null || value === undefined) return "—";
-    return `${Number(value).toFixed(1)}%`;
+  const formatPercent = (value: number | string | null | undefined) => {
+    if (value === null || value === undefined || value === "") return "—";
+    // Keep exact precision - use toString() to show full value
+    const numValue = typeof value === "string" ? parseFloat(value) : value;
+    if (isNaN(numValue)) return "—";
+    return `${numValue.toString()}%`;  // Shows exact value like 20% or 15.5%
   };
 
   const formatDate = (date: string | null | undefined) => {
@@ -165,9 +171,9 @@ export function EditableRoyaltyTable({
     // Format display value based on field type
     let displayValue: string = String(value);
     if (field === "gross_amount" || field === "net_amount") {
-      displayValue = formatCurrency(typeof value === "number" ? value : null);
+      displayValue = formatCurrency(value);
     } else if (field === "admin_percent") {
-      displayValue = formatPercent(typeof value === "number" ? value : null);
+      displayValue = formatPercent(value);
     } else if (field === "broadcast_date") {
       displayValue = formatDate(typeof value === "string" ? value : null);
     } else if (value === null || value === undefined) {
@@ -287,10 +293,10 @@ export function EditableRoyaltyTable({
                 />
               </td>
               <td className="px-4 py-3 text-slate-700 text-xs">
-                {royalty.track_id || "—"}
+                {royalty.isrc || "—"}
               </td>
-              <td className="px-4 py-3 text-slate-700 text-xs">
-                {royalty.payment_request_id || "—"}
+              <td className="px-4 py-3 text-slate-700">
+                {royalty.composer_name || "—"}
               </td>
               <td className="px-4 py-3 text-center">
                 <button

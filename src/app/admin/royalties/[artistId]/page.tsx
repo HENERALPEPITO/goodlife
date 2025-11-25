@@ -15,8 +15,8 @@ interface QuarterGroup {
   quarter: string;
   year: number;
   royalties: Royalty[];
-  totalNet: number;
-  totalGross: number;
+  totalNet: string;
+  totalGross: string;
   displayedRoyalties?: Royalty[];
 }
 
@@ -54,15 +54,18 @@ export default function ArtistRoyaltiesPage() {
           quarter: `Q${quarter}`,
           year,
           royalties: [],
-          totalNet: 0,
-          totalGross: 0,
+          totalNet: "0",
+          totalGross: "0",
         });
       }
 
       const group = groups.get(key)!;
       group.royalties.push(royalty);
-      group.totalNet += royalty.net_amount || 0;
-      group.totalGross += royalty.gross_amount || 0;
+      // Use string-based addition to preserve precision
+      const netValue = String(royalty.net_amount || 0);
+      const grossValue = String(royalty.gross_amount || 0);
+      group.totalNet = (parseFloat(group.totalNet) + parseFloat(netValue)).toString();
+      group.totalGross = (parseFloat(group.totalGross) + parseFloat(grossValue)).toString();
     });
 
     // Sort by year and quarter (most recent first)
@@ -127,15 +130,15 @@ export default function ArtistRoyaltiesPage() {
       
       return [
         royalty.track_title || "",
-        royalty.track_id || "",
-        royalty.payment_request_id || "",
+        royalty.isrc || "",
+        royalty.composer_name || "",
         date,
         royalty.territory || "",
         royalty.exploitation_source_name || "",
         royalty.usage_count?.toString() || "0",
-        royalty.gross_amount?.toFixed(2) || "0.00",
-        royalty.admin_percent?.toFixed(1) || "0.0",
-        royalty.net_amount?.toFixed(2) || "0.00"
+        String(royalty.gross_amount || "0"),  // Exact precision
+        String(royalty.admin_percent || "0"),  // Exact precision
+        String(royalty.net_amount || "0")  // Exact precision
       ];
     });
 
@@ -230,6 +233,21 @@ export default function ArtistRoyaltiesPage() {
       }
 
       const data = await response.json();
+      
+      // Debug: Log first royalty to verify data structure
+      if (data && data.length > 0) {
+        console.log("📊 Frontend received royalty data. Sample record:", {
+          track_title: data[0].track_title,
+          gross_amount: data[0].gross_amount,
+          net_amount: data[0].net_amount,
+          admin_percent: data[0].admin_percent,
+          composer_name: data[0].composer_name,
+          isrc: data[0].isrc,
+          exploitation_source_name: data[0].exploitation_source_name,
+          territory: data[0].territory,
+        });
+      }
+      
       setRoyalties(data);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to fetch royalties";
@@ -567,13 +585,13 @@ export default function ArtistRoyaltiesPage() {
                             <div className="text-right">
                               <p className="text-sm text-slate-600">Gross</p>
                               <p className="text-lg font-semibold text-slate-900">
-                                €{group.totalGross.toFixed(2)}
+                                €{parseFloat(group.totalGross).toFixed(2)}
                               </p>
                             </div>
                             <div className="text-right">
                               <p className="text-sm text-slate-600">Net</p>
                               <p className="text-lg font-semibold text-green-600">
-                                €{group.totalNet.toFixed(2)}
+                                €{parseFloat(group.totalNet).toFixed(2)}
                               </p>
                             </div>
                             <Button
