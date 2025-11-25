@@ -74,9 +74,9 @@ export default function ArtistCatalogAdminPage() {
     const q = search.toLowerCase();
     return tracks.filter(
       (t) =>
-        t.song_title.toLowerCase().includes(q) ||
-        t.composer_name.toLowerCase().includes(q) ||
-        t.isrc.toLowerCase().includes(q)
+        (t.song_title?.toLowerCase() || '').includes(q) ||
+        (t.composer_name?.toLowerCase() || '').includes(q) ||
+        (t.isrc?.toLowerCase() || '').includes(q)
     );
   }, [tracks, search]);
 
@@ -284,22 +284,6 @@ export default function ArtistCatalogAdminPage() {
     </div>
   );
 }
-
-"use client";
-
-import { useEffect, useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { useAuth } from "@/lib/auth";
-import { supabase } from "@/lib/supabaseClient";
-import { useToast } from "@/components/ui/use-toast";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Upload, Search, Trash2, AlertCircle } from "lucide-react";
-import { parseCatalogCsv } from "@/lib/catalogCsv";
-import type { CatalogTrack, CatalogUpload } from "@/types";
-
-export default function ArtistCatalogAdminPage() {
   const params = useParams<{ artistId: string }>();
   const artistId = params?.artistId as string;
   const router = useRouter();
@@ -368,9 +352,9 @@ export default function ArtistCatalogAdminPage() {
     const q = search.toLowerCase();
     return tracks.filter(
       (t) =>
-        t.song_title.toLowerCase().includes(q) ||
-        t.composer_name.toLowerCase().includes(q) ||
-        t.isrc.toLowerCase().includes(q)
+        (t.song_title?.toLowerCase() || '').includes(q) ||
+        (t.composer_name?.toLowerCase() || '').includes(q) ||
+        (t.isrc?.toLowerCase() || '').includes(q)
     );
   }, [tracks, search]);
 
