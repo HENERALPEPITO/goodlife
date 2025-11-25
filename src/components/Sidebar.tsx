@@ -53,7 +53,7 @@ export default function Sidebar() {
     <aside 
       className="hidden md:flex flex-col w-64 fixed h-screen transition-colors shadow-md"
       style={{
-        backgroundColor: '#ECECEC',
+        backgroundColor: '#ADB5BD',
         borderRight: '1px solid #D5D5D5',
       }}
     >

@@ -16,7 +16,7 @@ export default function Topbar() {
     <header 
       className="sticky top-0 z-10 bg-white transition-colors"
       style={{
-        borderBottom: '1px solid #E5E7EB',
+        // borderBottom: '1px solid #E5E7EB',
       }}
     >
       <div className="flex items-center justify-end gap-4 px-6 py-4">

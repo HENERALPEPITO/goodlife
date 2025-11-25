@@ -101,9 +101,9 @@ export default function MyCatalogPage() {
     const q = search.toLowerCase();
     return tracks.filter(
       (t) =>
-        t.song_title.toLowerCase().includes(q) ||
-        t.composer_name.toLowerCase().includes(q) ||
-        t.isrc.toLowerCase().includes(q)
+        (t.song_title?.toLowerCase() || '').includes(q) ||
+        (t.composer_name?.toLowerCase() || '').includes(q) ||
+        (t.isrc?.toLowerCase() || '').includes(q)
     );
   }, [tracks, search]);
 
