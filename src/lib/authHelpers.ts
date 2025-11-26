@@ -1,5 +1,4 @@
 /**
-
  * Authentication Helper Functions
  * 
  * Contains helper functions for authentication and authorization.
@@ -23,12 +22,67 @@ interface CurrentUser {
 }
 
 /**
- * Require Admin Access
+ * Require Admin Access (from headers)
  * 
- * Verifies the user is authenticated and has the admin role.
- * Used as middleware for admin-only API routes.
+ * Verifies the user is authenticated via Authorization header and has admin role.
+ * Used for API routes that receive headers.
  */
-export async function requireAdmin(): Promise<AdminUser | null> {
+export async function requireAdmin(headers: Headers): Promise<AdminUser | null> {
+  try {
+    // Get authorization token from headers
+    const authHeader = headers.get("authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      console.error("No authorization header or invalid format");
+      return null;
+    }
+
+    const token = authHeader.replace("Bearer ", "");
+    
+    // Use admin client to verify the token
+    const adminClient = getSupabaseAdmin();
+    const { data: { user }, error } = await adminClient.auth.getUser(token);
+
+    if (error || !user) {
+      console.error("Invalid token or user not found:", error);
+      return null;
+    }
+
+    // Get user profile to check role
+    const { data: profile, error: profileError } = await adminClient
+      .from("user_profiles")
+      .select("id, role, email")
+      .eq("id", user.id)
+      .single();
+
+    if (profileError || !profile) {
+      console.error("Profile not found:", profileError);
+      return null;
+    }
+
+    // Verify admin role
+    if (profile.role !== "admin") {
+      console.error("User is not an admin:", profile.email);
+      return null;
+    }
+
+    return {
+      id: profile.id,
+      role: profile.role,
+      email: profile.email,
+    };
+  } catch (error) {
+    console.error("Error in requireAdmin:", error);
+    return null;
+  }
+}
+
+/**
+ * Require Admin Access (from cookies)
+ * 
+ * Verifies the user is authenticated via cookies and has admin role.
+ * Used for server components and pages.
+ */
+export async function requireAdminFromCookies(): Promise<AdminUser | null> {
   try {
     // Get current user from cookies
     const user = await getCurrentUser();
@@ -50,7 +104,7 @@ export async function requireAdmin(): Promise<AdminUser | null> {
       email: user.email,
     };
   } catch (error) {
-    console.error("Error in requireAdmin:", error);
+    console.error("Error in requireAdminFromCookies:", error);
     return null;
   }
 }

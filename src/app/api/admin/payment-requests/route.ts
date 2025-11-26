@@ -42,8 +42,8 @@ interface UpdatePaymentRequestResponse {
 
 export async function GET(request: NextRequest): Promise<NextResponse<GetPaymentRequestsResponse>> {
   try {
-    // Verify admin access via cookie-based authentication
-    const admin = await requireAdmin();
+    // Verify admin access with request headers
+    const admin = await requireAdmin(request.headers);
     if (!admin) {
       return NextResponse.json(
         { success: false, error: "Unauthorized. Admin access required." },
@@ -181,8 +181,8 @@ export async function GET(request: NextRequest): Promise<NextResponse<GetPayment
 
 export async function POST(request: NextRequest): Promise<NextResponse<UpdatePaymentRequestResponse>> {
   try {
-    // Verify admin access
-    const admin = await requireAdmin();
+    // Verify admin access with request headers
+    const admin = await requireAdmin(request.headers);
     if (!admin) {
       return NextResponse.json(
         { success: false, error: "Unauthorized. Admin access required." },

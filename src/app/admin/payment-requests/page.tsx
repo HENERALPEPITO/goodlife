@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import {
-  Table,  
+  Table,
   TableBody,
   TableCell,
   TableHead,
@@ -38,7 +38,6 @@ export default function AdminPaymentRequestsPage() {
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
 
-  // Redirect non-admin users
   useEffect(() => {
     if (!authLoading && (!user || user.role !== "admin")) {
       toast({
@@ -50,88 +49,30 @@ export default function AdminPaymentRequestsPage() {
     }
   }, [user, authLoading, router, toast]);
 
-  // Fetch payment requests only when user is confirmed as admin
   useEffect(() => {
-    if (!authLoading && user?.role === "admin") {
+    if (user?.role === "admin") {
       fetchPaymentRequests();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.role, authLoading]);
-
-  const getAuthToken = async () => {
-    try {
-      const { supabase } = await import("@/lib/supabaseClient");
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      
-      if (!session?.access_token) {
-        throw new Error("No authentication token found");
-      }
-      
-      return session.access_token;
-    } catch (error) {
-      console.error("Error getting auth token:", error);
-      throw error;
-    }
-  };
+  }, [user]);
 
   const fetchPaymentRequests = async () => {
     try {
       setLoading(true);
-      const token = await getAuthToken();
-      
-      console.log("=== FETCH PAYMENT REQUESTS DEBUG ===");
-      console.log("Token exists:", !!token);
-      console.log("Token preview:", token ? token.substring(0, 20) + "..." : "No token");
-      console.log("User role:", user?.role);
-      console.log("User ID:", user?.id);
-      console.log("User email:", user?.email);
-      
       const response = await fetch("/api/admin/payment-requests", {
-        method: "GET",
         headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
+          Authorization: `Bearer ${await getAuthToken()}`,
         },
       });
 
-      console.log("Response status:", response.status);
-      console.log("Response ok:", response.ok);
-      console.log("Response headers:", Object.fromEntries(response.headers.entries()));
-
-      const contentType = response.headers.get("content-type");
-      console.log("Content-Type:", contentType);
-
-      if (!response.ok) {
-        let errorData;
-        const responseText = await response.text();
-        console.log("Raw error response:", responseText);
-        
-        try {
-          errorData = JSON.parse(responseText);
-        } catch (e) {
-          console.error("Failed to parse error response as JSON");
-          errorData = { error: responseText || "Unknown error" };
-        }
-        
-        console.error("Parsed error data:", errorData);
-        throw new Error(errorData.error || errorData.message || `HTTP error! status: ${response.status}`);
-      }
-
       const data = await response.json();
-      console.log("Success response data:", data);
 
       if (data.success && data.paymentRequests) {
-        console.log("Payment requests count:", data.paymentRequests.length);
         setPaymentRequests(data.paymentRequests);
       } else {
         throw new Error(data.error || "Failed to fetch payment requests");
       }
     } catch (error: any) {
-      console.error("=== ERROR DETAILS ===");
-      console.error("Error message:", error?.message);
-      console.error("Error stack:", error?.stack);
+      console.error("Error fetching payment requests:", error);
       toast({
         title: "Error",
         description: error?.message || "Failed to load payment requests",
@@ -140,6 +81,15 @@ export default function AdminPaymentRequestsPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const getAuthToken = async () => {
+    // Get auth token from Supabase session
+    const { supabase } = await import("@/lib/supabaseClient");
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    return session?.access_token || "";
   };
 
   const handleApprove = async (requestId: string) => {
@@ -222,6 +172,7 @@ export default function AdminPaymentRequestsPage() {
 
   const handleViewPDF = async (requestId: string) => {
     try {
+      // Get invoice for this payment request
       const token = await getAuthToken();
       const response = await fetch(`/api/invoices?payment_request_id=${requestId}`, {
         headers: {
@@ -236,9 +187,12 @@ export default function AdminPaymentRequestsPage() {
       }
 
       if (data.invoice) {
+        // If file_url exists, open it directly
         if (data.invoice.file_url) {
           window.open(data.invoice.file_url, "_blank");
         } else {
+          // If no file_url, generate PDF on the fly
+          // Get payment request details to generate PDF
           const { supabase } = await import("@/lib/supabaseClient");
           const { data: paymentRequest } = await supabase
             .from("payment_requests")
@@ -247,10 +201,12 @@ export default function AdminPaymentRequestsPage() {
             .single();
 
           if (paymentRequest) {
+            // Generate PDF using the client-side PDF generator
             const { PaymentRequestInvoicePDF } = await import("@/components/PaymentRequestInvoicePDF");
             const { getInvoiceSettings } = await import("@/lib/invoiceSettings");
             const invoiceSettings = await getInvoiceSettings();
 
+            // Get artist info
             const { data: artist } = await supabase
               .from("artists")
               .select("id, name, user_id")
@@ -265,6 +221,7 @@ export default function AdminPaymentRequestsPage() {
                 .single();
 
               const artistEmail = userProfile?.email || "";
+
               const invoiceDate = new Date(paymentRequest.created_at).toISOString().split("T")[0];
               const invoiceNumber = data.invoice.invoice_number || `INV-${new Date().getFullYear()}-${requestId.substring(0, 8).toUpperCase()}`;
 
@@ -283,6 +240,7 @@ export default function AdminPaymentRequestsPage() {
                 settings: invoiceSettings,
               });
 
+              // Open PDF in new window
               const pdfBlob = pdfDoc.output("blob");
               const pdfUrl = URL.createObjectURL(pdfBlob);
               window.open(pdfUrl, "_blank");
@@ -352,7 +310,11 @@ export default function AdminPaymentRequestsPage() {
           <h2 className="text-xl font-semibold">All Payment Requests</h2>
         </div>
 
-        {paymentRequests.length === 0 ? (
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin" />
+          </div>
+        ) : paymentRequests.length === 0 ? (
           <div className="text-center py-12 text-slate-500">
             <FileText className="w-12 h-12 mx-auto mb-4 text-slate-400" />
             <p>No payment requests found.</p>
