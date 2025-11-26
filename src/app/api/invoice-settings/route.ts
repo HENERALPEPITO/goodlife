@@ -24,7 +24,7 @@ export async function GET() {
 export async function PUT(request: NextRequest) {
   try {
     // Verify admin access
-    const admin = await requireAdmin();
+    const admin = await requireAdmin(request.headers);
     if (!admin) {
       return NextResponse.json(
         { success: false, error: "Unauthorized. Admin access required." },
@@ -74,4 +74,3 @@ export async function PUT(request: NextRequest) {
     );
   }
 }
-

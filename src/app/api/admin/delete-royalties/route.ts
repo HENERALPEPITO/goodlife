@@ -26,7 +26,7 @@ const MAX_DELETE_BATCH_SIZE = 1000;
 export async function POST(request: NextRequest): Promise<NextResponse<DeleteRoyaltiesResponse>> {
   try {
     // Verify that the requesting user is an admin
-    const admin = await requireAdmin();
+    const admin = await requireAdmin(request.headers);
     if (!admin) {
       return NextResponse.json(
         { success: false, error: "Unauthorized. Admin access required." },
@@ -116,18 +116,3 @@ export async function GET() {
     { status: 405 }
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
