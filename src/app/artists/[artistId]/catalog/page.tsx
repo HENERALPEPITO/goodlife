@@ -286,6 +286,7 @@ export default function ArtistCatalogAdminPage() {
 }
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 
 "use client";
 
@@ -569,6 +570,8 @@ export default function ArtistCatalogAdminPage() {
     </div>
   );
 }
+=======
+>>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
 =======
