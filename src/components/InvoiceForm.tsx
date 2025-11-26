@@ -17,6 +17,7 @@ interface Invoice {
   total_net?: number;
   payment_options?: string;
   invoice_ref?: string;
+  invoice_number?: string;
   invoice_date?: string;
   status?: "pending" | "approved" | "rejected";
 }

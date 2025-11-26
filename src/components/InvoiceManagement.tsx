@@ -28,11 +28,14 @@ interface Invoice {
   statement_number: string;
   period: string;
   total_net: number;
+  amount?: number;
+  total_amount?: number;
   payment_options: string;
   invoice_ref: string;
   invoice_date: string;
   invoice_number?: string;
   status: "pending" | "approved" | "rejected";
+  payment_request_id?: string;
   created_at: string;
   updated_at: string;
   user_profiles?: {

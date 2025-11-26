@@ -28,51 +28,26 @@ interface CurrentUser {
  * Verifies the user is authenticated and has the admin role.
  * Used as middleware for admin-only API routes.
  */
-export async function requireAdmin(headers: Headers): Promise<AdminUser | null> {
+export async function requireAdmin(): Promise<AdminUser | null> {
   try {
-    // Get auth token from request headers
-    const authHeader = headers.get("Authorization");
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      console.error("No auth token provided");
-      return null;
-    }
-
-    // Parse token
-    const token = authHeader.replace("Bearer ", "");
+    // Get current user from cookies
+    const user = await getCurrentUser();
     
-    // Use admin client directly since we have the token
-    const supabase = getSupabaseAdmin();
-
-    // Verify token and get user
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-
-    if (authError || !user) {
-      console.error("Auth error:", authError);
-      return null;
-    }
-
-    // Get user profile to check role
-    const { data: profile, error: profileError } = await supabase
-      .from("user_profiles")
-      .select("id, role, email")
-      .eq("id", user.id)
-      .single();
-
-    if (profileError || !profile) {
-      console.error("Profile error:", profileError);
+    if (!user) {
+      console.error("No authenticated user");
       return null;
     }
 
     // Verify admin role
-    if (profile.role !== "admin") {
-      console.error("User is not an admin:", profile.email);
+    if (user.role !== "admin") {
+      console.error("User is not an admin:", user.email);
       return null;
     }
 
     return {
-      id: profile.id,
-      role: profile.role,
-      email: profile.email,
+      id: user.id,
+      role: user.role,
+      email: user.email,
     };
   } catch (error) {
     console.error("Error in requireAdmin:", error);
@@ -83,10 +58,10 @@ export async function requireAdmin(headers: Headers): Promise<AdminUser | null> 
 /**
  * Get Current User
  * 
- * Gets the current authenticated user from request headers.
+ * Gets the current authenticated user from cookies.
  * Works for both admin and artist roles.
  */
-export async function getCurrentUser(headers: Headers): Promise<CurrentUser | null> {
+export async function getCurrentUser(): Promise<CurrentUser | null> {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -145,4 +120,38 @@ export async function getCurrentUser(headers: Headers): Promise<CurrentUser | nu
     console.error("Error in getCurrentUser:", error);
     return null;
   }
+}
+
+/**
+ * Create Server Supabase Client
+ * 
+ * Creates a server-side Supabase client with cookie support.
+ * Used in API routes to interact with Supabase.
+ */
+export async function createServerSupabaseClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error("Missing Supabase environment variables");
+  }
+
+  const cookieStore = await cookies();
+
+  return createServerClient(
+    supabaseUrl,
+    supabaseAnonKey,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            cookieStore.set(name, value, options);
+          });
+        },
+      },
+    }
+  );
 }

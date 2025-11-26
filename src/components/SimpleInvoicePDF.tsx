@@ -37,12 +37,12 @@ export class SimpleInvoicePDF {
 
     // Color constants
     const colors = {
-      background: [255, 255, 255], // #FFFFFF
-      text: [17, 17, 17], // #111111
-      accent: [37, 99, 235], // #2563EB (royal blue)
-      secondary: [107, 114, 128], // #6B7280 (medium gray)
-      separator: [229, 231, 235], // #E5E7EB (soft light gray)
-      totals: [17, 24, 39], // #111827 (dark bold)
+      background: [255, 255, 255] as [number, number, number], // #FFFFFF
+      text: [17, 17, 17] as [number, number, number], // #111111
+      accent: [37, 99, 235] as [number, number, number], // #2563EB (royal blue)
+      secondary: [107, 114, 128] as [number, number, number], // #6B7280 (medium gray)
+      separator: [229, 231, 235] as [number, number, number], // #E5E7EB (soft light gray)
+      totals: [17, 24, 39] as [number, number, number], // #111827 (dark bold)
     };
 
     doc.setFont("helvetica");
@@ -163,7 +163,7 @@ export class SimpleInvoicePDF {
     // TOTALS SECTION (Centered, Large)
     // ============================================
     const centerX = pageWidth / 2;
-    
+
     doc.setFontSize(11);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(...colors.secondary);
@@ -245,14 +245,3 @@ export class SimpleInvoicePDF {
     window.open(pdfUrl, "_blank");
   }
 }
-
-
-
-
-
-
-
-
-
-
-

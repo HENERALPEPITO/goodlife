@@ -10,12 +10,12 @@ export interface InvoiceSettings {
   id: string;
   business_name: string;
   address: string;
-  contact_person?: string;
+  contact_person?: string | null;
   phone: string;
   email: string;
   tax_id: string;
   updated_at: string;
-  updated_by?: string;
+  updated_by?: string | null;
 }
 
 /**
@@ -36,11 +36,9 @@ export async function getInvoiceSettings(): Promise<InvoiceSettings | null> {
         details: error.details,
         hint: error.hint
       });
-      // Return default settings on error (table might not exist or RLS blocking)
       return getDefaultInvoiceSettings();
     }
 
-    // If no rows exist, return default settings
     if (!data) {
       console.warn("No invoice settings found in database, using defaults");
       return getDefaultInvoiceSettings();
@@ -53,7 +51,6 @@ export async function getInvoiceSettings(): Promise<InvoiceSettings | null> {
       name: error?.name,
       stack: error?.stack
     });
-    // Return default settings on exception
     return getDefaultInvoiceSettings();
   }
 }
@@ -70,6 +67,8 @@ function getDefaultInvoiceSettings(): InvoiceSettings {
     email: "info@goodlifemusic.com",
     tax_id: "B72510704",
     updated_at: new Date().toISOString(),
+    contact_person: null,
+    updated_by: null,
   };
 }
 
@@ -96,11 +95,9 @@ export async function getInvoiceSettingsAdmin(): Promise<InvoiceSettings | null>
         details: error.details,
         hint: error.hint
       });
-      // Return default settings if table is empty or error occurs
       return getDefaultInvoiceSettings();
     }
 
-    // If no rows exist, return default settings
     if (!data) {
       console.warn("No invoice settings found in database, using defaults");
       return getDefaultInvoiceSettings();
@@ -124,15 +121,19 @@ export async function updateInvoiceSettings(
   settings: Partial<Omit<InvoiceSettings, "id" | "updated_at" | "updated_by">>,
   updatedBy?: string
 ): Promise<boolean> {
+  if (!supabaseAdmin) {
+    console.error("Admin client not available, cannot update invoice settings");
+    return false;
+  }
+
   try {
-    // Ensure contact_person is included in the update
-    const updateData: any = {
+    // Prepare update data
+    const updateData: Partial<InvoiceSettings> = {
       ...settings,
       updated_at: new Date().toISOString(),
     };
-    
-    // If contact_person is explicitly set to undefined, set it to null
-    if (settings.contact_person === undefined && 'contact_person' in settings) {
+
+    if ('contact_person' in settings && settings.contact_person === undefined) {
       updateData.contact_person = null;
     }
 
@@ -140,7 +141,7 @@ export async function updateInvoiceSettings(
       updateData.updated_by = updatedBy;
     }
 
-    // Since there's only one row, we can use upsert or update
+    // Upsert (create or update single row)
     const { error } = await supabaseAdmin
       .from("invoice_settings")
       .upsert(updateData, {
@@ -153,9 +154,8 @@ export async function updateInvoiceSettings(
     }
 
     return true;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error updating invoice settings:", error);
     return false;
   }
 }
-

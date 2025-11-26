@@ -3,9 +3,10 @@ import { createServerSupabaseClient, getCurrentUser } from "@/lib/authHelpers";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const user = await getCurrentUser();
     
     if (!user) {
@@ -28,7 +29,7 @@ export async function GET(
           sort_order
         )
       `)
-      .eq("id", params.id)
+      .eq("id", id)
       .single();
 
     if (error) throw error;
@@ -50,9 +51,10 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const user = await getCurrentUser();
     
     if (!user) {
@@ -111,7 +113,7 @@ export async function PUT(
         logo_url,
         remarks: notes, // Store notes in remarks field for backward compatibility
       })
-      .eq("id", params.id);
+      .eq("id", id);
 
     if (updateError) throw updateError;
 
@@ -119,11 +121,11 @@ export async function PUT(
     await supabase
       .from("invoice_line_items")
       .delete()
-      .eq("invoice_id", params.id);
+      .eq("invoice_id", id);
 
     if (line_items && line_items.length > 0) {
       const lineItemsData = line_items.map((item: any, index: number) => ({
-        invoice_id: params.id,
+        invoice_id: id,
         description: item.description,
         quantity: item.quantity || 1,
         unit_price: item.unit_price,
@@ -152,7 +154,7 @@ export async function PUT(
           sort_order
         )
       `)
-      .eq("id", params.id)
+      .eq("id", id)
       .single();
 
     if (fetchError) throw fetchError;
@@ -169,9 +171,10 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const user = await getCurrentUser();
     
     if (!user) {
@@ -188,7 +191,7 @@ export async function DELETE(
     const { error } = await supabase
       .from("invoices")
       .delete()
-      .eq("id", params.id);
+      .eq("id", id);
 
     if (error) throw error;
 

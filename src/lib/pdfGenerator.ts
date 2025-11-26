@@ -31,6 +31,7 @@ export async function generatePaymentRequestInvoicePDF(
 ): Promise<jsPDF> {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 20;
   let yPosition = margin;
 
@@ -45,27 +46,27 @@ export async function generatePaymentRequestInvoicePDF(
   const businessSettings = settings || {
     business_name: "Good Life Music S.L",
     address: "Profesor Hermida 6, 3-3C, 36960 Sanxenxo (Spain)",
-    contact_person: undefined,
+    contact_person: null,
     phone: "+34 693 43 25 06",
     email: "info@goodlifemusic.com",
     tax_id: "B72510704",
   };
 
-  // Color constants - White minimalist design
-  const colors = {
-    background: [255, 255, 255], // #FFFFFF
-    text: [34, 34, 34], // #222222
-    secondary: [107, 114, 128], // #6B7280
-    border: [229, 231, 235], // #E5E7EB
-    pending: [156, 163, 175], // #9CA3AF
-    approved: [16, 185, 129], // #10B981
-    rejected: [239, 68, 68], // #EF4444
+  // Color constants - explicitly typed as tuples
+  const colors: Record<string, [number, number, number]> = {
+    background: [255, 255, 255],
+    text: [34, 34, 34],
+    secondary: [107, 114, 128],
+    border: [229, 231, 235],
+    pending: [156, 163, 175],
+    approved: [16, 185, 129],
+    rejected: [239, 68, 68],
   };
 
   // Set white background
   doc.setFillColor(...colors.background);
-  doc.rect(0, 0, pageWidth, doc.internal.pageSize.getHeight(), "F");
-  
+  doc.rect(0, 0, pageWidth, pageHeight, "F");
+
   // Use Inter-like font (Helvetica is closest)
   doc.setFont("helvetica");
 
@@ -74,10 +75,9 @@ export async function generatePaymentRequestInvoicePDF(
   // ============================================
   if (options?.logoUrl) {
     try {
-      // Load logo image and place at top center
       const logoWidth = 50;
       const logoHeight = 20;
-      const logoX = (pageWidth - logoWidth) / 2; // Center horizontally
+      const logoX = (pageWidth - logoWidth) / 2;
       doc.addImage(options.logoUrl, 'PNG', logoX, yPosition, logoWidth, logoHeight);
       yPosition += logoHeight + 10;
     } catch (error) {
@@ -92,8 +92,7 @@ export async function generatePaymentRequestInvoicePDF(
   doc.setFont("helvetica", "bold");
   doc.setTextColor(...colors.text);
   const headerText = "INVOICE";
-  const headerWidth = doc.getTextWidth(headerText);
-  doc.text(headerText, (pageWidth - headerWidth) / 2, yPosition); // Center the header
+  doc.text(headerText, pageWidth / 2, yPosition, { align: "center" });
   yPosition += 15;
 
   // ============================================
@@ -124,11 +123,10 @@ export async function generatePaymentRequestInvoicePDF(
   doc.setFontSize(10);
   doc.setTextColor(...colors.secondary);
 
-  // Split address into lines (handle comma-separated or newline-separated)
   const addressLines = businessSettings.address.includes("\n")
     ? businessSettings.address.split("\n").map((s) => s.trim())
     : businessSettings.address.split(",").map((s) => s.trim());
-  
+
   addressLines.forEach((line) => {
     if (line) {
       doc.text(line, margin, yPosition);
@@ -136,7 +134,6 @@ export async function generatePaymentRequestInvoicePDF(
     }
   });
 
-  // Contact person (if provided)
   if (businessSettings.contact_person) {
     yPosition += 2;
     doc.text(businessSettings.contact_person, margin, yPosition);
@@ -210,14 +207,14 @@ export async function generatePaymentRequestInvoicePDF(
       : invoice.status === "rejected"
       ? "Rejected"
       : "Pending";
-  
-  const statusColor = 
+
+  const statusColor =
     invoice.status === "approved"
       ? colors.approved
       : invoice.status === "rejected"
       ? colors.rejected
       : colors.pending;
-  
+
   doc.setFontSize(10);
   doc.setTextColor(...statusColor);
   doc.text(`Status: ${statusText}`, margin, yPosition);
@@ -239,7 +236,7 @@ export async function generatePaymentRequestInvoicePDF(
   doc.setFont("helvetica", "bold");
   doc.setTextColor(...colors.text);
   doc.text("Total Amount:", margin, yPosition);
-  
+
   const totalAmount = Number(invoice.total_net || 0).toFixed(2);
   const totalText = `€${totalAmount}`;
   const totalWidth = doc.getTextWidth(totalText);
@@ -257,15 +254,12 @@ export async function generatePaymentRequestInvoicePDF(
   // ============================================
   // FOOTER
   // ============================================
-  // Footer - centered in smaller gray text
   doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(...colors.secondary);
-  const footerText = "Generated automatically by Good Life Music Portal – Receipt for Payment Request";
-  const footerWidth = doc.getTextWidth(footerText);
-  const pageHeight = doc.internal.pageSize.getHeight();
-  doc.text(footerText, (pageWidth - footerWidth) / 2, pageHeight - 15);
+  const footerText =
+    "Generated automatically by Good Life Music Portal – Receipt for Payment Request";
+  doc.text(footerText, pageWidth / 2, pageHeight - 15, { align: "center" });
 
   return doc;
 }
-

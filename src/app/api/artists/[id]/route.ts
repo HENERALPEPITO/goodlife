@@ -76,12 +76,10 @@ async function getUserFromRequest(request: NextRequest, response: NextResponse) 
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Handle both sync and async params (Next.js 15 compatibility)
-    const resolvedParams = await Promise.resolve(params);
-    const artistId = resolvedParams.id;
+    const { id: artistId } = await params;
 
     const response = NextResponse.next();
     const user = await getUserFromRequest(request, response);
@@ -147,12 +145,10 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Handle both sync and async params (Next.js 15 compatibility)
-    const resolvedParams = await Promise.resolve(params);
-    const artistId = resolvedParams.id;
+    const { id: artistId } = await params;
     
     console.log("PUT /api/artists/[id] - Artist ID:", artistId);
     console.log("PUT /api/artists/[id] - Request URL:", request.url);
@@ -351,12 +347,10 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Handle both sync and async params (Next.js 15 compatibility)
-    const resolvedParams = await Promise.resolve(params);
-    const artistId = resolvedParams.id;
+    const { id: artistId } = await params;
 
     const response = NextResponse.next();
     const user = await getUserFromRequest(request, response);

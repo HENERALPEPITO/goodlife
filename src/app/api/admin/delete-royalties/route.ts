@@ -7,7 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { requireAdmin } from "@/lib/authHelpers";
 
 interface DeleteRoyaltiesRequest {
@@ -78,7 +78,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<DeleteRoy
     }
 
     // Perform bulk delete using parameterized query (safe from SQL injection)
-    const { error: deleteError, count } = await supabaseAdmin
+    const adminClient = getSupabaseAdmin();
+    const { error: deleteError, count } = await adminClient
       .from("royalties")
       .delete()
       .in("id", ids);

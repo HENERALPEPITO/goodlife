@@ -6,7 +6,6 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/authHelpers";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getInvoiceSettingsAdmin, updateInvoiceSettings } from "@/lib/invoiceSettings";
 
 export async function GET() {
