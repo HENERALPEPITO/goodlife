@@ -8,6 +8,7 @@ interface AdminStats {
   totalArtists: number;
   totalRevenue: number;
   totalTracks: number;
+  totalStreams: number;
 }
 
 export default function AdminDashboard() {
@@ -15,6 +16,7 @@ export default function AdminDashboard() {
     totalArtists: 0,
     totalRevenue: 0,
     totalTracks: 0,
+    totalStreams: 0,
   });
   const [loading, setLoading] = useState(true);
 
@@ -24,28 +26,34 @@ export default function AdminDashboard() {
 
   const fetchAdminStats = async () => {
     try {
-      const { count: artistCount } = await supabase
-        .from("user_profiles")
-        .select("*", { count: "exact", head: true })
-        .eq("role", "artist");
+      // OPTIMIZATION 1: Parallel queries for independent data
+      const [artistResult, trackResult, royaltiesResult] = await Promise.all([
+        supabase
+          .from("user_profiles")
+          .select("*", { count: "exact", head: true })
+          .eq("role", "artist"),
+        supabase
+          .from("tracks")
+          .select("*", { count: "exact", head: true }),
+        supabase
+          .from("royalties")
+          .select("net_amount, usage_count")
+      ]);
 
-      const { count: trackCount } = await supabase
-        .from("tracks")
-        .select("*", { count: "exact", head: true });
+      // OPTIMIZATION 2: Single-pass aggregation
+      let totalRevenue = 0;
+      let totalStreams = 0;
 
-      const { data: royalties } = await supabase
-        .from("royalties")
-        .select("net_amount");
-
-      const totalRevenue = royalties?.reduce(
-        (sum, r) => sum + Number(r.net_amount || 0),
-        0
-      ) || 0;
+      royaltiesResult.data?.forEach((r) => {
+        totalRevenue += Number(r.net_amount || 0);
+        totalStreams += Number(r.usage_count || 0);
+      });
 
       setStats({
-        totalArtists: artistCount || 0,
+        totalArtists: artistResult.count || 0,
         totalRevenue,
-        totalTracks: trackCount || 0,
+        totalTracks: trackResult.count || 0,
+        totalStreams,
       });
     } catch (error) {
       console.error("Error fetching admin stats:", error);
@@ -76,12 +84,19 @@ export default function AdminDashboard() {
       icon: Music,
       color: "#A78BFA",
     },
+    {
+      label: "Total Streams",
+      value: stats.totalStreams.toLocaleString(),
+      sub: "All platforms",
+      icon: Music,
+      color: "#FB923C",
+    },
   ];
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="transition-colors" style={{ color: 'var(--text-secondary)' }}>Loading admin dashboard...</div>
+        <div className="text-gray-500">Loading admin dashboard...</div>
       </div>
     );
   }
