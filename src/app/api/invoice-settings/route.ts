@@ -6,7 +6,6 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/authHelpers";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getInvoiceSettingsAdmin, updateInvoiceSettings } from "@/lib/invoiceSettings";
 
 export async function GET() {
@@ -25,7 +24,7 @@ export async function GET() {
 export async function PUT(request: NextRequest) {
   try {
     // Verify admin access
-    const admin = await requireAdmin();
+    const admin = await requireAdmin(request.headers);
     if (!admin) {
       return NextResponse.json(
         { success: false, error: "Unauthorized. Admin access required." },
@@ -75,4 +74,3 @@ export async function PUT(request: NextRequest) {
     );
   }
 }
-

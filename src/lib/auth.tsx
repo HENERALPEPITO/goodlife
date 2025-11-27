@@ -1,14 +1,8 @@
 "use client";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabaseClient";
-import type { UserRole } from "@/types";
+import type { AuthUser, UserRole } from "@/types";
 import type { User } from "@supabase/supabase-js";
-
-export interface AuthUser {
-  id: string;
-  email: string;
-  role: UserRole;
-}
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -120,7 +114,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setUser({
               id: supabaseUser.id,
               email: supabaseUser.email || '',
-              role: newProfile.role as UserRole
+              role: newProfile.role as UserRole,
+              created_at: newProfile.created_at || new Date().toISOString()
             });
             setLoading(false);
             return;
@@ -139,7 +134,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser({
           id: supabaseUser.id,
           email: supabaseUser.email || '',
-          role: profile.role as UserRole
+          role: profile.role as UserRole,
+          created_at: profile.created_at || new Date().toISOString()
         });
       }
       setLoading(false);

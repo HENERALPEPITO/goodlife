@@ -7,6 +7,8 @@ export interface UserProfile {
   created_at: string;
 }
 
+export type AuthUser = UserProfile;
+
 export interface Track {
   id: string;
   artist_id: string;
@@ -46,6 +48,9 @@ export interface PaymentRequest {
   artist_id: string;
   amount: number;
   status: "pending" | "approved" | "rejected" | "paid";
+  remarks: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -62,17 +67,6 @@ export interface Invoice {
   updated_at: string;
 }
 
-export interface PaymentRequest {
-  id: string;
-  artist_id: string;
-  total_amount: number;
-  status: "pending" | "approved" | "rejected" | "paid";
-  remarks: string | null;
-  approved_by: string | null;
-  approved_at: string | null;
-  created_at: string;
-  updated_at: string;
-}
 
 export interface PaymentReceipt {
   id: string;

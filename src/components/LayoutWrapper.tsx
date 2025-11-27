@@ -4,16 +4,34 @@ import { ReactNode } from "react";
 import Topbar from "@/components/Topbar";
 import Sidebar from "@/components/Sidebar";
 import Footer from "@/components/Footer";
+import LegalFooter from "@/components/LegalFooter";
 
 export default function LayoutWrapper({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   
   // Pages that should not show navigation
   const isAuthPage = pathname === "/login" || pathname === "/signup" || pathname === "/forgot-password" || pathname === "/reset-password";
+  
+  // Legal pages with simplified layout
+  const isLegalPage = pathname === "/privacy-policy" || pathname === "/terms-and-conditions";
 
   if (isAuthPage) {
     // Return children without any navigation for auth pages
     return <>{children}</>;
+  }
+
+  if (isLegalPage) {
+    // Return simplified layout for legal pages (no sidebar, no topbar)
+    return (
+      <main className="min-h-screen bg-white text-foreground transition-colors">
+        <div className="flex flex-col min-h-screen">
+          <div className="flex-1">
+            {children}
+          </div>
+          <LegalFooter />
+        </div>
+      </main>
+    );
   }
 
   // Return children with full navigation for all other pages

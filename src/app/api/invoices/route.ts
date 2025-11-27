@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
     
     // If no user from header, try cookies
     if (!user) {
-      user = await getCurrentUser(request.headers);
+      user = await getCurrentUser();
     }
     
     if (!user) {

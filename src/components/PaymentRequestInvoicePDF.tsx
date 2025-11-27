@@ -19,31 +19,24 @@ interface PaymentRequestInvoicePDFOptions {
   logoUrl?: string;
 }
 
-/**
- * Payment Request Invoice PDF Generator
- * Generates minimalist invoice PDFs for payment requests
- */
 export class PaymentRequestInvoicePDF {
-  /**
-   * Generates a PDF invoice for a payment request
-   */
   static async generateInvoice(
     invoice: PaymentRequestInvoice,
     options?: PaymentRequestInvoicePDFOptions
   ): Promise<jsPDF> {
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 20;
     let yPosition = margin;
 
-    // Get invoice settings
+    // Load settings
     let settings = options?.settings;
     if (!settings) {
       const { getInvoiceSettings } = await import("@/lib/invoiceSettings");
       settings = await getInvoiceSettings();
     }
 
-    // Use default settings if none provided
     const businessSettings = settings || {
       business_name: "Good Life Music S.L",
       address: "Profesor Hermida 6, 3-3C, 36960 Sanxenxo (Spain)",
@@ -53,59 +46,60 @@ export class PaymentRequestInvoicePDF {
       tax_id: "B72510704",
     };
 
-    // Color constants - White minimalist design
+    // Colors (RGB)
     const colors = {
-      background: [255, 255, 255], // #FFFFFF
-      text: [34, 34, 34], // #222222
-      secondary: [107, 114, 128], // #6B7280
-      border: [229, 231, 235], // #E5E7EB
-      pending: [156, 163, 175], // #9CA3AF
-      approved: [16, 185, 129], // #10B981
-      rejected: [239, 68, 68], // #EF4444
+      background: [255, 255, 255] as [number, number, number],
+      text: [34, 34, 34] as [number, number, number],
+      secondary: [107, 114, 128] as [number, number, number],
+      border: [229, 231, 235] as [number, number, number],
+      pending: [156, 163, 175] as [number, number, number],
+      approved: [16, 185, 129] as [number, number, number],
+      rejected: [239, 68, 68] as [number, number, number],
     };
 
-    // Set white background
-    doc.setFillColor(...colors.background);
-    doc.rect(0, 0, pageWidth, doc.internal.pageSize.getHeight(), "F");
-    
-    // Use Inter-like font (Helvetica is closest)
+    // Helper to apply RGB values
+    const applyRGB = (
+      fn: (r: number, g: number, b: number) => unknown,
+      rgb: [number, number, number]
+    ) => fn(rgb[0], rgb[1], rgb[2]);
+
+    // Background fill
+    applyRGB(doc.setFillColor.bind(doc), colors.background);
+    doc.rect(0, 0, pageWidth, pageHeight, "F");
+
     doc.setFont("helvetica");
 
-    // ============================================
-    // LOGO (if available) - Top Center
-    // ============================================
+    // LOGO (centered)
     if (options?.logoUrl) {
       try {
-        // Load logo image and place at top center
         const logoWidth = 50;
         const logoHeight = 20;
-        const logoX = (pageWidth - logoWidth) / 2; // Center horizontally
-        doc.addImage(options.logoUrl, 'PNG', logoX, yPosition, logoWidth, logoHeight);
+        const logoX = (pageWidth - logoWidth) / 2;
+        doc.addImage(options.logoUrl, "PNG", logoX, yPosition, logoWidth, logoHeight);
         yPosition += logoHeight + 10;
-      } catch (error) {
-        console.warn("Could not load logo:", error);
+      } catch (err) {
+        console.warn("Logo failed to load:", err);
       }
     }
 
-    // ============================================
-    // INVOICE HEADER (Centered)
-    // ============================================
+    // HEADER: INVOICE
     doc.setFontSize(28);
     doc.setFont("helvetica", "bold");
-    doc.setTextColor(...colors.text);
+    applyRGB(doc.setTextColor.bind(doc), colors.text);
+
     const headerText = "INVOICE";
     const headerWidth = doc.getTextWidth(headerText);
-    doc.text(headerText, (pageWidth - headerWidth) / 2, yPosition); // Center the header
-    yPosition += 15;
+    doc.text(headerText, (pageWidth - headerWidth) / 2, yPosition);
+    yPosition += 18;
 
-    // ============================================
-    // INVOICE NUMBER AND DATE
-    // ============================================
+    // INVOICE NUMBER + DATE
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
-    doc.setTextColor(...colors.secondary);
+    applyRGB(doc.setTextColor.bind(doc), colors.secondary);
+
     doc.text(`Invoice Number: ${invoice.invoice_number}`, margin, yPosition);
     yPosition += 5;
+
     doc.text(
       `Invoice Date: ${new Date(invoice.invoice_date).toLocaleDateString()}`,
       margin,
@@ -113,32 +107,25 @@ export class PaymentRequestInvoicePDF {
     );
     yPosition += 12;
 
-    // ============================================
-    // BUSINESS INFO (FROM ADMIN SETTINGS)
-    // ============================================
+    // BUSINESS INFO
     doc.setFontSize(11);
     doc.setFont("helvetica", "bold");
-    doc.setTextColor(...colors.text);
+    applyRGB(doc.setTextColor.bind(doc), colors.text);
     doc.text(businessSettings.business_name, margin, yPosition);
     yPosition += 6;
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
-    doc.setTextColor(...colors.secondary);
+    applyRGB(doc.setTextColor.bind(doc), colors.secondary);
 
-    // Split address into lines (handle comma-separated or newline-separated)
-    const addressLines = businessSettings.address.includes("\n")
-      ? businessSettings.address.split("\n").map((s) => s.trim())
-      : businessSettings.address.split(",").map((s) => s.trim());
-    
-    addressLines.forEach((line) => {
+    const addressLines = businessSettings.address.split(/,|\n/).map((t) => t.trim());
+    for (const line of addressLines) {
       if (line) {
         doc.text(line, margin, yPosition);
         yPosition += 5;
       }
-    });
+    }
 
-    // Contact person (if provided)
     if (businessSettings.contact_person) {
       yPosition += 2;
       doc.text(businessSettings.contact_person, margin, yPosition);
@@ -153,149 +140,109 @@ export class PaymentRequestInvoicePDF {
     doc.text(`TAX ID: ${businessSettings.tax_id}`, margin, yPosition);
     yPosition += 12;
 
-    // ============================================
     // SEPARATOR LINE
-    // ============================================
-    doc.setDrawColor(...colors.border);
+    applyRGB(doc.setDrawColor.bind(doc), colors.border);
     doc.setLineWidth(0.5);
     doc.line(margin, yPosition, pageWidth - margin, yPosition);
-    yPosition += 10;
+    yPosition += 12;
 
-    // ============================================
-    // ARTIST INFO (RECIPIENT)
-    // ============================================
-    doc.setFontSize(11);
+    // ARTIST INFO
     doc.setFont("helvetica", "bold");
-    doc.setTextColor(...colors.text);
+    doc.setFontSize(11);
+    applyRGB(doc.setTextColor.bind(doc), colors.text);
     doc.text("Bill To:", margin, yPosition);
     yPosition += 6;
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
-    doc.setTextColor(...colors.secondary);
+    applyRGB(doc.setTextColor.bind(doc), colors.secondary);
+
     doc.text(invoice.artist_name, margin, yPosition);
     yPosition += 5;
+
     if (invoice.artist_email) {
       doc.text(invoice.artist_email, margin, yPosition);
       yPosition += 5;
     }
-    yPosition += 8;
 
-    // ============================================
-    // SEPARATOR LINE
-    // ============================================
-    doc.setDrawColor(...colors.border);
-    doc.setLineWidth(0.5);
-    doc.line(margin, yPosition, pageWidth - margin, yPosition);
     yPosition += 10;
 
-    // ============================================
+    // LINE
+    applyRGB(doc.setDrawColor.bind(doc), colors.border);
+    doc.line(margin, yPosition, pageWidth - margin, yPosition);
+    yPosition += 12;
+
     // INVOICE DETAILS
-    // ============================================
-    doc.setFontSize(11);
     doc.setFont("helvetica", "bold");
-    doc.setTextColor(...colors.text);
+    doc.setFontSize(11);
+    applyRGB(doc.setTextColor.bind(doc), colors.text);
     doc.text("Invoice Details", margin, yPosition);
     yPosition += 8;
 
-    // Payment Mode
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
-    doc.setTextColor(...colors.secondary);
+    applyRGB(doc.setTextColor.bind(doc), colors.secondary);
     doc.text("Payment Mode: Bank Transfer", margin, yPosition);
     yPosition += 5;
 
-    // Status with color badge
-    const statusText =
-      invoice.status === "approved"
-        ? "Approved"
-        : invoice.status === "rejected"
-        ? "Rejected"
-        : "Pending";
-    
-    const statusColor = 
+    // STATUS COLOR
+    const statusColor =
       invoice.status === "approved"
         ? colors.approved
         : invoice.status === "rejected"
         ? colors.rejected
         : colors.pending;
-    
-    doc.setFontSize(10);
-    doc.setTextColor(...statusColor);
-    doc.text(`Status: ${statusText}`, margin, yPosition);
-    doc.setTextColor(...colors.text);
+
+    applyRGB(doc.setTextColor.bind(doc), statusColor);
+    doc.text(`Status: ${invoice.status.toUpperCase()}`, margin, yPosition);
     yPosition += 10;
 
-    // ============================================
-    // SEPARATOR LINE
-    // ============================================
-    doc.setDrawColor(...colors.border);
-    doc.setLineWidth(0.5);
+    // LINE
+    applyRGB(doc.setDrawColor.bind(doc), colors.border);
     doc.line(margin, yPosition, pageWidth - margin, yPosition);
-    yPosition += 10;
+    yPosition += 12;
 
-    // ============================================
-    // TOTAL AMOUNT (Large and Bold)
-    // ============================================
-    doc.setFontSize(18);
+    // TOTAL AMOUNT
     doc.setFont("helvetica", "bold");
-    doc.setTextColor(...colors.text);
+    doc.setFontSize(18);
+    applyRGB(doc.setTextColor.bind(doc), colors.text);
     doc.text("Total Amount:", margin, yPosition);
-    
-    const totalAmount = Number(invoice.total_net || 0).toFixed(2);
-    const totalText = `€${totalAmount}`;
+
+    const totalText = `€${Number(invoice.total_net).toFixed(2)}`;
     const totalWidth = doc.getTextWidth(totalText);
     doc.text(totalText, pageWidth - margin - totalWidth, yPosition);
-    yPosition += 15;
+    yPosition += 18;
 
-    // ============================================
-    // SEPARATOR LINE
-    // ============================================
-    doc.setDrawColor(...colors.border);
-    doc.setLineWidth(0.5);
-    doc.line(margin, yPosition, pageWidth - margin, yPosition);
-    yPosition += 10;
-
-    // ============================================
     // FOOTER
-    // ============================================
-    // Footer - centered in smaller gray text
-    doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
-    doc.setTextColor(...colors.secondary);
-    const footerText = "Generated automatically by Good Life Music Portal – Receipt for Payment Request";
-    const footerWidth = doc.getTextWidth(footerText);
-    const pageHeight = doc.internal.pageSize.getHeight();
-    doc.text(footerText, (pageWidth - footerWidth) / 2, pageHeight - 15);
+    doc.setFontSize(8);
+    applyRGB(doc.setTextColor.bind(doc), colors.secondary);
+
+    const footerText =
+      "Generated automatically by Good Life Music Portal – Receipt for Payment Request";
+
+    const fw = doc.getTextWidth(footerText);
+    doc.text(footerText, (pageWidth - fw) / 2, pageHeight - 15);
 
     return doc;
   }
 
-  /**
-   * Downloads the invoice PDF
-   */
   static async downloadInvoice(
     invoice: PaymentRequestInvoice,
     options?: PaymentRequestInvoicePDFOptions,
     filename?: string
-  ): Promise<void> {
+  ) {
     const doc = await this.generateInvoice(invoice, options);
-    const downloadFilename =
-      filename || `invoice-${invoice.invoice_number || "invoice"}.pdf`;
-    doc.save(downloadFilename);
+    doc.save(filename || `invoice-${invoice.invoice_number}.pdf`);
   }
 
-  /**
-   * Opens the invoice PDF in a new window/tab
-   */
   static async previewInvoice(
     invoice: PaymentRequestInvoice,
     options?: PaymentRequestInvoicePDFOptions
-  ): Promise<void> {
+  ) {
     const doc = await this.generateInvoice(invoice, options);
-    const pdfBlob = doc.output("blob");
-    const pdfUrl = URL.createObjectURL(pdfBlob);
-    window.open(pdfUrl, "_blank");
+    const blob = doc.output("blob");
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank");
   }
 }
-

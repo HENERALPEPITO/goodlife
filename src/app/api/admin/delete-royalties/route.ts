@@ -7,7 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { requireAdmin } from "@/lib/authHelpers";
 
 interface DeleteRoyaltiesRequest {
@@ -26,7 +26,7 @@ const MAX_DELETE_BATCH_SIZE = 1000;
 export async function POST(request: NextRequest): Promise<NextResponse<DeleteRoyaltiesResponse>> {
   try {
     // Verify that the requesting user is an admin
-    const admin = await requireAdmin();
+    const admin = await requireAdmin(request.headers);
     if (!admin) {
       return NextResponse.json(
         { success: false, error: "Unauthorized. Admin access required." },
@@ -78,7 +78,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<DeleteRoy
     }
 
     // Perform bulk delete using parameterized query (safe from SQL injection)
-    const { error: deleteError, count } = await supabaseAdmin
+    const adminClient = getSupabaseAdmin();
+    const { error: deleteError, count } = await adminClient
       .from("royalties")
       .delete()
       .in("id", ids);
@@ -115,18 +116,3 @@ export async function GET() {
     { status: 405 }
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

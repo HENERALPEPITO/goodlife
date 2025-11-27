@@ -8,9 +8,10 @@ import { createServerSupabaseClient, getCurrentUser } from "@/lib/authHelpers";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const user = await getCurrentUser();
     
     if (!user) {
@@ -23,7 +24,7 @@ export async function GET(
     const { data: invoice, error } = await supabase
       .from("invoices")
       .select("*")
-      .eq("id", params.id)
+      .eq("id", id)
       .single();
 
     if (error) {
@@ -71,9 +72,10 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const user = await getCurrentUser();
     
     if (!user) {
@@ -101,7 +103,7 @@ export async function PUT(
     const { data: currentInvoice } = await supabase
       .from("invoices")
       .select("status, payment_request_id")
-      .eq("id", params.id)
+      .eq("id", id)
       .single();
 
     if (currentInvoice?.status !== "pending") {
@@ -125,7 +127,7 @@ export async function PUT(
         payment_method,
         notes,
       })
-      .eq("id", params.id)
+      .eq("id", id)
       .select("*")
       .single();
 

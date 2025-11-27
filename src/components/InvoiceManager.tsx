@@ -651,7 +651,7 @@ interface InvoiceEditModalProps {
   onSave: () => void;
   onLogoUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onAddLineItem: () => void;
-  onUpdateLineItem: (index: number, field: string, value: any) => void;
+  onUpdateLineItem: (index: number, field: keyof InvoiceLineItem, value: any) => void;
   onRemoveLineItem: (index: number) => void;
   totals: { subtotal: number; taxAmount: number; total: number };
   onPreview: () => void;

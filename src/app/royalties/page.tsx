@@ -1528,5 +1528,3 @@ export default function RoyaltiesPage() {
     </div>
   );
 }
-
-

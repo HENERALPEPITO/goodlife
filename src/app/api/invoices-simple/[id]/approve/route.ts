@@ -5,13 +5,14 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient, getCurrentUser } from "@/lib/authHelpers";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const user = await getCurrentUser();
     
     if (!user) {
@@ -28,7 +29,7 @@ export async function POST(
     const { data: invoice } = await supabase
       .from("invoices")
       .select("payment_request_id, status")
-      .eq("id", params.id)
+      .eq("id", id)
       .single();
 
     if (!invoice) {
@@ -46,13 +47,14 @@ export async function POST(
     const { error: invoiceError } = await supabase
       .from("invoices")
       .update({ status: "approved" })
-      .eq("id", params.id);
+      .eq("id", id);
 
     if (invoiceError) throw invoiceError;
 
     // Update payment request status if linked
     if (invoice.payment_request_id) {
-      const { error: requestError } = await supabaseAdmin
+      const adminClient = getSupabaseAdmin();
+      const { error: requestError } = await adminClient
         .from("payment_requests")
         .update({ status: "approved" })
         .eq("id", invoice.payment_request_id);

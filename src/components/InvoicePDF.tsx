@@ -33,8 +33,12 @@ export class InvoicePDF {
     const margin = 20;
     let yPosition = margin;
 
-    // Color constants
-    const colors = {
+    // Color constants (typed as RGB tuples for jsPDF)
+    const colors: {
+      text: [number, number, number];
+      secondary: [number, number, number];
+      border: [number, number, number];
+    } = {
       text: [17, 24, 39], // #111827
       secondary: [107, 114, 128], // #6B7280
       border: [229, 231, 235], // #E5E7EB
