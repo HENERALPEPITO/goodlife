@@ -8,7 +8,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Upload, Search, Trash2, AlertCircle } from "lucide-react";
+import { Upload, Search, Trash2, AlertCircle, Edit } from "lucide-react";
 import { parseCatalogCsv } from "@/lib/catalogCsv";
 
 // ---------------------------
@@ -57,6 +57,11 @@ export default function ArtistCatalogAdminPage() {
   const [file, setFile] = useState<File | null>(null);
   const [parsedCount, setParsedCount] = useState<number>(0);
   const [deleteAllOpen, setDeleteAllOpen] = useState<boolean>(false);
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState<boolean>(false);
+  const [editRow, setEditRow] = useState<CatalogTrack | null>(null);
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
 
   // =============================
   // AUTH & REDIRECT
@@ -96,6 +101,7 @@ export default function ArtistCatalogAdminPage() {
         .order("created_at", { ascending: false });
       if (error) throw error;
       setTracks((data as CatalogTrack[]) || []);
+      setSelected({});
     } catch (e) {
       toast({ title: "Error", description: "Failed to load tracks", variant: "destructive" });
     } finally {
@@ -125,6 +131,15 @@ export default function ArtistCatalogAdminPage() {
         (t.isrc?.toLowerCase() || "").includes(q)
     );
   }, [tracks, search]);
+
+  // =============================
+  // PAGINATION
+  // =============================
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const paged = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, page]);
 
   // =============================
   // CSV HANDLING
@@ -189,16 +204,81 @@ export default function ArtistCatalogAdminPage() {
     }
   };
 
+  // =============================
+  // BULK OPERATIONS
+  // =============================
+  const toggleAll = (checked: boolean) => {
+    const next: Record<string, boolean> = {};
+    paged.forEach((t) => (next[t.id] = checked));
+    setSelected(next);
+  };
+
+  const bulkDelete = async () => {
+    const ids = Object.keys(selected).filter((k) => selected[k]);
+    if (ids.length === 0) return;
+    try {
+      const { error } = await supabase.from("catalog_tracks").delete().in("id", ids);
+      if (error) throw error;
+      toast({ title: "Deleted", description: `${ids.length} tracks removed` });
+      setBulkDeleteOpen(false);
+      await fetchTracks();
+    } catch (e: any) {
+      toast({ title: "Delete failed", description: e.message || "Error deleting tracks", variant: "destructive" });
+    }
+  };
+
   const handleDeleteAll = async () => {
     try {
       const { error } = await supabase.from("catalog_tracks").delete().eq("artist_id", artistId);
       if (error) throw error;
       toast({ title: "Deleted", description: "All tracks removed for this artist" });
       setDeleteAllOpen(false);
-      fetchTracks();
+      await fetchTracks();
     } catch (e: any) {
       toast({ title: "Delete failed", description: e.message || "Error deleting tracks", variant: "destructive" });
     }
+  };
+
+  // =============================
+  // EDIT OPERATIONS
+  // =============================
+  const saveEdit = async () => {
+    if (!editRow) return;
+    const { id, created_at, artist_id, ...updates } = editRow;
+    const updatedData = { ...updates, updated_at: new Date().toISOString() };
+    try {
+      const { error } = await supabase.from("catalog_tracks").update(updatedData).eq("id", id);
+      if (error) throw error;
+      toast({ title: "Saved", description: "Track updated" });
+      setEditRow(null);
+      await fetchTracks();
+    } catch (e: any) {
+      toast({ title: "Save failed", description: e.message || "Error updating track", variant: "destructive" });
+    }
+  };
+
+  // =============================
+  // EXPORT CSV
+  // =============================
+  const exportCsv = () => {
+    const header = ["Song Title", "Composer Name", "ISRC", "Artist", "Split (%)"];
+    const rows = filtered.map((t) => [
+      t.song_title,
+      t.composer_name,
+      t.isrc,
+      t.artist_name,
+      t.split_percent.toString()
+    ]);
+    const csv = [header, ...rows]
+      .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${artistEmail || 'catalog'}-tracks.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   if (authLoading || !user) return null;
@@ -225,6 +305,10 @@ export default function ArtistCatalogAdminPage() {
             />
           </label>
           <Button onClick={handleImport} disabled={!file || parsedCount === 0}>Import</Button>
+          <Button variant="outline" onClick={() => setBulkDeleteOpen(true)} className="text-red-600 border-red-200 dark:border-red-900">
+            <Trash2 className="h-4 w-4 mr-2" /> Bulk Delete
+          </Button>
+          <Button variant="outline" onClick={exportCsv}>Export CSV</Button>
           <Button variant="outline" className="text-red-600 border-red-200 dark:border-red-900" onClick={() => setDeleteAllOpen(true)}>
             <Trash2 className="h-4 w-4 mr-2" /> Delete All
           </Button>
@@ -232,7 +316,9 @@ export default function ArtistCatalogAdminPage() {
       </div>
 
       {parsedCount > 0 && (
-        <div className="text-sm text-zinc-600 dark:text-zinc-400">Ready to import {parsedCount} rows</div>
+        <div className="rounded-lg border border-amber-200 dark:border-amber-900 p-4 bg-amber-50 dark:bg-amber-950/30 text-sm">
+          Ready to import {parsedCount} rows
+        </div>
       )}
 
       {/* Track Table */}
@@ -245,32 +331,61 @@ export default function ArtistCatalogAdminPage() {
           <table className="w-full text-sm">
             <thead className="bg-zinc-50 dark:bg-zinc-900">
               <tr className="text-left text-zinc-600 dark:text-zinc-400">
+                <th className="p-4">
+                  <input type="checkbox" onChange={(e) => toggleAll(e.target.checked)} />
+                </th>
                 <th className="p-4 font-medium">Song Title</th>
                 <th className="p-4 font-medium">Composer Name</th>
                 <th className="p-4 font-medium">ISRC</th>
                 <th className="p-4 font-medium">Artist</th>
                 <th className="p-4 font-medium">Split (%)</th>
+                <th className="p-4 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td className="p-6 text-zinc-500" colSpan={5}>Loading...</td></tr>
+                <tr><td className="p-6 text-zinc-500" colSpan={7}>Loading...</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td className="p-6 text-zinc-500" colSpan={5}>No tracks found</td></tr>
+                <tr><td className="p-6 text-zinc-500" colSpan={7}>No tracks found</td></tr>
               ) : (
-                filtered.map((t) => (
+                paged.map((t) => (
                   <tr key={t.id} className="border-t border-zinc-200 dark:border-zinc-800">
+                    <td className="p-4">
+                      <input
+                        type="checkbox"
+                        checked={!!selected[t.id]}
+                        onChange={(e) => setSelected((s) => ({ ...s, [t.id]: e.target.checked }))}
+                      />
+                    </td>
                     <td className="p-4">{t.song_title}</td>
                     <td className="p-4 text-zinc-600 dark:text-zinc-400">{t.composer_name}</td>
                     <td className="p-4 text-zinc-600 dark:text-zinc-400">{t.isrc}</td>
                     <td className="p-4 text-zinc-600 dark:text-zinc-400">{t.artist_name}</td>
                     <td className="p-4 text-zinc-600 dark:text-zinc-400">{t.split_percent}%</td>
+                    <td className="p-4">
+                      <Button size="sm" variant="outline" onClick={() => setEditRow(t)}>
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                    </td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
         </div>
+        {filtered.length > pageSize && (
+          <div className="flex items-center justify-between px-4 py-3 border-t border-zinc-200 dark:border-zinc-800 text-sm">
+            <div>Page {page} of {totalPages}</div>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>
+                Prev
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}>
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Upload History */}
@@ -304,6 +419,22 @@ export default function ArtistCatalogAdminPage() {
         </div>
       </section>
 
+      {/* Bulk Delete Dialog */}
+      <Dialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm bulk delete</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            This will permanently delete {Object.keys(selected).filter((k) => selected[k]).length} selected tracks.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkDeleteOpen(false)}>Cancel</Button>
+            <Button className="bg-red-600 hover:bg-red-700" onClick={bulkDelete}>Delete</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Delete All Dialog */}
       <Dialog open={deleteAllOpen} onOpenChange={setDeleteAllOpen}>
         <DialogContent>
@@ -318,6 +449,49 @@ export default function ArtistCatalogAdminPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteAllOpen(false)}>Cancel</Button>
             <Button className="bg-red-600 hover:bg-red-700" onClick={handleDeleteAll}>Delete All</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Dialog */}
+      <Dialog open={!!editRow} onOpenChange={(o) => !o && setEditRow(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit track</DialogTitle>
+          </DialogHeader>
+          {editRow && (
+            <div className="grid gap-3">
+              <Input
+                value={editRow.song_title}
+                onChange={(e) => setEditRow({ ...editRow, song_title: e.target.value })}
+                placeholder="Song Title"
+              />
+              <Input
+                value={editRow.composer_name}
+                onChange={(e) => setEditRow({ ...editRow, composer_name: e.target.value })}
+                placeholder="Composer Name"
+              />
+              <Input
+                value={editRow.isrc}
+                onChange={(e) => setEditRow({ ...editRow, isrc: e.target.value })}
+                placeholder="ISRC"
+              />
+              <Input
+                value={editRow.artist_name}
+                onChange={(e) => setEditRow({ ...editRow, artist_name: e.target.value })}
+                placeholder="Artist"
+              />
+              <Input
+                type="number"
+                value={editRow.split_percent}
+                onChange={(e) => setEditRow({ ...editRow, split_percent: parseFloat(e.target.value) || 0 })}
+                placeholder="Split (%)"
+              />
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditRow(null)}>Cancel</Button>
+            <Button onClick={saveEdit}>Save</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
