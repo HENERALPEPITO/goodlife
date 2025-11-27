@@ -16,6 +16,11 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "GOOD LIFE MUSIC: Cloud Workspace",
   description: "Streamlined music business dashboard",
+  icons: {
+    icon: "/logo.png",
+    shortcut: "/logo.png",
+    apple: "/logo.png",
+  },
 };
 
 export default function RootLayout({
