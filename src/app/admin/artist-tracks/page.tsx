@@ -8,7 +8,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Upload, Search, Trash2, Edit, ArrowUpDown } from "lucide-react";
+import { Upload, Search, Trash2, Edit, ArrowUpDown, AlertCircle, Download } from "lucide-react";
 import { parseCatalogCsv, CatalogCsvRow } from "@/lib/catalogCsv";
 import { useTheme } from "next-themes";
 
@@ -76,132 +76,25 @@ export default function ArtistTrackManagerPage() {
 
   const fetchArtists = async () => {
     try {
-      // First, try to fetch from artists table
-      let { data, error } = await supabase
+      // Fetch from artists table - use name directly
+      const { data, error } = await supabase
         .from("artists")
-        .select("id,name,user_id")
+        .select("id, name")
         .order("name", { ascending: true });
       
       if (error) {
-        console.error("Error fetching from artists table:", error);
-        // Fallback: fetch from user_profiles if artists table is empty or has issues
-      }
-      
-      // If we have data, fetch emails from user_profiles and use email for display
-      if (data && data.length > 0) {
-        const artistRecords: Artist[] = [];
-        
-        for (const artist of data) {
-          // Fetch email from user_profiles
-          const { data: profile } = await supabase
-            .from("user_profiles")
-            .select("email")
-            .eq("id", artist.user_id)
-            .maybeSingle();
-          
-          // Use email if available, otherwise use existing name
-          const displayName = profile?.email || artist.name;
-          
-          // Update artist name in database if it's not already an email
-          if (profile?.email && !artist.name.includes("@")) {
-            await supabase
-              .from("artists")
-              .update({ name: profile.email })
-              .eq("id", artist.id);
-          }
-          
-          artistRecords.push({
-            id: artist.id,
-            name: displayName,
-          });
-        }
-        
-        setArtists(artistRecords);
+        console.error("Error fetching artists:", error);
+        toast({ title: "Error", description: "Failed to load artists", variant: "destructive" });
         return;
       }
       
-      // If artists table is empty, use user_profiles with role='artist'
-      if (!data || data.length === 0) {
-        const { data: profiles, error: profileError } = await supabase
-          .from("user_profiles")
-          .select("id, email")
-          .eq("role", "artist")
-          .order("email", { ascending: true });
-        
-        if (profileError) {
-          toast({ title: "Error", description: "Failed to load artists", variant: "destructive" });
-          return;
-        }
-        
-        // Convert user_profiles to artists format
-        // For each artist user, create or get artist record
-        const artistRecords: Artist[] = [];
-        
-        for (const profile of profiles || []) {
-          // Check if artist record exists
-          const { data: existingArtist } = await supabase
-            .from("artists")
-            .select("id,name")
-            .eq("user_id", profile.id)
-            .maybeSingle();
-          
-          if (existingArtist) {
-            // Use email for display if name doesn't contain @
-            const displayName = existingArtist.name.includes("@") 
-              ? existingArtist.name 
-              : profile.email;
-            
-            // Update artist name in database if it's not already an email
-            if (!existingArtist.name.includes("@")) {
-              await supabase
-                .from("artists")
-                .update({ name: profile.email })
-                .eq("id", existingArtist.id);
-            }
-            
-            artistRecords.push({
-              id: existingArtist.id,
-              name: displayName,
-            });
-            continue;
-          }
-          
-          // Create artist record if it doesn't exist
-          const artistName = profile.email; // Use full email as name for display
-          const { data: newArtist, error: createError } = await supabase
-            .from("artists")
-            .insert({
-              user_id: profile.id,
-              name: artistName,
-            })
-            .select("id,name")
-            .single();
-          
-          if (createError) {
-            console.error("Error creating artist record for", profile.email, ":", createError);
-            // Skip this artist if creation fails - can't proceed without artist record
-            continue;
-          }
-          
-          if (newArtist) {
-            artistRecords.push({
-              id: newArtist.id,
-              name: profile.email, // Use email for display
-            });
-          }
-        }
-        
-        if (artistRecords.length === 0 && (profiles || []).length > 0) {
-          toast({ 
-            title: "Warning", 
-            description: "No artist records found. You may need to create artists first or check RLS policies.",
-            variant: "default"
-          });
-        }
-        
-        setArtists(artistRecords);
+      if (data && data.length > 0) {
+        setArtists(data.map(artist => ({
+          id: artist.id,
+          name: artist.name || "Unknown Artist",
+        })));
       } else {
-        setArtists((data as any) || []);
+        setArtists([]);
       }
     } catch (err) {
       console.error("Error in fetchArtists:", err);
@@ -496,6 +389,19 @@ export default function ArtistTrackManagerPage() {
     URL.revokeObjectURL(url);
   };
 
+  const downloadTemplate = () => {
+    const header = ["Song Title", "Composer Name", "ISRC", "Artist", "Split"];
+    const exampleRow = ["My Song Title", "John Doe", "USRC12345678", "Artist Name", "100"];
+    const csv = [header, exampleRow].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "track-catalog-template.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   if (authLoading || !user) return null;
 
   const selectedCount = Object.values(selected).filter(Boolean).length;
@@ -577,7 +483,58 @@ export default function ArtistTrackManagerPage() {
         </select>
       </div>
 
-      {/* Section 2: CSV Upload */}
+      {/* Section 2: Required CSV Format Info */}
+      {selectedArtistId && (
+        <div 
+          className="transition-all duration-200"
+          style={{
+            backgroundColor: isDark ? 'rgba(30, 58, 138, 0.2)' : '#DBEAFE',
+            border: isDark ? '1px solid rgba(59, 130, 246, 0.3)' : '1px solid #93C5FD',
+            borderRadius: '16px',
+            padding: '24px',
+          }}
+        >
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 mt-0.5 flex-shrink-0" style={{ color: '#3B82F6' }} />
+            <div className="flex-1">
+              <h3 
+                className="font-semibold mb-2" 
+                style={{ color: isDark ? '#DBEAFE' : '#1E3A8A' }}
+              >
+                Required CSV Format
+              </h3>
+              <p 
+                className="text-sm mb-3" 
+                style={{ color: isDark ? '#BFDBFE' : '#1E40AF' }}
+              >
+                Your CSV file must include the following columns (in any order):
+              </p>
+              <div 
+                className="text-sm font-mono p-3 rounded mb-4"
+                style={{
+                  color: isDark ? '#BFDBFE' : '#1E40AF',
+                  backgroundColor: isDark ? 'rgba(30, 58, 138, 0.3)' : '#BFDBFE',
+                }}
+              >
+                Song Title, Composer Name, ISRC, Artist, Split
+              </div>
+              <button
+                onClick={downloadTemplate}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-md transition-all duration-200 hover:scale-105 active:scale-95"
+                style={{
+                  backgroundColor: '#3B82F6',
+                  color: '#FFFFFF',
+                }}
+              >
+                <Download className="h-4 w-4" />
+                Download CSV Template
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Section 3: CSV Upload */}
       {selectedArtistId && (
         <div 
           className="transition-all duration-200"
@@ -1063,13 +1020,13 @@ export default function ArtistTrackManagerPage() {
       <Dialog open={!!editRow} onOpenChange={(o) => !o && setEditRow(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle style={{ color: 'rgba(255, 255, 255, 0.95)' }}>Edit track</DialogTitle>
+            <DialogTitle style={{ color: 'rgba(24, 24, 24, 1)' }}>Edit track</DialogTitle>
           </DialogHeader>
           {editRow && (
             <div className="grid gap-3 py-4">
               <input
                 type="text"
-                value={editRow.song_title}
+                value={editRow.song_title || ""}
                 onChange={(e) => setEditRow({ ...editRow, song_title: e.target.value })}
                 placeholder="Song Title"
                 className="px-3 py-2 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
@@ -1090,7 +1047,7 @@ export default function ArtistTrackManagerPage() {
               />
               <input
                 type="text"
-                value={editRow.composer_name}
+                value={editRow.composer_name || ""}
                 onChange={(e) => setEditRow({ ...editRow, composer_name: e.target.value })}
                 placeholder="Composer Name"
                 className="px-3 py-2 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
@@ -1111,7 +1068,7 @@ export default function ArtistTrackManagerPage() {
               />
               <input
                 type="text"
-                value={editRow.isrc}
+                value={editRow.isrc || ""}
                 onChange={(e) => setEditRow({ ...editRow, isrc: e.target.value })}
                 placeholder="ISRC"
                 className="px-3 py-2 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
@@ -1132,7 +1089,7 @@ export default function ArtistTrackManagerPage() {
               />
               <input
                 type="text"
-                value={editRow.artist_name}
+                value={editRow.artist_name || ""}
                 onChange={(e) => setEditRow({ ...editRow, artist_name: e.target.value })}
                 placeholder="Artist"
                 className="px-3 py-2 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
@@ -1153,12 +1110,12 @@ export default function ArtistTrackManagerPage() {
               />
               <input
                 type="text"
-                value={editRow.split}
+                value={editRow.split || ""}
                 onChange={(e) => setEditRow({ ...editRow, split: e.target.value })}
                 placeholder="Split (%)"
                 className="px-3 py-2 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
                 style={{
-                  backgroundColor: '#F9FAFB',
+                  backgroundColor: '#f9fafb',
                   color: '#0A0A0A',
                   border: '1px solid rgba(0, 0, 0, 0.1)',
                   boxShadow: 'inset 0 1px 2px rgba(0, 0, 0, 0.05)',
@@ -1179,15 +1136,15 @@ export default function ArtistTrackManagerPage() {
               onClick={() => setEditRow(null)}
               className="px-4 py-2 text-sm rounded-md transition-all duration-200 hover:scale-105 active:scale-95"
               style={{
-                border: '1px solid rgba(255, 255, 255, 0.2)',
-                color: 'rgba(255, 255, 255, 0.9)',
-                backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid rgba(0, 0, 0, 0.2)',
+                color: '#1F2937',
+                backgroundColor: '#F3F4F6',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                e.currentTarget.style.backgroundColor = '#E5E7EB';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+                e.currentTarget.style.backgroundColor = '#F3F4F6';
               }}
             >
               Cancel

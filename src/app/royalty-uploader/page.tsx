@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
-import { Upload, AlertCircle, FileText } from "lucide-react";
+import { Upload, AlertCircle, FileText, Download } from "lucide-react";
 import type { UserProfile } from "@/types";
 
 
@@ -46,7 +46,7 @@ export default function RoyaltyUploaderPage() {
       const { data, error } = await supabase
         .from("artists")
         .select("id, name, email, user_id")
-        .order("email");
+        .order("name");
 
       if (error) throw error;
       
@@ -193,6 +193,19 @@ export default function RoyaltyUploaderPage() {
     }
   };
 
+  const downloadTemplate = () => {
+    const header = ["Song Title", "ISWC", "Composer", "Date", "Territory", "Source", "Usage Count", "Gross", "Admin %", "Net"];
+    const exampleRow = ["My Song Title", "T-123.456.789-0", "John Doe", "2024-01-15", "US", "Spotify", "1000", "100.00", "15", "85.00"];
+    const csv = [header, exampleRow].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "royalty-upload-template.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   if (loading || loadingArtists) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -232,7 +245,7 @@ export default function RoyaltyUploaderPage() {
               Your CSV file must include the following columns (in any order):
             </p>
             <div 
-              className="text-sm font-mono p-3 rounded transition-colors"
+              className="text-sm font-mono p-3 rounded transition-colors mb-4"
               style={{
                 color: isDark ? '#BFDBFE' : '#1E40AF',
                 backgroundColor: isDark ? 'rgba(30, 58, 138, 0.3)' : '#BFDBFE',
@@ -240,6 +253,17 @@ export default function RoyaltyUploaderPage() {
             >
               Song Title, ISWC, Composer, Date, Territory, Source, Usage Count, Gross, Admin %, Net
             </div>
+            <button
+              onClick={downloadTemplate}
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-md transition-all duration-200 hover:opacity-90"
+              style={{
+                backgroundColor: '#3B82F6',
+                color: '#FFFFFF',
+              }}
+            >
+              <Download className="h-4 w-4" />
+              Download CSV Template
+            </button>
           </div>
         </div>
       </section>
@@ -273,7 +297,7 @@ export default function RoyaltyUploaderPage() {
               <option value="">-- Choose an artist --</option>
               {artists.map((artist) => (
                 <option key={artist.id} value={artist.id}>
-                  {artist.email}
+                  {artist.name}
                 </option>
               ))}
             </select>
