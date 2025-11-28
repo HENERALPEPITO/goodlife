@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS tracks (
   release_date DATE,
   platform TEXT,
   territory TEXT,
+  uploaded_by UUID REFERENCES user_profiles(id) ON DELETE SET NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -104,6 +105,7 @@ CREATE INDEX IF NOT EXISTS idx_artists_name ON artists(name);
 CREATE INDEX IF NOT EXISTS idx_tracks_artist_id ON tracks(artist_id);
 CREATE INDEX IF NOT EXISTS idx_tracks_title ON tracks(title);
 CREATE INDEX IF NOT EXISTS idx_tracks_song_title ON tracks(song_title);
+CREATE INDEX IF NOT EXISTS idx_tracks_isrc ON tracks(isrc);
 CREATE INDEX IF NOT EXISTS idx_tracks_created_at ON tracks(created_at);
 
 CREATE INDEX IF NOT EXISTS idx_royalties_track_id ON royalties(track_id);
@@ -191,7 +193,15 @@ GRANT EXECUTE ON FUNCTION get_unpaid_royalties_total(UUID) TO authenticated, ser
 GRANT EXECUTE ON FUNCTION mark_royalties_as_paid(UUID) TO authenticated, service_role;
 
 -- ============================================
--- 12. VERIFICATION
+-- 12. CREATE STORAGE BUCKETS (Run separately in Storage settings)
+-- ============================================
+-- In Supabase Dashboard > Storage, create these buckets:
+-- 1. "royalties" - for CSV uploads
+-- 2. "invoices" - for PDF invoices
+-- Set both to public or configure appropriate policies
+
+-- ============================================
+-- 13. VERIFICATION
 -- ============================================
 SELECT 
   table_name,
