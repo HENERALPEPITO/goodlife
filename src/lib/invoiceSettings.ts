@@ -30,12 +30,7 @@ export async function getInvoiceSettings(): Promise<InvoiceSettings | null> {
       .maybeSingle();
 
     if (error) {
-      console.error("Error fetching invoice settings:", {
-        message: error.message,
-        code: error.code,
-        details: error.details,
-        hint: error.hint
-      });
+      // Silently fall back to defaults - this is expected if table doesn't exist or RLS blocks access
       return getDefaultInvoiceSettings();
     }
 
@@ -45,12 +40,8 @@ export async function getInvoiceSettings(): Promise<InvoiceSettings | null> {
     }
 
     return data;
-  } catch (error: any) {
-    console.error("Error fetching invoice settings:", {
-      message: error?.message || "Unknown error",
-      name: error?.name,
-      stack: error?.stack
-    });
+  } catch {
+    // Silently fall back to defaults
     return getDefaultInvoiceSettings();
   }
 }
