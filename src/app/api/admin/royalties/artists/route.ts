@@ -11,6 +11,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 interface Artist {
   id: string;
+  name: string;
   email: string;
   record_count: number;
 }
@@ -141,7 +142,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     // Get artists for these artist IDs (from artists table, not user_profiles)
     const { data: artists, error: artistsError } = await adminClient
       .from("artists")
-      .select("id, email")
+      .select("id, name, email")
       .in("id", artistIds);
 
     if (artistsError) {
@@ -161,12 +162,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     // Combine data
     const resultArtists: Artist[] = (artists || [])
-      .map((artist: { id: string; email: string }) => ({
+      .map((artist: { id: string; name: string; email: string }) => ({
         id: artist.id,
+        name: artist.name,
         email: artist.email,
         record_count: artistRecordCounts.get(artist.id) || 0,
       }))
-      .sort((a: Artist, b: Artist) => a.email.localeCompare(b.email));
+      .sort((a: Artist, b: Artist) => a.name.localeCompare(b.name));
 
     return NextResponse.json(resultArtists, { status: 200 });
   } catch (error) {
