@@ -1,3 +1,7 @@
+<img width="1280" height="720" alt="image" src="https://github.com/user-attachments/assets/e39d9c89-35c1-435d-99fc-e7d421e8af04" />
+
+
+
 GoodLife: Cloud Workspace for Streamlined Music Business
 ========================================================
 
