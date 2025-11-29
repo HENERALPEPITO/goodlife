@@ -398,7 +398,7 @@ export default function RoyaltiesPage() {
         .maybeSingle();
 
       if (error) {
-        console.error("Error checking pending request:", error);
+        console.error("Error checking pending request:", error.message, error.code, error.details);
         return;
       }
 

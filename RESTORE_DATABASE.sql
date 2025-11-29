@@ -174,6 +174,29 @@ BEGIN
 END;
 $$;
 
+-- Function to restore royalties when a payment request is rejected
+CREATE OR REPLACE FUNCTION restore_royalties_on_rejection(request_uuid UUID)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_artist_id UUID;
+BEGIN
+  -- Get the artist_id from the payment request
+  SELECT artist_id INTO v_artist_id
+  FROM payment_requests
+  WHERE id = request_uuid;
+  
+  -- Restore all paid royalties for this artist back to unpaid
+  -- This assumes only one pending/approved payment request at a time per artist
+  UPDATE royalties
+  SET is_paid = false
+  WHERE artist_id = v_artist_id
+    AND is_paid = true;
+END;
+$$;
+
 -- ============================================
 -- 11. GRANT PERMISSIONS
 -- ============================================
@@ -191,6 +214,7 @@ GRANT SELECT ON royalties TO anon;
 
 GRANT EXECUTE ON FUNCTION get_unpaid_royalties_total(UUID) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION mark_royalties_as_paid(UUID) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION restore_royalties_on_rejection(UUID) TO authenticated, service_role;
 
 -- ============================================
 -- 12. CREATE STORAGE BUCKETS (Run separately in Storage settings)
