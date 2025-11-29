@@ -114,14 +114,7 @@ export async function GET(
       );
     }
 
-    // Get pagination parameters (default: page 1, 100 per page)
-    const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get("page") || "1", 10);
-    const pageSize = parseInt(searchParams.get("pageSize") || "100", 10);
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
-
-    const { data: royalties, error, count } = await adminClient
+    const { data: royalties, error } = await adminClient
       .from("royalties")
       .select(`
         *,
@@ -130,10 +123,9 @@ export async function GET(
           composer_name,
           isrc
         )
-      `, { count: "exact" })
+      `)
       .eq("artist_id", artistId)
-      .order("broadcast_date", { ascending: false, nullsFirst: false })
-      .range(from, to);
+      .order("broadcast_date", { ascending: false });
 
     if (error) {
       console.error("Error fetching royalties for artist", artistId, ":");
@@ -160,13 +152,7 @@ export async function GET(
       tracks: undefined, // Remove the nested object
     }));
 
-    return NextResponse.json({
-      data: transformedRoyalties,
-      total: count || 0,
-      page,
-      pageSize,
-      totalPages: Math.ceil((count || 0) / pageSize)
-    }, { status: 200 });
+    return NextResponse.json(transformedRoyalties, { status: 200 });
   } catch (error) {
     console.error("Error in admin royalties artist endpoint:", error);
     return NextResponse.json(
