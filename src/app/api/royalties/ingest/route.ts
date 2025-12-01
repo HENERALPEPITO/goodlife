@@ -1,18 +1,14 @@
 /**
- * Streaming Royalties CSV Ingestion API Route
+ * Royalties CSV Ingestion API Route
  * POST /api/royalties/ingest
  * 
- * Performance improvements with streaming:
- * - Stream CSV parsing (low memory usage)
- * - Process rows in chunks as they arrive
+ * Accepts client-parsed CSV data and processes:
  * - Bulk track lookup and creation
  * - Optimized batch inserts
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import Papa from "papaparse";
-import { Readable } from "stream";
 
 interface RoyaltyRow {
   songTitle: string;
@@ -29,7 +25,7 @@ interface RoyaltyRow {
 
 interface IngestRequest {
   artistId: string;
-  filePath: string;
+  rows: Record<string, string>[];
 }
 
 interface IngestResponse {
@@ -40,49 +36,6 @@ interface IngestResponse {
   details?: string;
 }
 
-// Helper: Convert Web ReadableStream to Node Readable
-function webStreamToNodeStream(webStream: ReadableStream<Uint8Array>): Readable {
-  const reader = webStream.getReader();
-  
-  return new Readable({
-    async read() {
-      try {
-        const { done, value } = await reader.read();
-        if (done) {
-          this.push(null);
-        } else {
-          this.push(Buffer.from(value));
-        }
-      } catch (error) {
-        this.destroy(error as Error);
-      }
-    },
-  });
-}
-
-// Helper: Parse CSV in streaming mode
-async function streamParseCSV(stream: Readable): Promise<Record<string, string>[]> {
-  return new Promise((resolve, reject) => {
-    const rows: Record<string, string>[] = [];
-    
-    Papa.parse(stream, {
-      header: true,
-      skipEmptyLines: true,
-      dynamicTyping: false,
-      chunk: (results) => {
-        // Process chunks as they arrive
-        rows.push(...results.data as Record<string, string>[]);
-      },
-      complete: () => {
-        resolve(rows);
-      },
-      error: (error: Error) => {
-        reject(error);
-      },
-    });
-  });
-}
-
 // Helper: Find column mapping once
 function buildColumnMapping(firstRow: Record<string, string>): Map<string, string> {
   const columnMappings = new Map<string, string>();
@@ -90,7 +43,7 @@ function buildColumnMapping(firstRow: Record<string, string>): Map<string, strin
   const mappings: Record<string, string[]> = {
     songTitle: ["Song Title", "song title", "title", "Title"],
     iswc: ["ISWC", "iswc", "Iswc", "ISWC Code"],
-    composer: ["Composer", "composer", "Composer Name"],
+    composer: ["Composer", "composer", "Composer Name", "Song Composer(s)", "Song Composers"],
     date: ["Date", "date", "Broadcast Date", "broadcast_date"],
     territory: ["Territory", "territory"],
     source: ["Source", "source", "Platform", "platform", "Exploitation Source"],
@@ -146,59 +99,23 @@ export async function POST(request: NextRequest): Promise<NextResponse<IngestRes
     const supabaseAdmin = getSupabaseAdmin();
     
     const body: IngestRequest = await request.json();
-    const { artistId, filePath } = body;
+    const { artistId, rows: parsedRows } = body;
 
-    if (!artistId || !filePath) {
+    if (!artistId || !parsedRows) {
       return NextResponse.json(
-        { success: false, error: "Missing required fields: artistId and filePath" },
+        { success: false, error: "Missing required fields: artistId and rows" },
         { status: 400 }
       );
     }
 
-    console.log(`📥 Starting streaming CSV ingestion for artist ${artistId}, file: ${filePath}`);
+    console.log(`📥 Starting CSV ingestion for artist ${artistId}, received ${parsedRows.length} rows`);
 
-    // Step 1: Get a streaming download from Supabase Storage
-    const downloadStart = Date.now();
-    
-    // Get the public/signed URL for streaming
-    const { data: urlData } = await supabaseAdmin.storage
-      .from("royalties")
-      .createSignedUrl(filePath, 3600); // 1 hour expiry
-
-    if (!urlData?.signedUrl) {
+    if (!Array.isArray(parsedRows)) {
       return NextResponse.json(
-        { success: false, error: "Failed to generate download URL" },
-        { status: 500 }
-      );
-    }
-
-    // Fetch with streaming
-    const response = await fetch(urlData.signedUrl);
-    if (!response.ok || !response.body) {
-      return NextResponse.json(
-        { success: false, error: "Failed to fetch file for streaming" },
-        { status: 500 }
-      );
-    }
-
-    console.log(`📄 Started streaming download in ${Date.now() - downloadStart}ms`);
-
-    // Step 2: Convert Web ReadableStream to Node Readable and parse with streaming
-    const parseStart = Date.now();
-    const nodeStream = webStreamToNodeStream(response.body);
-    
-    let parsedRows: Record<string, string>[];
-    try {
-      parsedRows = await streamParseCSV(nodeStream);
-    } catch (parseError: any) {
-      console.error("CSV parsing error:", parseError);
-      return NextResponse.json(
-        { success: false, error: "Failed to parse CSV file", details: parseError.message },
+        { success: false, error: "Invalid rows data: expected array" },
         { status: 400 }
       );
     }
-
-    console.log(`✅ Parsed ${parsedRows.length} rows in ${Date.now() - parseStart}ms`);
 
     if (parsedRows.length === 0) {
       return NextResponse.json(
@@ -347,7 +264,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<IngestRes
     console.log(`   - Tracks created: ${titlesToCreate.length}`);
     console.log(`   - Royalties inserted: ${totalInserted}`);
     console.log(`   - Throughput: ${throughput} records/sec`);
-    console.log(`   - Memory efficient: Streaming parser used`);
+    console.log(`   - Client-side parsing used`);
 
     return NextResponse.json(
       { 

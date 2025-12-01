@@ -107,6 +107,38 @@ export default function RoyaltyUploaderPage() {
     });
   };
 
+  const parseCSV = (file: File): Promise<Record<string, string>[]> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target?.result as string;
+        const lines = text.split('\n').filter(line => line.trim());
+        if (lines.length === 0) {
+          reject(new Error('CSV file is empty'));
+          return;
+        }
+        
+        // Parse header
+        const header = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+        
+        // Parse rows
+        const rows: Record<string, string>[] = [];
+        for (let i = 1; i < lines.length; i++) {
+          const values = lines[i].match(/("[^"]*"|[^,]+)/g) || [];
+          const row: Record<string, string> = {};
+          header.forEach((key, idx) => {
+            row[key] = (values[idx] || '').trim().replace(/^"|"$/g, '');
+          });
+          rows.push(row);
+        }
+        
+        resolve(rows);
+      };
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsText(file);
+    });
+  };
+
   const handleUpload = async () => {
     if (!selectedArtist) {
       toast({
@@ -127,29 +159,20 @@ export default function RoyaltyUploaderPage() {
     }
 
     setUploading(true);
-    setUploadProgress("Uploading file to storage...");
+    setUploadProgress("Parsing CSV file...");
 
     try {
-      // Step 1: Upload CSV file to Supabase Storage
-      const timestamp = Date.now();
-      const fileName = `uploads/${timestamp}-${selectedFile.name}`;
-
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from("royalties")
-        .upload(fileName, selectedFile, {
-          cacheControl: "3600",
-          upsert: false,
-        });
-
-      if (uploadError) {
-        console.error("Storage upload error:", uploadError);
-        throw new Error(`Failed to upload file: ${uploadError.message}`);
+      // Step 1: Parse CSV client-side
+      const parsedRows = await parseCSV(selectedFile);
+      
+      if (parsedRows.length === 0) {
+        throw new Error('CSV file has no data rows');
       }
+      
+      console.log(`Parsed ${parsedRows.length} rows from CSV`);
+      setUploadProgress(`Processing ${parsedRows.length} rows...`);
 
-      console.log("File uploaded to storage:", uploadData.path);
-      setUploadProgress("Processing CSV on server...");
-
-      // Step 2: Call API route to process CSV
+      // Step 2: Send parsed data directly to API
       const response = await fetch("/api/royalties/ingest", {
         method: "POST",
         headers: {
@@ -157,7 +180,7 @@ export default function RoyaltyUploaderPage() {
         },
         body: JSON.stringify({
           artistId: selectedArtist,
-          filePath: uploadData.path,
+          rows: parsedRows,
         }),
       });
 
@@ -170,7 +193,7 @@ export default function RoyaltyUploaderPage() {
       // Step 3: Success!
       toast({
         title: "Upload Successful",
-        description: `Successfully uploaded and processed ${result.inserted} royalty records`,
+        description: `Successfully processed ${result.inserted} royalty records`,
       });
 
       // Reset form
