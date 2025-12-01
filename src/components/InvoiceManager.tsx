@@ -6,8 +6,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { useEffect, useState, useCallback } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -132,20 +131,17 @@ export default function InvoiceManager({ user }: InvoiceManagerProps) {
     }
   };
 
-  const fetchArtists = async () => {
+  const fetchArtists = useCallback(async () => {
     try {
-      const { data, error } = await supabase
-        .from("user_profiles")
-        .select("id, email")
-        .eq("role", "artist")
-        .order("email");
+      const res = await fetch("/api/data/artist-profiles", { cache: "no-store" });
+      const json = await res.json();
 
-      if (error) throw error;
-      setArtists(data || []);
+      if (json.error) throw new Error(json.error);
+      setArtists(json.data || []);
     } catch (error) {
       console.error("Error fetching artists:", error);
     }
-  };
+  }, []);
 
   const filterInvoices = () => {
     let filtered = [...invoices];

@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useAuth } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/components/ui/use-toast";
+import { createClientTimer } from "@/lib/performanceLogger";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -43,34 +43,26 @@ export default function CatalogPage() {
     territory: "",
   });
 
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push("/login");
-    } else if (user) {
-      fetchTracks();
-    }
-  }, [user, authLoading, router]);
+  // Performance timer
+  const perfTimer = useRef(createClientTimer("CatalogPage"));
 
-  useEffect(() => {
-    filterTracks();
-  }, [searchTerm, tracks]);
-
-  const fetchTracks = async () => {
+  const fetchTracks = useCallback(async () => {
     if (!user) return;
 
     try {
       setLoading(true);
-      let query = supabase.from("tracks").select("*").order("created_at", { ascending: false });
+      perfTimer.current.startPageLoad();
+      
+      perfTimer.current.startApiRequest("/api/data/tracks");
+      const res = await fetch(
+        `/api/data/tracks?user_id=${user.id}&role=${user.role}`,
+        { cache: "no-store" }
+      );
+      const json = await res.json();
+      perfTimer.current.endApiRequest("/api/data/tracks");
 
-      // Artists only see their own tracks
-      if (user.role === "artist") {
-        query = query.eq("artist_id", user.id);
-      }
-
-      const { data, error } = await query;
-
-      if (error) throw error;
-      setTracks(data || []);
+      if (json.error) throw new Error(json.error);
+      setTracks(json.data || []);
     } catch (error) {
       console.error("Error fetching tracks:", error);
       toast({
@@ -80,8 +72,10 @@ export default function CatalogPage() {
       });
     } finally {
       setLoading(false);
+      perfTimer.current.endPageLoad();
+      perfTimer.current.logSummary();
     }
-  };
+  }, [user, toast]);
 
   const filterTracks = () => {
     if (!searchTerm) {
@@ -101,22 +95,39 @@ export default function CatalogPage() {
     setFilteredTracks(filtered);
   };
 
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push("/login");
+    } else if (user) {
+      fetchTracks();
+    }
+  }, [user, authLoading, router, fetchTracks]);
+
+  useEffect(() => {
+    filterTracks();
+  }, [searchTerm, tracks]);
+
   const handleAddTrack = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || user.role !== "admin") return;
 
     try {
-      const { error } = await supabase.from("tracks").insert({
-        artist_id: user.id, // Admin can specify artist_id in a more complete implementation
-        title: form.title,
-        iswc: form.iswc || null,
-        composers: form.composers || null,
-        release_date: form.release_date || null,
-        platform: form.platform || null,
-        territory: form.territory || null,
+      const res = await fetch("/api/data/tracks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          artist_id: user.id,
+          title: form.title,
+          iswc: form.iswc || null,
+          composers: form.composers || null,
+          release_date: form.release_date || null,
+          platform: form.platform || null,
+          territory: form.territory || null,
+        }),
       });
+      const json = await res.json();
 
-      if (error) throw error;
+      if (json.error) throw new Error(json.error);
 
       toast({
         title: "Success",
@@ -147,19 +158,22 @@ export default function CatalogPage() {
     if (!user || user.role !== "admin" || !editingTrack) return;
 
     try {
-      const { error } = await supabase
-        .from("tracks")
-        .update({
+      const res = await fetch("/api/data/tracks", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editingTrack.id,
           title: form.title,
           iswc: form.iswc || null,
           composers: form.composers || null,
           release_date: form.release_date || null,
           platform: form.platform || null,
           territory: form.territory || null,
-        })
-        .eq("id", editingTrack.id);
+        }),
+      });
+      const json = await res.json();
 
-      if (error) throw error;
+      if (json.error) throw new Error(json.error);
 
       toast({
         title: "Success",
@@ -190,9 +204,12 @@ export default function CatalogPage() {
     if (!user || user.role !== "admin" || !deleteConfirm) return;
 
     try {
-      const { error } = await supabase.from("tracks").delete().eq("id", deleteConfirm.id);
+      const res = await fetch(`/api/data/tracks?id=${deleteConfirm.id}`, {
+        method: "DELETE",
+      });
+      const json = await res.json();
 
-      if (error) throw error;
+      if (json.error) throw new Error(json.error);
 
       toast({
         title: "Success",
@@ -215,9 +232,12 @@ export default function CatalogPage() {
     if (!user || user.role !== "admin") return;
 
     try {
-      const { error } = await supabase.from("tracks").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      const res = await fetch("/api/data/tracks?delete_all=true", {
+        method: "DELETE",
+      });
+      const json = await res.json();
 
-      if (error) throw error;
+      if (json.error) throw new Error(json.error);
 
       toast({
         title: "Success",

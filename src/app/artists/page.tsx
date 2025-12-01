@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useAuth } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/components/ui/use-toast";
+import { createClientTimer } from "@/lib/performanceLogger";
 import { Button } from "@/components/ui/button";
 import { Users, Music, DollarSign } from "lucide-react";
 import type { UserProfile } from "@/types";
@@ -33,82 +33,25 @@ export default function ArtistsPage() {
 
   const isDark = mounted && theme === "dark";
 
-  useEffect(() => {
-    if (!authLoading && (!user || user.role !== "admin")) {
-      router.push("/");
-    } else if (user && user.role === "admin") {
-      fetchArtists();
-    }
-  }, [user, authLoading, router]);
+  // Performance timer
+  const perfTimer = useRef(createClientTimer("ArtistsPage"));
 
-  const fetchArtists = async () => {
+  const fetchArtists = useCallback(async () => {
     try {
       setLoading(true);
+      perfTimer.current.startPageLoad();
       
-      // Fetch all artists
-      const { data: artistProfiles, error: artistError } = await supabase
-        .from("user_profiles")
-        .select("*")
-        .eq("role", "artist")
-        .order("created_at", { ascending: false });
+      // Fetch all artists with stats via API route
+      perfTimer.current.startApiRequest("/api/data/artists-stats");
+      const res = await fetch("/api/data/artists-stats", { cache: "no-store" });
+      const json = await res.json();
+      perfTimer.current.endApiRequest("/api/data/artists-stats");
 
-      if (artistError) throw artistError;
+      if (json.error) {
+        throw new Error(json.error);
+      }
 
-      // Fetch stats for each artist
-      const artistsWithStats = await Promise.all(
-        (artistProfiles || []).map(async (artist) => {
-          // First, get the artist record from the artists table
-          // This is needed because tracks.artist_id and royalties.artist_id reference artists.id, not user_profiles.id
-          const { data: artistRecord, error: artistRecordError } = await supabase
-            .from("artists")
-            .select("id")
-            .eq("user_id", artist.id)
-            .maybeSingle();
-
-          // If no artist record exists, return zeros
-          if (artistRecordError || !artistRecord) {
-            return {
-              ...artist,
-              totalTracks: 0,
-              totalRevenue: 0,
-              totalStreams: 0,
-            };
-          }
-
-          const artistId = artistRecord.id;
-
-          // Get track count using artists.id
-          const { count: trackCount } = await supabase
-            .from("tracks")
-            .select("*", { count: "exact", head: true })
-            .eq("artist_id", artistId);
-
-          // Get royalties using artists.id
-          const { data: royalties } = await supabase
-            .from("royalties")
-            .select("net_amount, usage_count")
-            .eq("artist_id", artistId);
-
-          const totalRevenue = royalties?.reduce(
-            (sum, r) => sum + Number(r.net_amount || 0),
-            0
-          ) || 0;
-
-          const totalStreams = royalties?.reduce(
-            (sum, r) => sum + Number(r.usage_count || 0),
-            0
-          ) || 0;
-
-          return {
-            ...artist,
-            totalTracks: trackCount || 0,
-            totalRevenue,
-            totalStreams,
-          };
-        })
-      );
-
-      setArtists(artistsWithStats);
+      setArtists(json.data || []);
     } catch (error) {
       console.error("Error fetching artists:", error);
       toast({
@@ -118,8 +61,18 @@ export default function ArtistsPage() {
       });
     } finally {
       setLoading(false);
+      perfTimer.current.endPageLoad();
+      perfTimer.current.logSummary();
     }
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    if (!authLoading && (!user || user.role !== "admin")) {
+      router.push("/");
+    } else if (user && user.role === "admin") {
+      fetchArtists();
+    }
+  }, [user, authLoading, router, fetchArtists]);
 
   const viewArtistDashboard = (artistId: string) => {
     setSelectedArtist(artistId);

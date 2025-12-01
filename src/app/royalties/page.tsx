@@ -1,8 +1,8 @@
 "use client";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
-import { supabase } from "@/lib/supabaseClient";
+import { createClientTimer } from "@/lib/performanceLogger";
 import { ArrowLeft, Download, DollarSign, Loader2, AlertCircle, Eye, FileText, Search, Filter, ChevronDown, X } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
@@ -324,89 +324,52 @@ export default function RoyaltiesPage() {
     }
   }, [user, router]);
 
-  // Payment Request Functions
-  // Fixed fetchBalance function for both payment-request/page.tsx and royalties/page.tsx
+  // Performance timer
+  const perfTimer = useRef(createClientTimer("RoyaltiesPage"));
 
-  const fetchBalance = async () => {
+  // Payment Request Functions
+  // Using API route to fetch balance
+  const fetchBalance = useCallback(async () => {
     try {
       if (!user) return;
 
-      // First, get the artist ID from the artists table
-      const { data: artist, error: artistError } = await supabase
-        .from("artists")
-        .select("id")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (artistError || !artist) {
-        setBalance(0);
-        return;
-      }
-
-      // Get unpaid royalties for this artist
-      // According to schema: royalties has is_paid (boolean), not paid_status
-      // And there's no payment_request_id field in royalties table
-      const { data: royaltiesData, error } = await supabase
-        .from("royalties")
-        .select("net_amount, is_paid")
-        .eq("artist_id", artist.id)
-        .eq("is_paid", false); // Only get unpaid royalties
-
-      if (error) {
-        console.error("Error fetching balance:", error);
+      perfTimer.current.startApiRequest("/api/data/balance");
+      const res = await fetch(`/api/data/balance?user_id=${user.id}`, { cache: "no-store" });
+      const json = await res.json();
+      perfTimer.current.endApiRequest("/api/data/balance");
+      
+      if (json.error) {
+        console.error("Error fetching balance:", json.error);
         setBalance(0);
       } else {
-        // Calculate total from unpaid royalties
-        const total = (royaltiesData || []).reduce((sum, royalty) => {
-          return sum + Number(royalty.net_amount || 0);
-        }, 0);
-        setBalance(total);
+        setBalance(json.balance || 0);
       }
     } catch (error) {
       console.error("Error fetching balance:", error);
       setBalance(0);
     }
-  };
+  }, [user]);
 
-// Alternative approach if you want to check for linked payment requests:
-// You would need to add a payment_request_id column to the royalties table,
-// or create a junction table to track which royalties are included in which payment requests.
-
-// For now, the fix above uses the existing is_paid field which should work.
-  const checkPendingRequest = async () => {
+  // Using API route to check pending request
+  const checkPendingRequest = useCallback(async () => {
     try {
       if (!user) return;
 
-      // First, get the artist ID from the artists table
-      const { data: artist, error: artistError } = await supabase
-        .from("artists")
-        .select("id")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (artistError || !artist) {
+      perfTimer.current.startApiRequest("/api/data/pending-request");
+      const res = await fetch(`/api/data/pending-request?user_id=${user.id}`, { cache: "no-store" });
+      const json = await res.json();
+      perfTimer.current.endApiRequest("/api/data/pending-request");
+      
+      if (json.error) {
+        console.error("Error checking pending request:", json.error);
         return;
       }
 
-      // Check if there's a pending or approved request
-      const { data, error } = await supabase
-        .from("payment_requests")
-        .select("id")
-        .eq("artist_id", artist.id)
-        .in("status", ["pending", "approved"])
-        .limit(1)
-        .maybeSingle();
-
-      if (error) {
-        console.error("Error checking pending request:", error.message, error.code, error.details);
-        return;
-      }
-
-      setHasPendingRequest(!!data);
+      setHasPendingRequest(json.hasPendingRequest || false);
     } catch (error) {
       console.error("Error checking pending request:", error);
     }
-  };
+  }, [user]);
 
   const handleRequestPayment = async () => {
     if (!user) return;
@@ -414,14 +377,11 @@ export default function RoyaltiesPage() {
     try {
       setRequesting(true);
 
-      // First, get the artist ID from the artists table
-      const { data: artist, error: artistError } = await supabase
-        .from("artists")
-        .select("id")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (artistError || !artist) {
+      // First, get the artist ID via API
+      const balanceRes = await fetch(`/api/data/balance?user_id=${user.id}`, { cache: "no-store" });
+      const balanceJson = await balanceRes.json();
+      
+      if (!balanceJson.artistId) {
         throw new Error("Artist record not found");
       }
 
@@ -432,7 +392,7 @@ export default function RoyaltiesPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          artist_id: artist.id,
+          artist_id: balanceJson.artistId,
         }),
       });
 
@@ -469,7 +429,7 @@ export default function RoyaltiesPage() {
   const canRequest = balance >= 100 && !hasPendingRequest;
   const minBalance = 100;
 
-  async function loadAllRoyalties() {
+  const loadAllRoyalties = useCallback(async () => {
     if (!user) {
       setLoading(false);
       return;
@@ -481,51 +441,28 @@ export default function RoyaltiesPage() {
     }
 
     setLoading(true);
+    perfTimer.current.startPageLoad();
     try {
-      // Build query based on role - select all fields from royalties and join with tracks
-      let query = supabase.from("royalties").select(`
-        *,
-        tracks:track_id (
-          title,
-          composer_name,
-          isrc
-        )
-      `);
+      // Fetch royalties via API route
+      perfTimer.current.startApiRequest("/api/data/royalties");
+      const res = await fetch(
+        `/api/data/royalties?user_id=${user.id}&role=${user.role}`,
+        { cache: "no-store" }
+      );
+      const json = await res.json();
+      perfTimer.current.endApiRequest("/api/data/royalties");
 
-      // If artist, filter by their artist_id
-      if (user.role === "artist") {
-        // First, get the artist record from the artists table
-        const { data: artistRecord, error: artistError } = await supabase
-          .from("artists")
-          .select("id")
-          .eq("user_id", user.id)
-          .maybeSingle();
-
-        if (artistError || !artistRecord) {
-          setAllRoyalties([]);
-          setLoading(false);
-          return;
-        }
-
-        // Filter by artist_id
-        query = query.eq("artist_id", artistRecord.id);
-      }
-
-      // Order by broadcast_date descending (most recent first)
-      query = query.order("broadcast_date", { ascending: false, nullsFirst: false });
-
-      // Execute query - load all royalties for grouping
-      const { data: royalties, error } = await query;
-
-      if (error) {
-        console.error("Error fetching royalties:", error);
+      if (json.error) {
+        console.error("Error fetching royalties:", json.error);
         setAllRoyalties([]);
         return;
       }
 
+      const royalties = json.data || [];
+
       // Transform data to match the table format
-      const records: RoyaltyRecord[] = (royalties || [])
-        .filter((royalty) => royalty.broadcast_date) // Only include royalties with dates
+      const records: RoyaltyRecord[] = royalties
+        .filter((royalty: any) => royalty.broadcast_date) // Only include royalties with dates
         .map((royalty: any) => {
           // Format date
           let dateStr = "N/A";
@@ -562,8 +499,10 @@ export default function RoyaltiesPage() {
       setAllRoyalties([]);
     } finally {
       setLoading(false);
+      perfTimer.current.endPageLoad();
+      perfTimer.current.logSummary();
     }
-  }
+  }, [user]);
 
   useEffect(() => {
     if (user) {
@@ -571,7 +510,7 @@ export default function RoyaltiesPage() {
       fetchBalance();
       checkPendingRequest();
     }
-  }, [user]);
+  }, [user, loadAllRoyalties, fetchBalance, checkPendingRequest]);
 
   // Get quarter records (always call hooks before conditional returns)
   const getQuarterRecords = (): RoyaltyRecord[] => {

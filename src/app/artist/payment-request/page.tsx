@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/lib/auth";
-import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
@@ -37,14 +36,7 @@ export default function PaymentRequestPage() {
     }
   }, [user, authLoading, router, toast]);
 
-  useEffect(() => {
-    if (user) {
-      fetchBalance();
-      checkPendingRequest();
-    }
-  }, [user]);
-
-  const fetchBalance = async () => {
+  const fetchBalance = useCallback(async () => {
     try {
       setLoading(true);
       
@@ -53,36 +45,14 @@ export default function PaymentRequestPage() {
         return;
       }
 
-      // First, get the artist ID from the artists table
-      const { data: artist, error: artistError } = await supabase
-        .from("artists")
-        .select("id")
-        .eq("user_id", user.id)
-        .maybeSingle();
+      const res = await fetch(`/api/data/balance?user_id=${user.id}`, { cache: "no-store" });
+      const json = await res.json();
 
-      if (artistError || !artist) {
-        console.error("Error fetching artist:", artistError);
-        setBalance(0);
-        setLoading(false);
-        return;
-      }
-
-      // Get unpaid royalties for this artist
-      const { data: royaltiesData, error } = await supabase
-        .from("royalties")
-        .select("net_amount, is_paid")
-        .eq("artist_id", artist.id)
-        .eq("is_paid", false); // Only get unpaid royalties
-
-      if (error) {
-        console.error("Error fetching balance:", error);
+      if (json.error) {
+        console.error("Error fetching balance:", json.error);
         setBalance(0);
       } else {
-        // Calculate total from unpaid royalties
-        const total = (royaltiesData || []).reduce((sum, royalty) => {
-          return sum + Number(royalty.net_amount || 0);
-        }, 0);
-        setBalance(total);
+        setBalance(json.balance || 0);
       }
     } catch (error) {
       console.error("Error fetching balance:", error);
@@ -90,42 +60,32 @@ export default function PaymentRequestPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
 
-  const checkPendingRequest = async () => {
+  const checkPendingRequest = useCallback(async () => {
     try {
       if (!user) return;
 
-      // First, get the artist ID from the artists table
-      const { data: artist, error: artistError } = await supabase
-        .from("artists")
-        .select("id")
-        .eq("user_id", user.id)
-        .maybeSingle();
+      const res = await fetch(`/api/data/pending-request?user_id=${user.id}`, { cache: "no-store" });
+      const json = await res.json();
 
-      if (artistError || !artist) {
+      if (json.error) {
+        console.error("Error checking pending request:", json.error);
         return;
       }
 
-      // Check if there's a pending or approved request
-      const { data, error } = await supabase
-        .from("payment_requests")
-        .select("id")
-        .eq("artist_id", artist.id)
-        .in("status", ["pending", "approved"])
-        .limit(1)
-        .maybeSingle();
-
-      if (error) {
-        console.error("Error checking pending request:", error);
-        return;
-      }
-
-      setHasPendingRequest(!!data);
+      setHasPendingRequest(json.hasPendingRequest || false);
     } catch (error) {
       console.error("Error checking pending request:", error);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      fetchBalance();
+      checkPendingRequest();
+    }
+  }, [user, fetchBalance, checkPendingRequest]);
 
   const handleRequestPayment = async () => {
     if (!user) return;
@@ -133,14 +93,11 @@ export default function PaymentRequestPage() {
     try {
       setRequesting(true);
 
-      // First, get the artist ID from the artists table
-      const { data: artist, error: artistError } = await supabase
-        .from("artists")
-        .select("id")
-        .eq("user_id", user.id)
-        .maybeSingle();
+      // First, get the artist ID via API
+      const balanceRes = await fetch(`/api/data/balance?user_id=${user.id}`, { cache: "no-store" });
+      const balanceJson = await balanceRes.json();
 
-      if (artistError || !artist) {
+      if (!balanceJson.artistId) {
         throw new Error("Artist record not found");
       }
 
@@ -151,7 +108,7 @@ export default function PaymentRequestPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          artist_id: artist.id,
+          artist_id: balanceJson.artistId,
         }),
       });
 
