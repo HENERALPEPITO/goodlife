@@ -11,7 +11,6 @@ import { supabase } from "@/lib/supabaseClient";
 
 interface Artist {
   id: string;
-  name: string;
   email: string;
   record_count: number;
 }
@@ -163,7 +162,7 @@ export default function AdminRoyaltiesPage() {
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
                       <h2 className="text-lg font-semibold text-slate-900 group-hover:text-blue-600 transition-colors">
-                        {artist.name}
+                        {artist.email}
                       </h2>
                       <p className="text-sm text-slate-600 mt-1">
                         {artist.record_count} royalty {artist.record_count === 1 ? "record" : "records"}

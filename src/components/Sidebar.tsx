@@ -30,7 +30,7 @@ export default function Sidebar() {
     { href: "/admin/royalties", label: "Royalties Management", icon: DollarSign, show: isAdmin },
     { href: "/admin/payment-requests", label: "Payment Requests", icon: DollarSign, show: isAdmin },
     { href: "/admin/invoice-settings", label: "Invoice Settings", icon: Settings, show: isAdmin },
-    { href: "/royalty-uploader", label: "Upload Royalties", icon: FileUp, show: isAdmin }
+    { href: "/royalty-uploader", label: "Upload Royalties", icon: FileUp, show: isAdmin },
   ];
 
   const isActive = (href: string) =>

@@ -89,9 +89,11 @@ export default function AnalyticsPage() {
         query = query.eq("artist_id", artist.id);
       }
 
-      // Add index hints and optimize ordering
-      // Remove ordering from DB - we'll sort in memory only what we need
-      const { data, error } = await query.limit(10000); // Add reasonable limit
+      // Optimize: order by broadcast_date to use the index, then limit
+      // For analytics we need recent data, so order DESC and limit
+      const { data, error } = await query
+        .order("broadcast_date", { ascending: false, nullsFirst: false })
+        .limit(5000); // Reduced limit - analytics can work with recent data
 
       if (error) throw error;
 

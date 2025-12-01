@@ -26,8 +26,8 @@ export default function AdminDashboard() {
 
   const fetchAdminStats = async () => {
     try {
-      // OPTIMIZATION 1: Parallel queries for independent data
-      const [artistResult, trackResult, royaltiesResult] = await Promise.all([
+      // Parallel queries - using RPC for efficient aggregation instead of fetching all rows
+      const [artistResult, trackResult, royaltyTotals] = await Promise.all([
         supabase
           .from("user_profiles")
           .select("*", { count: "exact", head: true })
@@ -35,25 +35,18 @@ export default function AdminDashboard() {
         supabase
           .from("tracks")
           .select("*", { count: "exact", head: true }),
-        supabase
-          .from("royalties")
-          .select("net_amount, usage_count")
+        // Use RPC function for efficient aggregation (avoids fetching all rows)
+        supabase.rpc("get_royalty_totals")
       ]);
 
-      // OPTIMIZATION 2: Single-pass aggregation
-      let totalRevenue = 0;
-      let totalStreams = 0;
-
-      royaltiesResult.data?.forEach((r) => {
-        totalRevenue += Number(r.net_amount || 0);
-        totalStreams += Number(r.usage_count || 0);
-      });
+      // Extract totals from RPC result (returns single row with total_revenue and total_usage)
+      const totals = royaltyTotals.data?.[0] || { total_revenue: 0, total_usage: 0 };
 
       setStats({
         totalArtists: artistResult.count || 0,
-        totalRevenue,
+        totalRevenue: Number(totals.total_revenue || 0),
         totalTracks: trackResult.count || 0,
-        totalStreams,
+        totalStreams: Number(totals.total_usage || 0),
       });
     } catch (error) {
       console.error("Error fetching admin stats:", error);
