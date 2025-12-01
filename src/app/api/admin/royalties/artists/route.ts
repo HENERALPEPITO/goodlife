@@ -115,24 +115,68 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // First, get all unique artist_ids from royalties
-    const { data: royaltiesData, error: royaltiesError } = await adminClient
-      .from("royalties")
-      .select("artist_id")
-      .not("artist_id", "is", null);
+    // Use RPC function for efficient aggregation instead of fetching all records
+    const { data: royaltyCountsData, error: royaltiesError } = await adminClient
+      .rpc("get_artists_with_royalty_counts");
 
     if (royaltiesError) {
-      console.error("Error fetching royalties:", royaltiesError);
-      return NextResponse.json(
-        { error: "Failed to fetch royalties" },
-        { status: 500 }
-      );
+      console.error("Error fetching royalty counts:", royaltiesError);
+      // Fallback to old method if RPC function doesn't exist yet
+      const { data: fallbackData, error: fallbackError } = await adminClient
+        .from("royalties")
+        .select("artist_id")
+        .not("artist_id", "is", null);
+      
+      if (fallbackError) {
+        return NextResponse.json(
+          { error: "Failed to fetch royalties" },
+          { status: 500 }
+        );
+      }
+      
+      // Process fallback data the old way
+      const artistRecordCounts = new Map<string, number>();
+      (fallbackData || []).forEach((record: { artist_id: string }) => {
+        const count = artistRecordCounts.get(record.artist_id) || 0;
+        artistRecordCounts.set(record.artist_id, count + 1);
+      });
+      
+      const artistIds = Array.from(artistRecordCounts.keys());
+      if (artistIds.length === 0) {
+        return NextResponse.json([], { status: 200 });
+      }
+      
+      const { data: artists, error: artistsError } = await adminClient
+        .from("artists")
+        .select("id, name, email")
+        .in("id", artistIds);
+      
+      if (artistsError) {
+        return NextResponse.json(
+          { error: "Failed to fetch artist data" },
+          { status: 500 }
+        );
+      }
+      
+      const resultArtists: Artist[] = (artists || [])
+        .map((artist: { id: string; name: string; email: string }) => ({
+          id: artist.id,
+          name: artist.name,
+          email: artist.email,
+          record_count: artistRecordCounts.get(artist.id) || 0,
+        }))
+        .sort((a: Artist, b: Artist) => b.record_count - a.record_count);
+      
+      return NextResponse.json(resultArtists, { status: 200 });
     }
 
-    // Get unique artist IDs
-    const artistIds = Array.from(
-      new Set((royaltiesData || []).map((r: { artist_id: string }) => r.artist_id))
-    );
+    // Process data from RPC function
+    const artistRecordCounts = new Map<string, number>();
+    const artistIds: string[] = [];
+    (royaltyCountsData || []).forEach((record: { artist_id: string; record_count: number }) => {
+      artistRecordCounts.set(record.artist_id, record.record_count);
+      artistIds.push(record.artist_id);
+    });
 
     if (artistIds.length === 0) {
       return NextResponse.json([], { status: 200 });
@@ -151,13 +195,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         { status: 500 }
       );
     }
-
-    // Count records per artist
-    const artistRecordCounts = new Map<string, number>();
-    (royaltiesData || []).forEach((record: { artist_id: string }) => {
-      const count = artistRecordCounts.get(record.artist_id) || 0;
-      artistRecordCounts.set(record.artist_id, count + 1);
-    });
 
     // Combine data
     const resultArtists: Artist[] = (artists || [])

@@ -232,7 +232,10 @@ export default function ArtistRoyaltiesPage() {
         throw new Error("Failed to fetch royalties");
       }
 
-      const data = await response.json();
+      const responseData = await response.json();
+      
+      // Handle both old format (array) and new paginated format (object with data array)
+      const data = Array.isArray(responseData) ? responseData : (responseData.data || []);
       
       // Debug: Log first royalty to verify data structure
       if (data && data.length > 0) {
@@ -246,6 +249,7 @@ export default function ArtistRoyaltiesPage() {
           exploitation_source_name: data[0].exploitation_source_name,
           territory: data[0].territory,
         });
+        console.log(`📊 Total records: ${responseData.total || data.length}`);
       }
       
       setRoyalties(data);
