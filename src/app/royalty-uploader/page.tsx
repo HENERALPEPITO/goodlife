@@ -7,8 +7,8 @@ import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
-import { Upload, AlertCircle, FileText, Download } from "lucide-react";
-import type { UserProfile } from "@/types";
+import { Upload, AlertCircle, FileText, Download, Loader2 } from "lucide-react";
+import Papa from "papaparse";
 
 
 export default function RoyaltyUploaderPage() {
@@ -88,12 +88,12 @@ export default function RoyaltyUploaderPage() {
       return;
     }
 
-    // Validate file size (10MB limit)
-    const maxSize = 10 * 1024 * 1024; // 10MB in bytes
+    // Validate file size (50MB limit)
+    const maxSize = 50 * 1024 * 1024;
     if (file.size > maxSize) {
       toast({
         title: "File Too Large",
-        description: "File size must be less than 10MB",
+        description: "File size must be less than 50MB",
         variant: "destructive",
       });
       setSelectedFile(null);
@@ -109,33 +109,17 @@ export default function RoyaltyUploaderPage() {
 
   const parseCSV = (file: File): Promise<Record<string, string>[]> => {
     return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const text = e.target?.result as string;
-        const lines = text.split('\n').filter(line => line.trim());
-        if (lines.length === 0) {
-          reject(new Error('CSV file is empty'));
-          return;
-        }
-        
-        // Parse header
-        const header = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
-        
-        // Parse rows
-        const rows: Record<string, string>[] = [];
-        for (let i = 1; i < lines.length; i++) {
-          const values = lines[i].match(/("[^"]*"|[^,]+)/g) || [];
-          const row: Record<string, string> = {};
-          header.forEach((key, idx) => {
-            row[key] = (values[idx] || '').trim().replace(/^"|"$/g, '');
-          });
-          rows.push(row);
-        }
-        
-        resolve(rows);
-      };
-      reader.onerror = () => reject(new Error('Failed to read file'));
-      reader.readAsText(file);
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        dynamicTyping: false, // Keep all values as strings for precision
+        complete: (results) => {
+          resolve(results.data as Record<string, string>[]);
+        },
+        error: (error: Error) => {
+          reject(error);
+        },
+      });
     });
   };
 
@@ -162,7 +146,7 @@ export default function RoyaltyUploaderPage() {
     setUploadProgress("Parsing CSV file...");
 
     try {
-      // Step 1: Parse CSV client-side
+      // Step 1: Parse CSV client-side with PapaParse
       const parsedRows = await parseCSV(selectedFile);
       
       if (parsedRows.length === 0) {
@@ -172,7 +156,7 @@ export default function RoyaltyUploaderPage() {
       console.log(`Parsed ${parsedRows.length} rows from CSV`);
       setUploadProgress(`Processing ${parsedRows.length} rows...`);
 
-      // Step 2: Send parsed data directly to API
+      // Step 2: Send parsed data directly to API (uses Big.js for precision)
       const response = await fetch("/api/royalties/ingest", {
         method: "POST",
         headers: {
@@ -375,7 +359,10 @@ export default function RoyaltyUploaderPage() {
               className="bg-green-600 hover:bg-green-700 text-white"
             >
               {uploading ? (
-                <>Processing...</>
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Processing...
+                </>
               ) : (
                 <>
                   <Upload className="h-4 w-4 mr-2" />

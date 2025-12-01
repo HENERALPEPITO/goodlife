@@ -5,10 +5,19 @@
  * Accepts client-parsed CSV data and processes:
  * - Bulk track lookup and creation
  * - Optimized batch inserts
+ * - High-precision numeric handling with Big.js
+ * 
+ * NOTE: For large files, prefer the /api/process-royalties endpoint
+ * which supports streaming and storage-based processing.
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import Big from "big.js";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+
+// Configure Big.js for high financial precision
+Big.DP = 20; // Increased from 10 to 20 decimal places
+Big.RM = Big.roundHalfUp;
 
 interface RoyaltyRow {
   songTitle: string;
@@ -18,9 +27,39 @@ interface RoyaltyRow {
   territory: string;
   source: string;
   usageCount: number;
-  gross: number;
-  adminPercent: number;
-  net: number;
+  gross: string;        // String for precision
+  adminPercent: string; // String for precision
+  net: string;          // String for precision
+}
+
+/**
+ * Parse a numeric string with high precision using Big.js
+ * Returns the exact string representation to preserve precision
+ */
+function parseNumericPrecise(value: string): string {
+  if (!value || value.trim() === "") {
+    return "0";
+  }
+
+  try {
+    // Remove any currency symbols and thousands separators
+    const cleaned = value
+      .replace(/[$€£¥₱,\s]/g, "")
+      .replace(/[()]/g, (match) => (match === "(" ? "-" : ""))
+      .trim();
+
+    if (cleaned === "" || cleaned === "-") {
+      return "0";
+    }
+
+    // Create Big.js instance and return string representation with full precision
+    const bigValue = new Big(cleaned);
+    // Use toFixed with high precision to preserve tiny decimals
+    return bigValue.toFixed(20).replace(/\.?0+$/, '') || "0";
+  } catch (error) {
+    console.warn(`Failed to parse numeric value: "${value}"`);
+    return "0";
+  }
 }
 
 interface IngestRequest {
@@ -76,19 +115,22 @@ function buildColumnMapping(firstRow: Record<string, string>): Map<string, strin
   return columnMappings;
 }
 
-// Helper: Normalize a single row
+// Helper: Normalize a single row with high-precision numerics
 function normalizeRow(row: Record<string, string>, mappings: Map<string, string>): RoyaltyRow {
+  const getRawValue = (field: string): string => row[mappings.get(field) || ""] || "";
+  
   return {
-    songTitle: row[mappings.get("songTitle") || ""] || "",
-    iswc: row[mappings.get("iswc") || ""] || "",
-    composer: row[mappings.get("composer") || ""] || "",
-    date: row[mappings.get("date") || ""] || "",
-    territory: row[mappings.get("territory") || ""] || "",
-    source: row[mappings.get("source") || ""] || "",
-    usageCount: parseInt(row[mappings.get("usageCount") || ""] || "0") || 0,
-    gross: parseFloat(row[mappings.get("gross") || ""] || "0") || 0,
-    adminPercent: parseFloat(row[mappings.get("adminPercent") || ""] || "0") || 0,
-    net: parseFloat(row[mappings.get("net") || ""] || "0") || 0,
+    songTitle: getRawValue("songTitle"),
+    iswc: getRawValue("iswc"),
+    composer: getRawValue("composer"),
+    date: getRawValue("date"),
+    territory: getRawValue("territory"),
+    source: getRawValue("source"),
+    usageCount: parseInt(getRawValue("usageCount").replace(/[,\s]/g, "") || "0") || 0,
+    // Use Big.js for precise numeric handling
+    gross: parseNumericPrecise(getRawValue("gross")),
+    adminPercent: parseNumericPrecise(getRawValue("adminPercent")),
+    net: parseNumericPrecise(getRawValue("net")),
   };
 }
 
@@ -212,12 +254,14 @@ export async function POST(request: NextRequest): Promise<NextResponse<IngestRes
     console.log(`✅ Track processing completed in ${Date.now() - trackStart}ms`);
 
     // Step 5: Prepare and insert royalty records in batches
+    // Prepare royalty records with high-precision numeric values
     const royaltiesToInsert = parsedData
       .filter(row => tracksByTitle.has(row.songTitle))
       .map((row) => ({
         track_id: tracksByTitle.get(row.songTitle),
         artist_id: artistId,
         usage_count: row.usageCount,
+        // Store as strings to preserve full precision through to PostgreSQL
         gross_amount: row.gross,
         admin_percent: row.adminPercent,
         net_amount: row.net,
@@ -264,7 +308,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<IngestRes
     console.log(`   - Tracks created: ${titlesToCreate.length}`);
     console.log(`   - Royalties inserted: ${totalInserted}`);
     console.log(`   - Throughput: ${throughput} records/sec`);
-    console.log(`   - Client-side parsing used`);
+    console.log(`   - High-precision numeric handling enabled`);
 
     return NextResponse.json(
       { 
