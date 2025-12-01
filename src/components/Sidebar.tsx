@@ -4,18 +4,20 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth";
-import { LayoutDashboard, BarChart3, DollarSign, Music, FileUp, Users, Settings, Upload, User } from "lucide-react";
+import { LayoutDashboard, BarChart3, DollarSign, Music, FileUp, Users, Settings, Upload, User, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { user } = useAuth();
+  const { user, loading, isInitialized } = useAuth();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => setMounted(true), []);
 
   if (pathname === "/login") return null;
 
+  // Show loading skeleton while auth initializes
+  const showSkeleton = !isInitialized || loading;
   const isAdmin = user?.role === "admin";
 
   const navItems = [
@@ -104,7 +106,12 @@ export default function Sidebar() {
         className="mt-auto p-6 border-t flex-shrink-0 transition-colors"
         style={{ borderColor: "#222222" }}
       >
-        {user && (
+        {showSkeleton ? (
+          <div className="flex items-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin" style={{ color: "#aaaaaa" }} />
+            <span className="text-xs" style={{ color: "#aaaaaa" }}>Loading...</span>
+          </div>
+        ) : user ? (
           <div className="text-xs">
             <p className="font-medium mb-1 truncate" style={{ color: "#ffffff" }}>
               {user.email}
@@ -113,7 +120,7 @@ export default function Sidebar() {
               {user.role}
             </p>
           </div>
-        )}
+        ) : null}
       </div>
     </aside>
   );

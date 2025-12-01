@@ -1,3 +1,11 @@
+/**
+ * Legacy Supabase Client
+ * 
+ * @deprecated Use createClient from @/lib/supabase/client instead
+ * This file is kept for backward compatibility with existing code.
+ * 
+ * Key fix: Using localStorage instead of sessionStorage for persistent sessions
+ */
 import { createClient } from "@supabase/supabase-js";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://nyxedsuflhvxzijjiktj.supabase.co";
@@ -8,7 +16,9 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: true,
-    storage: typeof window !== 'undefined' ? window.sessionStorage : undefined
+    // Use localStorage for persistent sessions (survives browser close)
+    // sessionStorage was causing sessions to be lost on page reload in some browsers
+    storage: typeof window !== 'undefined' ? window.localStorage : undefined
   }
 });
 
