@@ -7,9 +7,8 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/lib/auth";
-import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -56,13 +55,7 @@ export default function ArtistPaymentsPage() {
     }
   }, [user, authLoading, router, toast]);
 
-  useEffect(() => {
-    if (user) {
-      fetchPaymentRequests();
-    }
-  }, [user]);
-
-  const fetchPaymentRequests = async () => {
+  const fetchPaymentRequests = useCallback(async () => {
     try {
       setLoading(true);
       
@@ -71,29 +64,15 @@ export default function ArtistPaymentsPage() {
         return;
       }
 
-      // First, get the artist ID from the artists table
-      const { data: artist, error: artistError } = await supabase
-        .from("artists")
-        .select("id")
-        .eq("user_id", user.id)
-        .maybeSingle();
+      const res = await fetch(`/api/data/payment-requests?user_id=${user.id}`, { cache: "no-store" });
+      const json = await res.json();
 
-      if (artistError || !artist) {
-        console.error("Error fetching artist:", artistError);
+      if (json.error) {
+        console.error("Error fetching payment requests:", json.error);
         setPaymentRequests([]);
-        setLoading(false);
-        return;
+      } else {
+        setPaymentRequests(json.data || []);
       }
-
-      const { data, error } = await supabase
-        .from("payment_requests")
-        .select("*")
-        .eq("artist_id", artist.id)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-
-      setPaymentRequests(data || []);
     } catch (error) {
       console.error("Error fetching payment requests:", error);
       toast({
@@ -104,7 +83,13 @@ export default function ArtistPaymentsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user, toast]);
+
+  useEffect(() => {
+    if (user) {
+      fetchPaymentRequests();
+    }
+  }, [user, fetchPaymentRequests]);
 
   const handleViewReceipt = (requestId: string) => {
     setSelectedRequestId(requestId);

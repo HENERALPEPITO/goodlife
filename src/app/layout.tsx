@@ -6,6 +6,7 @@ import { ReactNode } from "react";
 import Providers from "./providers";
 import { Toaster } from "@/components/ui/toaster";
 import LayoutWrapper from "@/components/LayoutWrapper";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -39,6 +40,7 @@ export default function RootLayout({
             <Toaster />
           </Providers>
         </ThemeProvider>
+        <SpeedInsights />
       </body>
     </html>
   );
