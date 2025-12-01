@@ -24,12 +24,13 @@ export default function LoginPage() {
 
       if (result.error) {
         setError(result.error.message || "Authentication failed");
+        setLoading(false);
       } else {
+        // Redirect to main dashboard for all users
         router.push("/");
       }
     } catch (err) {
       setError("An unexpected error occurred");
-    } finally {
       setLoading(false);
     }
   }

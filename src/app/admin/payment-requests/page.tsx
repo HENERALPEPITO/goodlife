@@ -96,8 +96,9 @@ export default function AdminPaymentRequestsPage() {
   };
 
   const getAuthToken = async () => {
-    // Get auth token from Supabase session
-    const { supabase } = await import("@/lib/supabaseClient");
+    // Get auth token from Supabase session using new SSR client
+    const { createClient } = await import("@/lib/supabase/client");
+    const supabase = createClient();
     const {
       data: { session },
     } = await supabase.auth.getSession();
