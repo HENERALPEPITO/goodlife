@@ -17,23 +17,27 @@ export const MAX_FILE_SIZE = 100 * 1024 * 1024;
 
 /**
  * Generate a unique storage path for an uploaded file
+ * Uses user ID as the folder to comply with RLS policies
+ * 
+ * @param userId - The authenticated user's ID (folder name per RLS)
+ * @param originalFilename - The original filename
  */
-export function generateStoragePath(artistId: string, originalFilename: string): string {
+export function generateStoragePath(userId: string, originalFilename: string): string {
   const timestamp = Date.now();
   const sanitizedFilename = originalFilename.replace(/[^a-zA-Z0-9.-]/g, '_');
-  return `${artistId}/${timestamp}-${sanitizedFilename}`;
+  return `${userId}/${timestamp}-${sanitizedFilename}`;
 }
 
 /**
  * Upload a CSV file to Supabase Storage (client-side)
  * 
  * @param file - The File object to upload
- * @param artistId - The artist ID for organizing the upload
+ * @param userId - The authenticated user's ID (required for RLS - files stored in userId folder)
  * @returns StorageUploadResult with path on success
  */
 export async function uploadCsvToStorage(
   file: File,
-  artistId: string
+  userId: string
 ): Promise<StorageUploadResult> {
   try {
     // Validate file type
@@ -46,7 +50,8 @@ export async function uploadCsvToStorage(
       return { success: false, error: `File size exceeds ${MAX_FILE_SIZE / 1024 / 1024}MB limit` };
     }
 
-    const storagePath = generateStoragePath(artistId, file.name);
+    // Use userId for folder path to comply with RLS policy
+    const storagePath = generateStoragePath(userId, file.name);
 
     // Upload to Supabase Storage
     const { data, error } = await supabase.storage

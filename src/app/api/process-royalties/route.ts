@@ -151,11 +151,17 @@ export async function POST(request: NextRequest): Promise<NextResponse<ProcessRo
     const totalTime = Date.now() - startTime;
     console.log(`🎉 Request completed in ${(totalTime / 1000).toFixed(2)}s`);
 
+    // Extract error message if processing failed
+    const errorMessage = !result.success && result.errors.length > 0
+      ? result.errors.join('; ')
+      : undefined;
+
     return NextResponse.json(
       {
         success: result.success,
         data: result,
         failedRowsCsv,
+        error: errorMessage,
       },
       { status: result.success ? 200 : 500 }
     );

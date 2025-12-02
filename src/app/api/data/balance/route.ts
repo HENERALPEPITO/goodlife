@@ -33,28 +33,45 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ balance: 0, artistId: null, _perf: { requestId } });
     }
 
-    // Get unpaid royalties for this artist
+    // Use database function for precise calculation
     const q2 = performance.now();
-    const { data: royaltiesData, error } = await supabase
-      .from("royalties")
-      .select("net_amount, is_paid")
-      .eq("artist_id", artist.id)
-      .eq("is_paid", false);
-    logSupabaseQuery("royalties", "SELECT unpaid", q2, requestId);
+    const { data: totalsData, error } = await supabase
+      .rpc("get_artist_royalty_totals", { p_artist_id: artist.id });
+    logSupabaseQuery("royalties", "RPC get_artist_royalty_totals", q2, requestId);
 
     if (error) {
       console.error("Error fetching balance:", error);
+      // Fallback to manual calculation if function doesn't exist
+      const { data: royaltiesData, error: fallbackError } = await supabase
+        .from("royalties")
+        .select("net_amount")
+        .eq("artist_id", artist.id)
+        .eq("is_paid", false);
+      
+      if (fallbackError) {
+        logRouteEnd("/api/data/balance", start, requestId);
+        return NextResponse.json({ error: fallbackError.message }, { status: 500 });
+      }
+      
+      const total = (royaltiesData || []).reduce((sum, royalty) => {
+        return sum + parseFloat(royalty.net_amount || "0");
+      }, 0);
+      
       logRouteEnd("/api/data/balance", start, requestId);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ balance: total, artistId: artist.id, _perf: { requestId } });
     }
 
-    // Calculate total from unpaid royalties
-    const total = (royaltiesData || []).reduce((sum, royalty) => {
-      return sum + Number(royalty.net_amount || 0);
-    }, 0);
+    // Use the precise calculation from database
+    const result = totalsData?.[0] || { unpaid_balance: 0, total_gross: 0, total_net: 0 };
 
     logRouteEnd("/api/data/balance", start, requestId);
-    return NextResponse.json({ balance: total, artistId: artist.id, _perf: { requestId } });
+    return NextResponse.json({ 
+      balance: parseFloat(result.unpaid_balance) || 0,
+      totalGross: parseFloat(result.total_gross) || 0,
+      totalNet: parseFloat(result.total_net) || 0,
+      artistId: artist.id, 
+      _perf: { requestId } 
+    });
   } catch (error: any) {
     console.error("API Error:", error);
     logRouteEnd("/api/data/balance", start, requestId);

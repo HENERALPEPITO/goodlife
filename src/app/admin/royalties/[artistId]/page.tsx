@@ -10,6 +10,20 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader, AlertCircle, Trash2, ChevronDown, ChevronRight, Download } from "lucide-react";
 import type { Royalty } from "@/types";
 import { supabase } from "@/lib/supabaseClient";
+import Big from "big.js";
+
+// Helper to safely create a Big value from string or number
+function toBig(value: string | number | null | undefined): Big {
+  try {
+    const strValue = String(value ?? 0).trim();
+    if (strValue === '' || strValue === 'null' || strValue === 'undefined') {
+      return new Big(0);
+    }
+    return new Big(strValue);
+  } catch (e) {
+    return new Big(0);
+  }
+}
 
 interface QuarterGroup {
   quarter: string;
@@ -36,9 +50,9 @@ export default function ArtistRoyaltiesPage() {
   const [deleteQuarterConfirm, setDeleteQuarterConfirm] = useState<string | null>(null);
   const [displayLimit, setDisplayLimit] = useState(10);
 
-  // Group royalties by quarter
+  // Group royalties by quarter using Big.js for precision
   const groupByQuarter = (royalties: Royalty[]): QuarterGroup[] => {
-    const groups = new Map<string, QuarterGroup>();
+    const groups = new Map<string, QuarterGroup & { totalNetBig: Big; totalGrossBig: Big }>();
 
     royalties.forEach((royalty) => {
       if (!royalty.broadcast_date) return;
@@ -56,23 +70,31 @@ export default function ArtistRoyaltiesPage() {
           royalties: [],
           totalNet: "0",
           totalGross: "0",
+          totalNetBig: new Big(0),
+          totalGrossBig: new Big(0),
         });
       }
 
       const group = groups.get(key)!;
       group.royalties.push(royalty);
-      // Use string-based addition to preserve precision
-      const netValue = String(royalty.net_amount || 0);
-      const grossValue = String(royalty.gross_amount || 0);
-      group.totalNet = (parseFloat(group.totalNet) + parseFloat(netValue)).toString();
-      group.totalGross = (parseFloat(group.totalGross) + parseFloat(grossValue)).toString();
+      // Use Big.js for precise summation
+      group.totalNetBig = group.totalNetBig.plus(toBig(royalty.net_amount));
+      group.totalGrossBig = group.totalGrossBig.plus(toBig(royalty.gross_amount));
     });
 
-    // Sort by year and quarter (most recent first)
-    return Array.from(groups.values()).sort((a, b) => {
-      if (a.year !== b.year) return b.year - a.year;
-      return parseInt(b.quarter.substring(1)) - parseInt(a.quarter.substring(1));
-    });
+    // Convert Big to string and sort by year and quarter (most recent first)
+    return Array.from(groups.values())
+      .map(group => ({
+        quarter: group.quarter,
+        year: group.year,
+        royalties: group.royalties,
+        totalNet: group.totalNetBig.toFixed(2),
+        totalGross: group.totalGrossBig.toFixed(2),
+      }))
+      .sort((a, b) => {
+        if (a.year !== b.year) return b.year - a.year;
+        return parseInt(b.quarter.substring(1)) - parseInt(a.quarter.substring(1));
+      });
   };
 
   // Group ALL royalties by quarter (for correct totals)
@@ -234,7 +256,7 @@ export default function ArtistRoyaltiesPage() {
 
       const responseData = await response.json();
       
-      // Handle both old format (array) and new paginated format (object with data array)
+      // Handle both old format (array) and paginated format (object with data array)
       const data = Array.isArray(responseData) ? responseData : (responseData.data || []);
       
       // Debug: Log first royalty to verify data structure
@@ -249,7 +271,6 @@ export default function ArtistRoyaltiesPage() {
           exploitation_source_name: data[0].exploitation_source_name,
           territory: data[0].territory,
         });
-        console.log(`📊 Total records: ${responseData.total || data.length}`);
       }
       
       setRoyalties(data);

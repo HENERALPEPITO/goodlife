@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Loader, AlertCircle } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { supabase } from "@/lib/supabaseClient";
 
 interface Artist {
   id: string;
@@ -19,7 +19,6 @@ export default function AdminRoyaltiesPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
-  const supabase = useMemo(() => createClient(), []);
   
   const [artists, setArtists] = useState<Artist[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -54,8 +53,7 @@ export default function AdminRoyaltiesPage() {
       setIsLoading(true);
       setError(null);
       
-      // Get fresh session - call getUser first to ensure token is refreshed
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      // Get the session token to send in Authorization header
       const { data: { session } } = await supabase.auth.getSession();
       
       const headers: HeadersInit = {
@@ -64,8 +62,6 @@ export default function AdminRoyaltiesPage() {
       
       if (session?.access_token) {
         headers["Authorization"] = `Bearer ${session.access_token}`;
-      } else {
-        console.warn("No access token available");
       }
       
       const response = await fetch("/api/admin/royalties/artists", {

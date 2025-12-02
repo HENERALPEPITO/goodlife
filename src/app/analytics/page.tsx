@@ -67,33 +67,41 @@ export default function AnalyticsPage() {
     if (!user) return;
 
     try {
-      let query = supabase
-        .from("royalties")
-        .select("net_amount, usage_count, territory, exploitation_source_name, broadcast_date, tracks!inner(title)");
+      let artistId = user.id;
 
-      // For artists, filter directly in the query
+      // For artists, get their artist record first
       if (user.role === "artist") {
-        // First get artist ID
         const { data: artist, error: artistError } = await supabase
           .from("artists")
           .select("id")
           .eq("user_id", user.id)
           .single();
 
-        if (artistError || !artist) {
+        if (artistError) {
           console.error("Error fetching artist:", artistError);
           setLoadingData(false);
           return;
         }
 
-        query = query.eq("artist_id", artist.id);
+        if (!artist) {
+          console.warn("No artist found for user");
+          setLoadingData(false);
+          return;
+        }
+
+        artistId = artist.id;
       }
 
-      // Optimize: order by broadcast_date to use the index, then limit
-      // For analytics we need recent data, so order DESC and limit
-      const { data, error } = await query
-        .order("broadcast_date", { ascending: false, nullsFirst: false })
-        .limit(5000); // Reduced limit - analytics can work with recent data
+      // Optimized query - only fetch needed columns, filter early
+      const query = supabase
+        .from("royalties")
+        .select("net_amount, usage_count, territory, exploitation_source_name, broadcast_date, tracks!inner(title)")
+        .order("broadcast_date", { ascending: false });
+
+      // Apply artist filter if needed
+      const { data, error } = user.role === "artist" 
+        ? await query.eq("artist_id", artistId)
+        : await query;
 
       if (error) throw error;
 
@@ -113,7 +121,7 @@ export default function AnalyticsPage() {
     }
   }, [user, loading, router, fetchAnalytics]);
 
-  // Memoized calculations with optimizations
+  // Memoized calculations - only recalculate when royalties change
   const analytics = useMemo(() => {
     if (!royalties.length) {
       return {
@@ -125,7 +133,7 @@ export default function AnalyticsPage() {
       };
     }
 
-    // Pre-allocate with estimated capacity
+    // Single pass through data with pre-allocated maps
     let totalRevenue = 0;
     let totalStreams = 0;
     const trackMap = new Map<string, { revenue: number; streams: number }>();
@@ -133,17 +141,15 @@ export default function AnalyticsPage() {
     const sourceMap = new Map<string, number>();
     const quarterlyMap = new Map<string, number>();
 
-    // Single pass with optimized operations
-    const len = royalties.length;
-    for (let i = 0; i < len; i++) {
-      const r = royalties[i];
-      const revenue = Number(r.net_amount) || 0;
-      const streams = Number(r.usage_count) || 0;
+    // Process all data in single loop
+    for (const r of royalties) {
+      const revenue = Number(r.net_amount || 0);
+      const streams = Number(r.usage_count || 0);
       
       totalRevenue += revenue;
       totalStreams += streams;
 
-      // Track aggregation - minimize object access
+      // Track aggregation
       const title = (Array.isArray(r.tracks) ? r.tracks[0]?.title : r.tracks?.title) || "Unknown";
       const track = trackMap.get(title);
       if (track) {
@@ -161,18 +167,16 @@ export default function AnalyticsPage() {
       const source = r.exploitation_source_name || "Unknown";
       sourceMap.set(source, (sourceMap.get(source) || 0) + revenue);
 
-      // Quarterly aggregation - only parse dates when needed
+      // Quarterly aggregation (only if date exists)
       if (r.broadcast_date) {
         const date = new Date(r.broadcast_date);
-        if (!isNaN(date.getTime())) {
-          const quarter = Math.floor(date.getMonth() / 3) + 1;
-          const quarterKey = `Q${quarter} ${date.getFullYear()}`;
-          quarterlyMap.set(quarterKey, (quarterlyMap.get(quarterKey) || 0) + revenue);
-        }
+        const quarter = Math.floor(date.getMonth() / 3) + 1;
+        const quarterKey = `Q${quarter} ${date.getFullYear()}`;
+        quarterlyMap.set(quarterKey, (quarterlyMap.get(quarterKey) || 0) + revenue);
       }
     }
 
-    // Convert to arrays only once, with optimized sorting
+    // Convert maps to sorted arrays
     const topTracks = Array.from(trackMap, ([title, data]) => ({ 
       title, 
       revenue: data.revenue, 
@@ -194,15 +198,14 @@ export default function AnalyticsPage() {
     }))
       .sort((a, b) => b.revenue - a.revenue);
 
-    // Optimized quarter sorting
     const quarterlyRevenue = Array.from(quarterlyMap, ([quarter, revenue]) => ({ 
       quarter, 
       revenue 
     }))
       .sort((a, b) => {
-        const [, y1] = a.quarter.split(' ');
-        const [, y2] = b.quarter.split(' ');
-        return y1 !== y2 ? y1.localeCompare(y2) : a.quarter.localeCompare(b.quarter);
+        const [q1, y1] = a.quarter.split(' ');
+        const [q2, y2] = b.quarter.split(' ');
+        return y1 === y2 ? q1.localeCompare(q2) : y1.localeCompare(y2);
       })
       .slice(-8);
 
@@ -223,7 +226,7 @@ export default function AnalyticsPage() {
   if (loading || loadingData) {
     return (
       <div className="flex items-center justify-center h-screen">
-        <div className="animate-pulse text-zinc-500">Loading analytics...</div>
+        <div className="text-zinc-500">Loading analytics...</div>
       </div>
     );
   }
@@ -411,7 +414,7 @@ export default function AnalyticsPage() {
   );
 }
 
-// Memoized components
+// Memoized components to prevent unnecessary re-renders
 const MetricCard = React.memo(({ icon: Icon, color, label, value, subtitle }: any) => (
   <div className="bg-white rounded-xl p-6 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 border border-gray-100">
     <div className="flex items-start justify-between mb-4">
@@ -529,6 +532,7 @@ const SourceModal = React.memo(({ sources, colors, onClose }: any) => {
   );
 });
 
+// Add display names for React DevTools
 MetricCard.displayName = "MetricCard";
 ChartCard.displayName = "ChartCard";
 EmptyState.displayName = "EmptyState";

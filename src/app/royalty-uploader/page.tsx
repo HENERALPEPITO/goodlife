@@ -8,7 +8,7 @@ import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { Upload, AlertCircle, FileText, Download, Loader2 } from "lucide-react";
-import Papa from "papaparse";
+import { uploadCsvToStorage } from "@/lib/royalty-storage";
 
 
 export default function RoyaltyUploaderPage() {
@@ -107,78 +107,91 @@ export default function RoyaltyUploaderPage() {
     });
   };
 
-  const parseCSV = (file: File): Promise<Record<string, string>[]> => {
-    return new Promise((resolve, reject) => {
-      Papa.parse(file, {
-        header: true,
-        skipEmptyLines: true,
-        dynamicTyping: false, // Keep all values as strings for precision
-        complete: (results) => {
-          resolve(results.data as Record<string, string>[]);
-        },
-        error: (error: Error) => {
-          reject(error);
-        },
-      });
-    });
-  };
-
   const handleUpload = async () => {
-    if (!selectedArtist) {
+    if (!selectedArtist || !selectedFile) {
       toast({
-        title: "No Artist Selected",
-        description: "Please select an artist to associate these royalties with",
+        title: "Missing Information",
+        description: "Please select both an artist and a CSV file",
         variant: "destructive",
       });
       return;
     }
 
-    if (!selectedFile) {
+    if (!user?.id) {
       toast({
-        title: "No File Selected",
-        description: "Please select a CSV file first",
+        title: "Authentication Error",
+        description: "Please sign in again",
         variant: "destructive",
       });
       return;
     }
 
     setUploading(true);
-    setUploadProgress("Parsing CSV file...");
+    setUploadProgress("Uploading CSV to storage...");
 
     try {
-      // Step 1: Parse CSV client-side with PapaParse
-      const parsedRows = await parseCSV(selectedFile);
-      
-      if (parsedRows.length === 0) {
-        throw new Error('CSV file has no data rows');
-      }
-      
-      console.log(`Parsed ${parsedRows.length} rows from CSV`);
-      setUploadProgress(`Processing ${parsedRows.length} rows...`);
+      // Step 1: Upload to Supabase Storage (uses userId folder per RLS policy)
+      const uploadResult = await uploadCsvToStorage(selectedFile, user.id);
 
-      // Step 2: Send parsed data directly to API (uses Big.js for precision)
-      const response = await fetch("/api/royalties/ingest", {
+      if (!uploadResult.success || !uploadResult.path) {
+        throw new Error(`Upload failed: ${uploadResult.error}`);
+      }
+
+      console.log(`✅ Uploaded to storage: ${uploadResult.path}`);
+      setUploadProgress("Processing CSV in batches...");
+
+      // Step 2: Trigger batch processing via API
+      const response = await fetch("/api/process-royalties", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           artistId: selectedArtist,
-          rows: parsedRows,
+          storagePath: uploadResult.path,
+          batchConfig: {
+            batchSize: 500,
+            maxConcurrency: 3,
+            retryAttempts: 3,
+          },
         }),
       });
 
       const result = await response.json();
+      console.log("API Response:", result);
 
       if (!response.ok || !result.success) {
-        throw new Error(result.error || result.details || "Failed to process CSV");
+        // Get detailed error message
+        const errorMsg = result.error 
+          || result.data?.errors?.join(", ")
+          || result.message
+          || `Processing failed (status: ${response.status})`;
+        throw new Error(errorMsg);
       }
 
       // Step 3: Success!
+      const summary = result.data?.summary;
       toast({
         title: "Upload Successful",
-        description: `Successfully processed ${result.inserted} royalty records`,
+        description: `Successfully processed ${summary?.successfulInserts || 0} royalty records`,
       });
+
+      // Step 4: Optionally download failed rows CSV
+      if (result.failedRowsCsv) {
+        const blob = new Blob([result.failedRowsCsv], { type: "text/csv" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "failed-rows.csv";
+        a.click();
+        URL.revokeObjectURL(url);
+        
+        toast({
+          title: "Failed Rows Downloaded",
+          description: `${result.data?.failedRows?.length || 0} rows failed validation - check downloaded CSV`,
+          variant: "destructive",
+        });
+      }
 
       // Reset form
       setSelectedFile(null);
@@ -186,17 +199,17 @@ export default function RoyaltyUploaderPage() {
       setUploadProgress("");
       const fileInput = document.getElementById("csv-file-input") as HTMLInputElement;
       if (fileInput) fileInput.value = "";
+
     } catch (error: any) {
       console.error("Upload error:", error);
-      
       toast({
         title: "Upload Failed",
         description: error?.message || "Unknown error occurred",
         variant: "destructive",
       });
-      setUploadProgress("");
     } finally {
       setUploading(false);
+      setUploadProgress("");
     }
   };
 

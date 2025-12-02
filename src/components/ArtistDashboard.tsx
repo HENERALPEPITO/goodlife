@@ -88,13 +88,14 @@ export default function ArtistDashboard() {
         .select("*, tracks(title)")
         .eq("artist_id", artist.id);
 
+      // Use parseFloat for string values to maintain precision
       const totalRevenue = royalties?.reduce(
-        (sum, r) => sum + Number(r.net_amount || 0),
+        (sum, r) => sum + parseFloat(String(r.net_amount || 0)),
         0
       ) || 0;
 
       const totalStreams = royalties?.reduce(
-        (sum, r) => sum + Number(r.usage_count || 0),
+        (sum, r) => sum + parseInt(String(r.usage_count || 0), 10),
         0
       ) || 0;
 
@@ -112,8 +113,8 @@ export default function ArtistDashboard() {
           const title = r.tracks?.title || r.track_title || "Unknown Track";
           const existing = trackMap.get(title) || { streams: 0, revenue: 0 };
           trackMap.set(title, {
-            streams: existing.streams + Number(r.usage_count || 0),
-            revenue: existing.revenue + Number(r.net_amount || 0),
+            streams: existing.streams + parseInt(String(r.usage_count || 0), 10),
+            revenue: existing.revenue + parseFloat(String(r.net_amount || 0)),
           });
         });
 

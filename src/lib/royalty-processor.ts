@@ -624,6 +624,15 @@ export async function processRoyaltyCsv(
     });
 
     console.log(`📊 Parsed ${parseResult.totalRows} rows: ${parseResult.validRows.length} valid, ${parseResult.invalidRows.length} invalid`);
+    console.log(`📋 CSV Headers found: ${parseResult.headers.join(', ')}`);
+    
+    // Log first few invalid rows for debugging
+    if (parseResult.invalidRows.length > 0) {
+      console.log(`⚠️ Sample invalid rows:`);
+      parseResult.invalidRows.slice(0, 3).forEach(row => {
+        console.log(`   Row ${row.rowIndex}: ${row.validationErrors.join('; ')} | Title: "${row.songTitle}"`);
+      });
+    }
 
     // Record failed rows from parsing
     parseResult.invalidRows.forEach(row => {
@@ -647,7 +656,13 @@ export async function processRoyaltyCsv(
     });
 
     if (parseResult.validRows.length === 0) {
-      throw new Error('No valid rows found in CSV');
+      const sampleErrors = parseResult.invalidRows.slice(0, 3)
+        .map(r => r.validationErrors.join('; '))
+        .join(' | ');
+      throw new Error(
+        `No valid rows found in CSV. Headers: [${parseResult.headers.join(', ')}]. ` +
+        `Sample errors: ${sampleErrors || 'Unknown'}`
+      );
     }
 
     // Phase 2: Get/Create Tracks
