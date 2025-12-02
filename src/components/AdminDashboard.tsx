@@ -39,14 +39,29 @@ export default function AdminDashboard() {
         supabase.rpc("get_royalty_totals")
       ]);
 
-      // Extract totals from RPC result (returns single row with total_revenue and total_usage)
-      const totals = royaltyTotals.data?.[0] || { total_revenue: 0, total_usage: 0 };
+      // Extract totals from RPC result (returns single row with total_net and total_usage)
+      const totals = royaltyTotals.data?.[0] || { total_net: 0, total_usage: 0, total_gross: 0 };
+
+      // Debug: Log raw PostgreSQL NUMERIC values for precision verification
+      console.group('[Admin Dashboard Precision Debug] RPC get_royalty_totals result');
+      console.log('Raw RPC Response:', royaltyTotals.data);
+      console.log(`Raw total_gross: "${totals.total_gross}" (type: ${typeof totals.total_gross})`);
+      console.log(`Raw total_net: "${totals.total_net}" (type: ${typeof totals.total_net})`);
+      console.log(`Raw total_usage: "${totals.total_usage}" (type: ${typeof totals.total_usage})`);
+      
+      const parsedGross = parseFloat(String(totals.total_gross || 0));
+      const parsedNet = parseFloat(String(totals.total_net || totals.total_revenue || 0));
+      console.log(`Parsed Total Gross: €${parsedGross.toFixed(2)}`);
+      console.log(`Parsed Total Net (Revenue): €${parsedNet.toFixed(2)}`);
+      console.log('Compare these values with Royalties Page totals to verify precision match.');
+      console.groupEnd();
 
       setStats({
         totalArtists: artistResult.count || 0,
-        totalRevenue: Number(totals.total_revenue || 0),
+        // Use parseFloat for precise decimal handling
+        totalRevenue: parsedNet,
         totalTracks: trackResult.count || 0,
-        totalStreams: Number(totals.total_usage || 0),
+        totalStreams: parseInt(String(totals.total_usage || 0), 10),
       });
     } catch (error) {
       console.error("Error fetching admin stats:", error);

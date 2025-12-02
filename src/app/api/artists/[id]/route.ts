@@ -51,7 +51,8 @@ async function getUserFromRequest(request: NextRequest, response: NextResponse) 
     }
   }
   
-  // Try session from cookies
+  // Try session from cookies - call getUser first to refresh token
+  await supabase.auth.getUser();
   const { data: { session }, error: sessionError } = await supabase.auth.getSession();
   
   if (!sessionError && session?.user) {

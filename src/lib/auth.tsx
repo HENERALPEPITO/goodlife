@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useMemo, useState, useCallback } 
 import { createClient } from "./supabase/client";
 import type { AuthUser, UserRole } from "@/types";
 import type { User } from "@supabase/supabase-js";
+import { clearArtistCache, setCachedSessionData, createPerfTimer } from "./artistSessionCache";
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -194,8 +195,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   /**
    * Sign in and return role for immediate redirect
+   * OPTIMIZED: Prefetches artist session data for faster dashboard load
    */
   const signIn = useCallback(async (email: string, password: string) => {
+    const timer = createPerfTimer('auth.signIn');
+    
     try {
       setLoading(true);
       
@@ -203,6 +207,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         email,
         password,
       });
+
+      timer.end();
 
       if (error) {
         setLoading(false);
@@ -215,7 +221,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // If no role in metadata, fetch and sync it
       if (data.user && !role) {
         const fetchedRole = await getRoleFromUser(data.user);
+        
+        // Prefetch artist session data if artist role
+        if (fetchedRole === 'artist') {
+          prefetchArtistData(data.user.id);
+        }
+        
         return { error: null, role: fetchedRole };
+      }
+
+      // Prefetch artist session data in background for artists
+      if (role === 'artist' && data.user) {
+        prefetchArtistData(data.user.id);
       }
 
       return { error: null, role };
@@ -226,10 +243,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [supabase, getRoleFromUser]);
 
   /**
-   * Sign out
+   * Prefetch artist session data after login (fire-and-forget)
+   * Caches data in localStorage for instant dashboard load
+   */
+  const prefetchArtistData = useCallback(async (userId: string) => {
+    const timer = createPerfTimer('prefetchArtistData');
+    
+    try {
+      const { data, error } = await supabase.rpc('get_artist_session_data', {
+        p_user_id: userId,
+      });
+
+      timer.end();
+
+      if (error) {
+        // RPC might not exist yet - that's ok, dashboard will fetch directly
+        console.log('[auth] prefetch RPC not available:', error.code);
+        return;
+      }
+
+      if (data?.found) {
+        setCachedSessionData(data);
+        console.log('[auth] Artist session data cached');
+      }
+    } catch (err) {
+      // Silent fail - dashboard will fetch its own data
+      console.log('[auth] prefetch failed:', err);
+    }
+  }, [supabase]);
+
+  /**
+   * Sign out - clears artist cache
    */
   const signOut = useCallback(async () => {
     setLoading(true);
+    clearArtistCache(); // Clear cached artist data
     await supabase.auth.signOut();
     setUser(null);
     setLoading(false);

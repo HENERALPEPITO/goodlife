@@ -7,8 +7,8 @@ import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
-import { Upload, AlertCircle, FileText, Download } from "lucide-react";
-import type { UserProfile } from "@/types";
+import { Upload, AlertCircle, FileText, Download, Loader2 } from "lucide-react";
+import { uploadCsvToStorage } from "@/lib/royalty-storage";
 
 
 export default function RoyaltyUploaderPage() {
@@ -88,12 +88,12 @@ export default function RoyaltyUploaderPage() {
       return;
     }
 
-    // Validate file size (10MB limit)
-    const maxSize = 10 * 1024 * 1024; // 10MB in bytes
+    // Validate file size (50MB limit)
+    const maxSize = 50 * 1024 * 1024;
     if (file.size > maxSize) {
       toast({
         title: "File Too Large",
-        description: "File size must be less than 10MB",
+        description: "File size must be less than 50MB",
         variant: "destructive",
       });
       setSelectedFile(null);
@@ -108,70 +108,90 @@ export default function RoyaltyUploaderPage() {
   };
 
   const handleUpload = async () => {
-    if (!selectedArtist) {
+    if (!selectedArtist || !selectedFile) {
       toast({
-        title: "No Artist Selected",
-        description: "Please select an artist to associate these royalties with",
+        title: "Missing Information",
+        description: "Please select both an artist and a CSV file",
         variant: "destructive",
       });
       return;
     }
 
-    if (!selectedFile) {
+    if (!user?.id) {
       toast({
-        title: "No File Selected",
-        description: "Please select a CSV file first",
+        title: "Authentication Error",
+        description: "Please sign in again",
         variant: "destructive",
       });
       return;
     }
 
     setUploading(true);
-    setUploadProgress("Uploading file to storage...");
+    setUploadProgress("Uploading CSV to storage...");
 
     try {
-      // Step 1: Upload CSV file to Supabase Storage
-      const timestamp = Date.now();
-      const fileName = `uploads/${timestamp}-${selectedFile.name}`;
+      // Step 1: Upload to Supabase Storage (uses userId folder per RLS policy)
+      const uploadResult = await uploadCsvToStorage(selectedFile, user.id);
 
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from("royalties")
-        .upload(fileName, selectedFile, {
-          cacheControl: "3600",
-          upsert: false,
-        });
-
-      if (uploadError) {
-        console.error("Storage upload error:", uploadError);
-        throw new Error(`Failed to upload file: ${uploadError.message}`);
+      if (!uploadResult.success || !uploadResult.path) {
+        throw new Error(`Upload failed: ${uploadResult.error}`);
       }
 
-      console.log("File uploaded to storage:", uploadData.path);
-      setUploadProgress("Processing CSV on server...");
+      console.log(`✅ Uploaded to storage: ${uploadResult.path}`);
+      setUploadProgress("Processing CSV in batches...");
 
-      // Step 2: Call API route to process CSV
-      const response = await fetch("/api/royalties/ingest", {
+      // Step 2: Trigger batch processing via API
+      const response = await fetch("/api/process-royalties", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           artistId: selectedArtist,
-          filePath: uploadData.path,
+          storagePath: uploadResult.path,
+          batchConfig: {
+            batchSize: 500,
+            maxConcurrency: 3,
+            retryAttempts: 3,
+          },
         }),
       });
 
       const result = await response.json();
+      console.log("API Response:", result);
 
       if (!response.ok || !result.success) {
-        throw new Error(result.error || result.details || "Failed to process CSV");
+        // Get detailed error message
+        const errorMsg = result.error 
+          || result.data?.errors?.join(", ")
+          || result.message
+          || `Processing failed (status: ${response.status})`;
+        throw new Error(errorMsg);
       }
 
       // Step 3: Success!
+      const summary = result.data?.summary;
       toast({
         title: "Upload Successful",
-        description: `Successfully uploaded and processed ${result.inserted} royalty records`,
+        description: `Successfully processed ${summary?.successfulInserts || 0} royalty records`,
       });
+
+      // Step 4: Optionally download failed rows CSV
+      if (result.failedRowsCsv) {
+        const blob = new Blob([result.failedRowsCsv], { type: "text/csv" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "failed-rows.csv";
+        a.click();
+        URL.revokeObjectURL(url);
+        
+        toast({
+          title: "Failed Rows Downloaded",
+          description: `${result.data?.failedRows?.length || 0} rows failed validation - check downloaded CSV`,
+          variant: "destructive",
+        });
+      }
 
       // Reset form
       setSelectedFile(null);
@@ -179,17 +199,17 @@ export default function RoyaltyUploaderPage() {
       setUploadProgress("");
       const fileInput = document.getElementById("csv-file-input") as HTMLInputElement;
       if (fileInput) fileInput.value = "";
+
     } catch (error: any) {
       console.error("Upload error:", error);
-      
       toast({
         title: "Upload Failed",
         description: error?.message || "Unknown error occurred",
         variant: "destructive",
       });
-      setUploadProgress("");
     } finally {
       setUploading(false);
+      setUploadProgress("");
     }
   };
 
@@ -352,7 +372,10 @@ export default function RoyaltyUploaderPage() {
               className="bg-green-600 hover:bg-green-700 text-white"
             >
               {uploading ? (
-                <>Processing...</>
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Processing...
+                </>
               ) : (
                 <>
                   <Upload className="h-4 w-4 mr-2" />

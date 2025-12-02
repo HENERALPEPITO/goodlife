@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { createClientTimer } from "@/lib/performanceLogger";
 import { ArrowLeft, Download, DollarSign, Loader2, AlertCircle, Eye, FileText, Search, Filter, ChevronDown, X } from "lucide-react";
+import Big from "big.js";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import {
@@ -149,7 +150,7 @@ function formatDateRange(startDate: Date, endDate: Date): string {
   return `${startMonth} ${startDay} - ${endMonth} ${endDay}, ${year}`;
 }
 
-// Helper to convert string | number to number safely
+// Helper to convert string | number to number safely (for display only, after precision calculations)
 function toNumber(value: string | number): number {
   if (typeof value === 'string') {
     const num = parseFloat(value);
@@ -158,57 +159,116 @@ function toNumber(value: string | number): number {
   return value;
 }
 
-// Calculate analytics for a quarter
-function calculateAnalytics(records: RoyaltyRecord[], selectedQuarter?: Quarter | null): AnalyticsData {
-  // Top Performing Tracks (top 5 by revenue)
-  const trackRevenue = new Map<string, number>();
-  records.forEach((r) => {
-    const existing = trackRevenue.get(r.songTitle) || 0;
-    trackRevenue.set(r.songTitle, existing + toNumber(r.net));
+// Helper to safely create a Big value from string or number
+// This preserves full precision by working with the raw string value
+function toBig(value: string | number): Big {
+  try {
+    // Prefer string representation to avoid float precision loss
+    const strValue = String(value).trim();
+    if (strValue === '' || strValue === 'null' || strValue === 'undefined') {
+      return new Big(0);
+    }
+    return new Big(strValue);
+  } catch (e) {
+    console.warn('toBig: Failed to parse value, defaulting to 0:', value, e);
+    return new Big(0);
+  }
+}
+
+// Helper to sum amounts precisely using Big.js for arbitrary precision
+// This matches Admin Dashboard's PostgreSQL NUMERIC precision
+function sumAmountsPrecise(records: RoyaltyRecord[], field: 'net' | 'gross', debug = false): number {
+  let sum = new Big(0);
+  
+  if (debug) {
+    console.group(`[Precision Debug] Summing ${field} for ${records.length} records`);
+  }
+  
+  records.forEach((r, index) => {
+    const rawValue = r[field];
+    const bigValue = toBig(rawValue);
+    sum = sum.plus(bigValue);
+    
+    if (debug && index < 5) {
+      // Log first 5 records for debugging
+      console.log(`  Record ${index + 1}: Raw DB Value: "${rawValue}" → Parsed Big: ${bigValue.toString()} → Accumulated Sum: ${sum.toString()}`);
+    }
   });
   
-  const topTracks = Array.from(trackRevenue.entries())
-    .map(([title, revenue]) => ({ title, revenue }))
+  const result = parseFloat(sum.toFixed(2));
+  
+  if (debug) {
+    console.log(`  Final Sum (Big): ${sum.toString()}`);
+    console.log(`  Final Sum (toFixed 2): ${sum.toFixed(2)}`);
+    console.log(`  Final Result (Number): ${result}`);
+    console.groupEnd();
+  }
+  
+  return result;
+}
+
+// Helper to sum amounts and return as Big for intermediate calculations
+function sumAmountsPreciseBig(records: RoyaltyRecord[], field: 'net' | 'gross'): Big {
+  return records.reduce((sum, r) => {
+    return sum.plus(toBig(r[field]));
+  }, new Big(0));
+}
+
+// Calculate analytics for a quarter using Big.js for precision
+function calculateAnalytics(records: RoyaltyRecord[], selectedQuarter?: Quarter | null): AnalyticsData {
+  // Top Performing Tracks (top 5 by revenue) - using Big.js for precision
+  const trackRevenueBig = new Map<string, Big>();
+  records.forEach((r) => {
+    const existing = trackRevenueBig.get(r.songTitle) || new Big(0);
+    trackRevenueBig.set(r.songTitle, existing.plus(toBig(r.net)));
+  });
+  
+  const topTracks = Array.from(trackRevenueBig.entries())
+    .map(([title, revenueBig]) => ({ title, revenue: parseFloat(revenueBig.toFixed(2)) }))
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 5);
 
-  // Revenue by Source
-  const sourceRevenue = new Map<string, number>();
+  // Revenue by Source - using Big.js for precision
+  const sourceRevenueBig = new Map<string, Big>();
   records.forEach((r) => {
-    const existing = sourceRevenue.get(r.source) || 0;
-    sourceRevenue.set(r.source, existing + toNumber(r.net));
+    const existing = sourceRevenueBig.get(r.source) || new Big(0);
+    sourceRevenueBig.set(r.source, existing.plus(toBig(r.net)));
   });
   
-  const totalRevenue = records.reduce((sum, r) => sum + toNumber(r.net), 0);
-  const revenueBySource = Array.from(sourceRevenue.entries())
-    .map(([source, revenue]) => ({
-      source,
-      revenue,
-      percentage: totalRevenue > 0 ? (revenue / totalRevenue) * 100 : 0,
-    }))
+  const totalRevenueBig = sumAmountsPreciseBig(records, 'net');
+  const totalRevenue = parseFloat(totalRevenueBig.toFixed(2));
+  const revenueBySource = Array.from(sourceRevenueBig.entries())
+    .map(([source, revenueBig]) => {
+      const revenue = parseFloat(revenueBig.toFixed(2));
+      return {
+        source,
+        revenue,
+        percentage: totalRevenue > 0 ? (revenue / totalRevenue) * 100 : 0,
+      };
+    })
     .sort((a, b) => b.revenue - a.revenue);
 
-  // Revenue by Territory
-  const territoryRevenue = new Map<string, number>();
+  // Revenue by Territory - using Big.js for precision
+  const territoryRevenueBig = new Map<string, Big>();
   records.forEach((r) => {
-    const existing = territoryRevenue.get(r.territory) || 0;
-    territoryRevenue.set(r.territory, existing + toNumber(r.net));
+    const existing = territoryRevenueBig.get(r.territory) || new Big(0);
+    territoryRevenueBig.set(r.territory, existing.plus(toBig(r.net)));
   });
   
-  const revenueByTerritory = Array.from(territoryRevenue.entries())
-    .map(([territory, revenue]) => ({ territory, revenue }))
+  const revenueByTerritory = Array.from(territoryRevenueBig.entries())
+    .map(([territory, revenueBig]) => ({ territory, revenue: parseFloat(revenueBig.toFixed(2)) }))
     .sort((a, b) => b.revenue - a.revenue);
 
-  // Monthly Revenue Trend
-  const monthRevenue = new Map<string, number>();
+  // Monthly Revenue Trend - using Big.js for precision
+  const monthRevenueBig = new Map<string, Big>();
   const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   
   records.forEach((r) => {
     if (r.broadcastDate) {
       const date = new Date(r.broadcastDate);
       const monthKey = `${monthNames[date.getMonth()]}`;
-      const existing = monthRevenue.get(monthKey) || 0;
-      monthRevenue.set(monthKey, existing + toNumber(r.net));
+      const existing = monthRevenueBig.get(monthKey) || new Big(0);
+      monthRevenueBig.set(monthKey, existing.plus(toBig(r.net)));
     }
   });
   
@@ -237,23 +297,23 @@ function calculateAnalytics(records: RoyaltyRecord[], selectedQuarter?: Quarter 
   
   const monthlyRevenue = quarterMonths.map((month) => ({
     month,
-    revenue: monthRevenue.get(month) || 0,
+    revenue: parseFloat((monthRevenueBig.get(month) || new Big(0)).toFixed(2)),
   }));
 
-  // Quarterly Revenue Trend (for all-time view or multiple quarters)
-  const quarterRevenue = new Map<string, number>();
+  // Quarterly Revenue Trend (for all-time view or multiple quarters) - using Big.js
+  const quarterRevenueBig = new Map<string, Big>();
   records.forEach((r) => {
     if (r.broadcastDate) {
       const date = new Date(r.broadcastDate);
       const { year, quarter } = getQuarterFromDate(date);
       const quarterKey = `Q${quarter} ${year}`;
-      const existing = quarterRevenue.get(quarterKey) || 0;
-      quarterRevenue.set(quarterKey, existing + toNumber(r.net));
+      const existing = quarterRevenueBig.get(quarterKey) || new Big(0);
+      quarterRevenueBig.set(quarterKey, existing.plus(toBig(r.net)));
     }
   });
 
-  const quarterlyRevenue = Array.from(quarterRevenue.entries())
-    .map(([quarter, revenue]) => ({ quarter, revenue }))
+  const quarterlyRevenue = Array.from(quarterRevenueBig.entries())
+    .map(([quarter, revenueBig]) => ({ quarter, revenue: parseFloat(revenueBig.toFixed(2)) }))
     .sort((a, b) => {
       const [q1, y1] = a.quarter.split(' ');
       const [q2, y2] = b.quarter.split(' ');
@@ -488,6 +548,24 @@ export default function RoyaltiesPage() {
         });
 
       setAllRoyalties(records);
+
+      // Debug: Log precision information for first few records
+      if (records.length > 0) {
+        console.group('[Royalties Precision Debug] Data loaded');
+        console.log(`Total records: ${records.length}`);
+        console.log('Sample raw values from first 3 records:');
+        records.slice(0, 3).forEach((r, i) => {
+          console.log(`  Record ${i + 1}: gross="${r.gross}" (type: ${typeof r.gross}), net="${r.net}" (type: ${typeof r.net})`);
+        });
+        
+        // Calculate and log totals using Big.js
+        const totalGross = sumAmountsPrecise(records, 'gross', true);
+        const totalNet = sumAmountsPrecise(records, 'net', true);
+        console.log(`[Royalties Page] Total Gross (Big.js): €${totalGross.toFixed(2)}`);
+        console.log(`[Royalties Page] Total Net (Big.js): €${totalNet.toFixed(2)}`);
+        console.log('Compare these values with Admin Dashboard Total Revenue to verify precision match.');
+        console.groupEnd();
+      }
 
       // Group by quarter
       const grouped = groupRoyaltiesByQuarter(records);
@@ -752,7 +830,7 @@ export default function RoyaltiesPage() {
                     const quarterKey = `${quarter.year}-Q${quarter.quarter}`;
                     const records = quarterData.get(quarterKey) || [];
                     const totalRecords = records.length;
-                    const totalNet = records.reduce((sum, r) => sum + toNumber(r.net), 0);
+                    const totalNet = sumAmountsPrecise(records, 'net');
                     const dateRange = formatDateRange(quarter.startDate, quarter.endDate);
 
                     return (
@@ -775,7 +853,7 @@ export default function RoyaltiesPage() {
                         </div>
 
                         <div className="col-span-2 flex items-center justify-end">
-                          <span className="text-sm font-bold text-gray-900 tabular-nums">€{totalNet.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          <span className="text-sm font-bold text-gray-900 tabular-nums">€{totalNet.toFixed(2)}</span>
                         </div>
 
                         <div className="col-span-2 flex items-center justify-center">
@@ -823,7 +901,7 @@ export default function RoyaltiesPage() {
                   const quarterKey = `${quarter.year}-Q${quarter.quarter}`;
                   const records = quarterData.get(quarterKey) || [];
                   const totalRecords = records.length;
-                  const totalNet = records.reduce((sum, r) => sum + toNumber(r.net), 0);
+                  const totalNet = sumAmountsPrecise(records, 'net');
                   const dateRange = formatDateRange(quarter.startDate, quarter.endDate);
 
                   return (
@@ -843,7 +921,7 @@ export default function RoyaltiesPage() {
                       <div className="px-5 py-4 space-y-3">
                         <div className="flex items-center justify-between">
                           <span className="text-sm font-medium text-gray-600">Total Amount</span>
-                          <span className="text-lg font-bold text-gray-900 tabular-nums">€{totalNet.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          <span className="text-lg font-bold text-gray-900 tabular-nums">€{totalNet.toFixed(2)}</span>
                         </div>
 
                         <div className="flex items-center justify-between">

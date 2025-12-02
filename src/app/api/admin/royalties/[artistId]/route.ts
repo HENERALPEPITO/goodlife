@@ -114,13 +114,17 @@ export async function GET(
       );
     }
 
-    // Get pagination parameters (default: page 1, 100 per page)
-    const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get("page") || "1", 10);
-    const pageSize = parseInt(searchParams.get("pageSize") || "100", 10);
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
+    // Get accurate totals from PostgreSQL RPC (uses NUMERIC precision)
+    const { data: totalsData, error: totalsError } = await adminClient
+      .rpc("get_artist_royalty_totals", { p_artist_id: artistId });
+    
+    if (totalsError) {
+      console.error("Error fetching artist totals:", totalsError);
+    }
+    
+    const totals = totalsData?.[0] || { total_gross: 0, total_net: 0, record_count: 0 };
 
+    // Fetch ALL records for this artist (needed for quarter grouping)
     const { data: royalties, error, count } = await adminClient
       .from("royalties")
       .select(`
@@ -132,8 +136,7 @@ export async function GET(
         )
       `, { count: "exact" })
       .eq("artist_id", artistId)
-      .order("broadcast_date", { ascending: false, nullsFirst: false })
-      .range(from, to);
+      .order("broadcast_date", { ascending: false, nullsFirst: false });
 
     if (error) {
       console.error("Error fetching royalties for artist", artistId, ":");
@@ -160,12 +163,16 @@ export async function GET(
       tracks: undefined, // Remove the nested object
     }));
 
+    // Return all records + accurate totals from RPC
     return NextResponse.json({
       data: transformedRoyalties,
       total: count || 0,
-      page,
-      pageSize,
-      totalPages: Math.ceil((count || 0) / pageSize)
+      // Accurate totals from PostgreSQL NUMERIC precision
+      totals: {
+        totalGross: String(totals.total_gross || 0),
+        totalNet: String(totals.total_net || 0),
+        recordCount: totals.record_count || 0
+      }
     }, { status: 200 });
   } catch (error) {
     console.error("Error in admin royalties artist endpoint:", error);
