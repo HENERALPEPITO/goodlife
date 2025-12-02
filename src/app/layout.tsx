@@ -7,6 +7,7 @@ import Providers from "./providers";
 import { Toaster } from "@/components/ui/toaster";
 import LayoutWrapper from "@/components/LayoutWrapper";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { Analytics } from "@vercel/analytics/next";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -41,6 +42,7 @@ export default function RootLayout({
           </Providers>
         </ThemeProvider>
         <SpeedInsights />
+        <Analytics />
       </body>
     </html>
   );
