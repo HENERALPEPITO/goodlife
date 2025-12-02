@@ -4,19 +4,36 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth";
-import { LayoutDashboard, BarChart3, DollarSign, Music, FileUp, Users, Settings, Upload, User, Loader2 } from "lucide-react";
+import { LayoutDashboard, BarChart3, DollarSign, Music, FileUp, Users, Settings, Upload, User, Loader2, Menu, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export default function Sidebar() {
   const pathname = usePathname();
   const { user, loading, isInitialized } = useAuth();
   const [mounted, setMounted] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => setMounted(true), []);
 
+  // Close mobile menu when route changes
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
+
+  // Prevent body scroll when mobile menu is open
+  useEffect(() => {
+    if (mobileMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [mobileMenuOpen]);
+
   if (pathname === "/login") return null;
 
-  // Show loading skeleton while auth initializes
   const showSkeleton = !isInitialized || loading;
   const isAdmin = user?.role === "admin";
 
@@ -38,19 +55,13 @@ export default function Sidebar() {
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname.startsWith(href);
 
-  return (
-    <aside
-      className="hidden md:flex flex-col w-64 fixed h-screen shadow-md"
-      style={{
-        backgroundColor: "#000000", // dark background
-        fontFamily:
-          "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', sans-serif",
-      }}
-    >
+  const SidebarContent = () => (
+    <>
       <div className="p-6 flex-shrink-0">
         <Link
           href="/"
           className="flex items-center justify-center hover:opacity-80 transition-opacity mb-8"
+          onClick={() => setMobileMenuOpen(false)}
         >
           <Image
             src="/logo.png"
@@ -58,7 +69,7 @@ export default function Sidebar() {
             width={160}
             height={60}
             className="object-contain w-auto h-auto max-w-full"
-            style={{ filter: "invert(1)" }} // invert logo color
+            style={{ filter: "invert(1)" }}
             priority
           />
         </Link>
@@ -93,6 +104,7 @@ export default function Sidebar() {
                     e.currentTarget.style.color = "#cccccc";
                   }
                 }}
+                onClick={() => setMobileMenuOpen(false)}
               >
                 <Icon className="h-4 w-4" style={{ color: "inherit" }} />
                 <span className="text-sm">{item.label}</span>
@@ -122,6 +134,72 @@ export default function Sidebar() {
           </div>
         ) : null}
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Mobile Header */}
+      <div
+        className="md:hidden fixed top-0 left-0 right-0 z-40 flex items-center justify-between p-4 shadow-md"
+        style={{ backgroundColor: "#000000" }}
+      >
+        <Link href="/" className="flex items-center">
+          <Image
+            src="/logo.png"
+            alt="GOOD LIFE MUSIC"
+            width={120}
+            height={45}
+            className="object-contain w-auto h-auto"
+            style={{ filter: "invert(1)" }}
+            priority
+          />
+        </Link>
+        <button
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          className="p-2 rounded-lg transition-colors"
+          style={{ color: "#ffffff" }}
+          aria-label="Toggle menu"
+        >
+          {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+        </button>
+      </div>
+
+      {/* Mobile Menu Overlay */}
+      {mobileMenuOpen && (
+        <div
+          className="md:hidden fixed inset-0 bg-black bg-opacity-50 z-40"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* Mobile Sidebar */}
+      <aside
+        className={`md:hidden fixed top-0 left-0 h-screen w-64 z-50 transform transition-transform duration-300 ease-in-out shadow-lg ${
+          mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+        style={{
+          backgroundColor: "#000000",
+          fontFamily:
+            "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', sans-serif",
+        }}
+      >
+        <div className="flex flex-col h-full">
+          <SidebarContent />
+        </div>
+      </aside>
+
+      {/* Desktop Sidebar */}
+      <aside
+        className="hidden md:flex flex-col w-64 fixed h-screen shadow-md"
+        style={{
+          backgroundColor: "#000000",
+          fontFamily:
+            "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', sans-serif",
+        }}
+      >
+        <SidebarContent />
+      </aside>
+    </>
   );
 }

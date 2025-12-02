@@ -114,8 +114,17 @@ export async function GET(
       );
     }
 
-    // Fetch ALL records for this artist (no pagination limit)
-    // This ensures accurate totals calculation on the frontend
+    // Get accurate totals from PostgreSQL RPC (uses NUMERIC precision)
+    const { data: totalsData, error: totalsError } = await adminClient
+      .rpc("get_artist_royalty_totals", { p_artist_id: artistId });
+    
+    if (totalsError) {
+      console.error("Error fetching artist totals:", totalsError);
+    }
+    
+    const totals = totalsData?.[0] || { total_gross: 0, total_net: 0, record_count: 0 };
+
+    // Fetch ALL records for this artist (needed for quarter grouping)
     const { data: royalties, error, count } = await adminClient
       .from("royalties")
       .select(`
@@ -154,10 +163,16 @@ export async function GET(
       tracks: undefined, // Remove the nested object
     }));
 
-    // Return all records - frontend handles display limiting
+    // Return all records + accurate totals from RPC
     return NextResponse.json({
       data: transformedRoyalties,
-      total: count || 0
+      total: count || 0,
+      // Accurate totals from PostgreSQL NUMERIC precision
+      totals: {
+        totalGross: String(totals.total_gross || 0),
+        totalNet: String(totals.total_net || 0),
+        recordCount: totals.record_count || 0
+      }
     }, { status: 200 });
   } catch (error) {
     console.error("Error in admin royalties artist endpoint:", error);
