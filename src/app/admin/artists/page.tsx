@@ -17,6 +17,7 @@ interface Artist {
   email: string;
   phone?: string;
   address?: string;
+  tax_id?: string;
   address_locked: boolean;
   created_at: string;
 }
@@ -40,6 +41,7 @@ export default function AdminArtistsPage() {
     email: "",
     phone: "",
     address: "Profesor Hermida 6, 3-3C, 36960 Sanxenxo, Spain",
+    tax_id: "",
     password: "",
   });
 
@@ -287,6 +289,7 @@ export default function AdminArtistsPage() {
         email: "",
         phone: "",
         address: "Profesor Hermida 6, 3-3C, 36960 Sanxenxo, Spain",
+        tax_id: "",
         password: "",
       });
       await fetchArtists();
@@ -440,6 +443,7 @@ export default function AdminArtistsPage() {
       email: artist.email || "",
       phone: artist.phone || "",
       address: artist.address || "Profesor Hermida 6, 3-3C, 36960 Sanxenxo, Spain",
+      tax_id: artist.tax_id || "",
       password: "", // Don't pre-fill password for security
     });
     setEditOpen(true);
@@ -776,6 +780,24 @@ export default function AdminArtistsPage() {
                 }}
               />
             </div>
+            <div>
+              <label 
+                className="block text-sm font-medium mb-2" 
+                style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}
+              >
+                Tax ID
+              </label>
+              <Input
+                value={formData.tax_id}
+                onChange={(e) => setFormData({ ...formData, tax_id: e.target.value })}
+                placeholder="Enter tax ID (e.g., VAT number)"
+                style={{
+                  backgroundColor: isDark ? "#374151" : "#F9FAFB",
+                  borderColor: isDark ? "rgba(255, 255, 255, 0.1)" : "#D1D5DB",
+                  color: isDark ? "#FFFFFF" : "#1F2937",
+                }}
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button
@@ -787,6 +809,7 @@ export default function AdminArtistsPage() {
                   email: "",
                   phone: "",
                   address: "Profesor Hermida 6, 3-3C, 36960 Sanxenxo, Spain",
+                  tax_id: "",
                   password: "",
                 });
               }}
@@ -926,6 +949,24 @@ export default function AdminArtistsPage() {
                 }}
               />
             </div>
+            <div>
+              <label 
+                className="block text-sm font-medium mb-2" 
+                style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}
+              >
+                Tax ID
+              </label>
+              <Input
+                value={formData.tax_id}
+                onChange={(e) => setFormData({ ...formData, tax_id: e.target.value })}
+                placeholder="Enter tax ID (e.g., VAT number)"
+                style={{
+                  backgroundColor: isDark ? "#374151" : "#F9FAFB",
+                  borderColor: isDark ? "rgba(255, 255, 255, 0.1)" : "#D1D5DB",
+                  color: isDark ? "#FFFFFF" : "#1F2937",
+                }}
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button
@@ -1048,6 +1089,11 @@ export default function AdminArtistsPage() {
             <p style={{ color: isDark ? "#FFFFFF" : "#1F2937" }}>
               <strong>Address:</strong> {formData.address}
             </p>
+            {formData.tax_id && (
+              <p style={{ color: isDark ? "#FFFFFF" : "#1F2937" }}>
+                <strong>Tax ID:</strong> {formData.tax_id}
+              </p>
+            )}
           </div>
           <DialogFooter>
             <Button

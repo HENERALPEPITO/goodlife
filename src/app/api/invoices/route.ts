@@ -116,7 +116,7 @@ export async function GET(request: NextRequest) {
       // Get artist info
       const { data: artist } = await adminClient
         .from("artists")
-        .select("id, name, user_id")
+        .select("id, name, user_id, address, tax_id")
         .eq("id", paymentRequest.artist_id)
         .single();
 
@@ -149,6 +149,8 @@ export async function GET(request: NextRequest) {
         invoice_date: invoiceDate,
         artist_name: artist.name || "Artist",
         artist_email: artistEmail,
+        artist_address: artist.address || undefined,
+        artist_tax_id: artist.tax_id || undefined,
         total_net: Number(paymentRequest.amount || 0),
         status: paymentRequest.status as "pending" | "approved" | "rejected",
         payment_request_id: paymentRequest.id,
@@ -237,7 +239,7 @@ export async function GET(request: NextRequest) {
           // Get artist info
           const { data: artist } = await adminClient
             .from("artists")
-            .select("id, name, user_id")
+            .select("id, name, user_id, address, tax_id")
             .eq("id", paymentRequest.artist_id)
             .single();
 
@@ -265,6 +267,8 @@ export async function GET(request: NextRequest) {
               invoice_date: invoiceDate,
               artist_name: artist.name || "Artist",
               artist_email: artistEmail,
+              artist_address: artist.address || undefined,
+              artist_tax_id: artist.tax_id || undefined,
               total_net: Number(paymentRequest.amount || 0),
               status: paymentRequest.status as "pending" | "approved" | "rejected",
               payment_request_id: paymentRequest.id,
@@ -315,23 +319,30 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Check authorization - artists can only view their own invoices
-    if (user.role !== "admin") {
-      // Get payment request to check artist_id
-      const { data: paymentRequest } = await adminClient
-        .from("payment_requests")
-        .select("artist_id")
-        .eq("id", paymentRequestId)
+    // Get payment request to fetch artist details
+    const { data: paymentRequest } = await adminClient
+      .from("payment_requests")
+      .select("artist_id, amount, created_at")
+      .eq("id", paymentRequestId)
+      .single();
+
+    let artistDetails = {
+      artist_name: "Artist",
+      artist_email: "",
+      artist_address: undefined as string | undefined,
+      artist_tax_id: undefined as string | undefined,
+    };
+
+    if (paymentRequest) {
+      // Get artist record with full details
+      const { data: artist } = await adminClient
+        .from("artists")
+        .select("id, name, user_id, address, tax_id")
+        .eq("id", paymentRequest.artist_id)
         .single();
 
-      if (paymentRequest) {
-        // Get artist record
-        const { data: artist } = await adminClient
-          .from("artists")
-          .select("user_id")
-          .eq("id", paymentRequest.artist_id)
-          .single();
-
+      // Check authorization - artists can only view their own invoices
+      if (user.role !== "admin") {
         if (!artist || artist.user_id !== user.id) {
           return NextResponse.json(
             { success: false, error: "You don't have permission to view this invoice" },
@@ -339,12 +350,36 @@ export async function GET(request: NextRequest) {
           );
         }
       }
+
+      if (artist) {
+        // Get user profile for email
+        const { data: userProfile } = await adminClient
+          .from("user_profiles")
+          .select("email")
+          .eq("id", artist.user_id)
+          .single();
+
+        artistDetails = {
+          artist_name: artist.name || "Artist",
+          artist_email: userProfile?.email || "",
+          artist_address: artist.address || undefined,
+          artist_tax_id: artist.tax_id || undefined,
+        };
+      }
     }
+
+    // Include artist details in the response
+    const invoiceWithArtist = {
+      ...finalInvoice,
+      ...artistDetails,
+      invoice_date: paymentRequest?.created_at ? new Date(paymentRequest.created_at).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
+      total_net: Number(finalInvoice?.amount || paymentRequest?.amount || 0),
+    };
 
     return NextResponse.json(
       {
         success: true,
-        invoice: finalInvoice,
+        invoice: invoiceWithArtist,
       },
       { status: 200 }
     );

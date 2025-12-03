@@ -12,6 +12,8 @@ interface PaymentRequestInvoice {
   invoice_date: string;
   artist_name: string;
   artist_email?: string;
+  artist_address?: string;
+  artist_tax_id?: string;
   total_net: number;
   status: "pending" | "approved" | "rejected";
   payment_request_id?: string;
@@ -71,18 +73,24 @@ export async function generatePaymentRequestInvoicePDF(
   doc.setFont("helvetica");
 
   // ============================================
-  // LOGO (if available) - Top Center
+  // LOGO - Top Center
   // ============================================
-  if (options?.logoUrl) {
-    try {
+  try {
+    const fs = await import("fs");
+    const path = await import("path");
+    const logoPath = path.join(process.cwd(), "public", "logo.png");
+    
+    if (fs.existsSync(logoPath)) {
+      const logoBuffer = fs.readFileSync(logoPath);
+      const logoBase64 = `data:image/png;base64,${logoBuffer.toString("base64")}`;
       const logoWidth = 50;
       const logoHeight = 20;
-      const logoX = (pageWidth - logoWidth) / 2;
-      doc.addImage(options.logoUrl, 'PNG', logoX, yPosition, logoWidth, logoHeight);
+      const logoX = pageWidth - margin - logoWidth;
+      doc.addImage(logoBase64, "PNG", logoX, yPosition, logoWidth, logoHeight);
       yPosition += logoHeight + 10;
-    } catch (error) {
-      console.warn("Could not load logo:", error);
     }
+  } catch (error) {
+    console.warn("Could not load logo:", error);
   }
 
   // ============================================
@@ -111,17 +119,19 @@ export async function generatePaymentRequestInvoicePDF(
   yPosition += 12;
 
   // ============================================
-  // BUSINESS INFO (FROM ADMIN SETTINGS)
+  // BILL TO: (ADMIN/BUSINESS - recipient of the invoice)
   // ============================================
   doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(...colors.text);
-  doc.text(businessSettings.business_name, margin, yPosition);
+  doc.text("Bill To:", margin, yPosition);
   yPosition += 6;
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
   doc.setTextColor(...colors.secondary);
+  doc.text(businessSettings.business_name, margin, yPosition);
+  yPosition += 5;
 
   const addressLines = businessSettings.address.includes("\n")
     ? businessSettings.address.split("\n").map((s) => s.trim())
@@ -135,12 +145,10 @@ export async function generatePaymentRequestInvoicePDF(
   });
 
   if (businessSettings.contact_person) {
-    yPosition += 2;
     doc.text(businessSettings.contact_person, margin, yPosition);
     yPosition += 5;
   }
 
-  yPosition += 2;
   doc.text(`Phone: ${businessSettings.phone}`, margin, yPosition);
   yPosition += 5;
   doc.text(`Email: ${businessSettings.email}`, margin, yPosition);
@@ -157,12 +165,12 @@ export async function generatePaymentRequestInvoicePDF(
   yPosition += 10;
 
   // ============================================
-  // ARTIST INFO (RECIPIENT)
+  // BILL FROM: (ARTIST - sender of the invoice)
   // ============================================
   doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(...colors.text);
-  doc.text("Bill To:", margin, yPosition);
+  doc.text("Bill From:", margin, yPosition);
   yPosition += 6;
 
   doc.setFont("helvetica", "normal");
@@ -172,6 +180,21 @@ export async function generatePaymentRequestInvoicePDF(
   yPosition += 5;
   if (invoice.artist_email) {
     doc.text(invoice.artist_email, margin, yPosition);
+    yPosition += 5;
+  }
+  if (invoice.artist_address) {
+    const artistAddressLines = invoice.artist_address.includes("\n")
+      ? invoice.artist_address.split("\n").map((s) => s.trim())
+      : invoice.artist_address.split(",").map((s) => s.trim());
+    artistAddressLines.forEach((line) => {
+      if (line) {
+        doc.text(line, margin, yPosition);
+        yPosition += 5;
+      }
+    });
+  }
+  if (invoice.artist_tax_id) {
+    doc.text(`TAX ID: ${invoice.artist_tax_id}`, margin, yPosition);
     yPosition += 5;
   }
   yPosition += 8;

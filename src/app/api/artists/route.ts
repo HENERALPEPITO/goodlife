@@ -113,6 +113,7 @@ export async function GET(request: NextRequest) {
           email,
           phone,
           address,
+          tax_id,
           address_locked,
           created_at,
           user_id
@@ -183,6 +184,7 @@ export async function GET(request: NextRequest) {
           email,
           phone,
           address,
+          tax_id,
           address_locked,
           created_at,
           user_id
@@ -210,6 +212,7 @@ export async function GET(request: NextRequest) {
           email,
           phone,
           address,
+          tax_id,
           address_locked,
           created_at,
           user_id
@@ -389,7 +392,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { name, email, phone, address, password } = body;
+    const { name, email, phone, address, tax_id, password } = body;
 
     // Validate required fields
     if (!name || !email) {
@@ -541,6 +544,7 @@ export async function POST(request: NextRequest) {
         email,
         phone: phone || null,
         address: defaultAddress,
+        tax_id: tax_id || null,
         address_locked: false,
       })
       .select()

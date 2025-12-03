@@ -39,7 +39,10 @@ interface ReceiptData {
     receipt_number: string;
     payment_request_id: string;
     artist_id: string;
+    artist_name: string;
     artist_email: string;
+    artist_address?: string;
+    artist_tax_id?: string;
     total_amount: number;
     status: string;
     created_at: string;
@@ -129,7 +132,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<ReceiptDat
     // Get artist info
     const { data: artist, error: artistError } = await admin
       .from("artists")
-      .select("id, name, user_id")
+      .select("id, name, user_id, address, tax_id")
       .eq("id", paymentRequest.artist_id)
       .single();
 
@@ -220,7 +223,10 @@ export async function GET(request: NextRequest): Promise<NextResponse<ReceiptDat
           receipt_number: invoice?.invoice_number || `INV-${paymentRequest.id.substring(0, 8).toUpperCase()}`,
           payment_request_id: paymentRequest.id,
           artist_id: paymentRequest.artist_id,
+          artist_name: artist.name || "Artist",
           artist_email: artistEmail,
+          artist_address: artist.address || undefined,
+          artist_tax_id: artist.tax_id || undefined,
           total_amount: Number(paymentRequest.amount || 0),
           status: paymentRequest.status,
           created_at: paymentRequest.created_at,

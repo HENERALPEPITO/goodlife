@@ -118,6 +118,7 @@ export async function GET(
         email,
         phone,
         address,
+        tax_id,
         address_locked,
         created_at,
         user_id
@@ -174,7 +175,7 @@ export async function PUT(
     const supabase = createRequestSupabaseClient(request, response);
 
     const body = await request.json();
-    const { name, email, phone, address, password } = body;
+    const { name, email, phone, address, tax_id, password } = body;
 
     // Validate password if provided (for updates)
     if (password && password.length < 6) {
@@ -283,6 +284,9 @@ export async function PUT(
         updateData.address_locked = true;
       }
     }
+
+    // Allow tax_id update
+    if (tax_id !== undefined) updateData.tax_id = tax_id;
 
     // Update password if provided (only admins can update passwords)
     if (password && user.role === "admin" && artist.user_id) {

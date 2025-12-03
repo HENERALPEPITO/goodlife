@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
     // 4. Get artist information
     const { data: artist, error: artistError } = await adminClient
       .from("artists")
-      .select("id, name, user_id")
+      .select("id, name, user_id, address, tax_id")
       .eq("id", artist_id)
       .single();
 
@@ -157,6 +157,8 @@ export async function POST(request: NextRequest) {
       invoice_date: invoiceDate,
       artist_name: artist.name || "Artist",
       artist_email: artistEmail,
+      artist_address: artist.address || undefined,
+      artist_tax_id: artist.tax_id || undefined,
       total_net: totalAmount,
       status: "pending" as const,
       payment_request_id: paymentRequest.id,

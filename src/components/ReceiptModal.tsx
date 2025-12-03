@@ -40,7 +40,10 @@ interface RoyaltyItem {
 
 interface ReceiptData {
   receipt_number: string;
+  artist_name?: string;
   artist_email: string;
+  artist_address?: string;
+  artist_tax_id?: string;
   total_amount: number;
   status: string;
   created_at: string;
@@ -214,7 +217,7 @@ export function ReceiptModal({
                 </div>
                 <div>
                   <p className="text-sm text-slate-600">Artist</p>
-                  <p className="font-medium">{receiptData.artist_email}</p>
+                  <p className="font-medium">{receiptData.artist_name || receiptData.artist_email}</p>
                 </div>
                 <div>
                   <p className="text-sm text-slate-600">Request Date</p>
