@@ -21,7 +21,10 @@ interface RoyaltyItem {
 
 interface ReceiptData {
   receipt_number: string;
+  artist_name?: string;
   artist_email: string;
+  artist_address?: string;
+  artist_tax_id?: string;
   total_amount: number;
   status: string;
   created_at: string;
@@ -64,57 +67,122 @@ export class PDFGenerator {
   // -------------------------
   // RECEIPT
   // -------------------------
-  static generateReceipt(data: ReceiptData): jsPDF {
+  static async generateReceiptAsync(data: ReceiptData): Promise<jsPDF> {
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 15;
     let yPosition = 20;
 
+    // Colors
+    const colors = {
+      text: [34, 34, 34] as [number, number, number],
+      secondary: [107, 114, 128] as [number, number, number],
+      border: [229, 231, 235] as [number, number, number],
+    };
+
+    // Logo
+    try {
+      const response = await fetch("/logo.png");
+      const blob = await response.blob();
+      const logoBase64 = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.readAsDataURL(blob);
+      });
+      const logoWidth = 50;
+      const logoHeight = 20;
+      const logoX = pageWidth - margin - logoWidth;
+      doc.addImage(logoBase64, "PNG", logoX, yPosition, logoWidth, logoHeight);
+      yPosition += logoHeight + 10;
+    } catch (error) {
+      console.warn("Could not load logo:", error);
+    }
+
     // Header
-    doc.setFontSize(20);
+    doc.setFontSize(24);
     doc.setFont("helvetica", "bold");
-    doc.text("GOODLIFE ROYALTY PAYMENT RECEIPT", pageWidth / 2, yPosition, {
-      align: "center",
-    });
+    doc.setTextColor(...colors.text);
+    doc.text("INVOICE", pageWidth / 2, yPosition, { align: "center" });
 
-    yPosition += 10;
+    yPosition += 12;
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
-    doc.text(`Receipt #${data.receipt_number}`, pageWidth / 2, yPosition, {
-      align: "center",
-    });
+    doc.setTextColor(...colors.secondary);
+    doc.text(`Invoice Number: ${data.receipt_number}`, margin, yPosition);
+    yPosition += 5;
+    doc.text(`Invoice Date: ${new Date(data.created_at).toLocaleDateString()}`, margin, yPosition);
+    yPosition += 12;
 
-    // Divider line
+    // ============================================
+    // BILL TO: (ADMIN/BUSINESS - recipient of the invoice)
+    // ============================================
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...colors.text);
+    doc.text("Bill To:", margin, yPosition);
+    yPosition += 6;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(...colors.secondary);
+    doc.text("Good Life Music S.L", margin, yPosition);
+    yPosition += 5;
+    doc.text("Profesor Hermida 6, 3-3C", margin, yPosition);
+    yPosition += 5;
+    doc.text("36960 Sanxenxo (Spain)", margin, yPosition);
+    yPosition += 5;
+    doc.text("Phone: +34 693 43 25 06", margin, yPosition);
+    yPosition += 5;
+    doc.text("Email: info@goodlifemusic.com", margin, yPosition);
+    yPosition += 5;
+    doc.text("TAX ID: B72510704", margin, yPosition);
     yPosition += 10;
+
+    // Separator
+    doc.setDrawColor(...colors.border);
     doc.setLineWidth(0.5);
-    doc.line(15, yPosition, pageWidth - 15, yPosition);
-
-    // Artist Information
+    doc.line(margin, yPosition, pageWidth - margin, yPosition);
     yPosition += 10;
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "bold");
-    doc.text("Artist Information", 15, yPosition);
 
-    yPosition += 7;
-    doc.setFontSize(10);
+    // ============================================
+    // BILL FROM: (ARTIST - sender of the invoice)
+    // ============================================
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...colors.text);
+    doc.text("Bill From:", margin, yPosition);
+    yPosition += 6;
+
     doc.setFont("helvetica", "normal");
-    doc.text(`Email: ${data.artist_email}`, 15, yPosition);
-
+    doc.setFontSize(10);
+    doc.setTextColor(...colors.secondary);
+    doc.text(data.artist_name || "Artist", margin, yPosition);
     yPosition += 5;
-    doc.text(`Request Date: ${new Date(data.created_at).toLocaleDateString()}`, 15, yPosition);
-
-    if (data.approved_at) {
+    if (data.artist_email) {
+      doc.text(data.artist_email, margin, yPosition);
       yPosition += 5;
-      doc.text(`Approved Date: ${new Date(data.approved_at).toLocaleDateString()}`, 15, yPosition);
     }
-
-    if (data.approved_by_email) {
+    if (data.artist_address) {
+      const addressLines = data.artist_address.includes("\n")
+        ? data.artist_address.split("\n").map((s) => s.trim())
+        : data.artist_address.split(",").map((s) => s.trim());
+      addressLines.forEach((line) => {
+        if (line) {
+          doc.text(line, margin, yPosition);
+          yPosition += 5;
+        }
+      });
+    }
+    if (data.artist_tax_id) {
+      doc.text(`TAX ID: ${data.artist_tax_id}`, margin, yPosition);
       yPosition += 5;
-      doc.text(`Approved By: ${data.approved_by_email}`, 15, yPosition);
     }
-
     yPosition += 5;
+
+    // Status badge
     doc.setFont("helvetica", "bold");
-    doc.text(`Status: ${data.status.toUpperCase()}`, 15, yPosition);
+    doc.setTextColor(...colors.text);
+    doc.text(`Status: ${data.status.toUpperCase()}`, margin, yPosition);
 
     // Royalty Details Table
     yPosition += 10;
@@ -212,13 +280,13 @@ export class PDFGenerator {
     return doc;
   }
 
-  static downloadReceipt(data: ReceiptData, filename?: string): void {
-    const doc = this.generateReceipt(data);
+  static async downloadReceipt(data: ReceiptData, filename?: string): Promise<void> {
+    const doc = await this.generateReceiptAsync(data);
     doc.save(filename || `receipt-${data.receipt_number}.pdf`);
   }
 
-  static previewReceipt(data: ReceiptData): void {
-    const doc = this.generateReceipt(data);
+  static async previewReceipt(data: ReceiptData): Promise<void> {
+    const doc = await this.generateReceiptAsync(data);
     const pdfBlob = doc.output("blob");
     const pdfUrl = URL.createObjectURL(pdfBlob);
     window.open(pdfUrl, "_blank");

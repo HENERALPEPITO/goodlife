@@ -9,6 +9,8 @@ interface PaymentRequestInvoice {
   invoice_date: string;
   artist_name: string;
   artist_email?: string;
+  artist_address?: string;
+  artist_tax_id?: string;
   total_net: number;
   status: "pending" | "approved" | "rejected";
   payment_request_id?: string;
@@ -69,17 +71,22 @@ export class PaymentRequestInvoicePDF {
 
     doc.setFont("helvetica");
 
-    // LOGO (centered)
-    if (options?.logoUrl) {
-      try {
-        const logoWidth = 50;
-        const logoHeight = 20;
-        const logoX = (pageWidth - logoWidth) / 2;
-        doc.addImage(options.logoUrl, "PNG", logoX, yPosition, logoWidth, logoHeight);
-        yPosition += logoHeight + 10;
-      } catch (err) {
-        console.warn("Logo failed to load:", err);
-      }
+    // LOGO (top right)
+    try {
+      const response = await fetch("/logo.png");
+      const blob = await response.blob();
+      const logoBase64 = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.readAsDataURL(blob);
+      });
+      const logoWidth = 50;
+      const logoHeight = 20;
+      const logoX = pageWidth - margin - logoWidth;
+      doc.addImage(logoBase64, "PNG", logoX, yPosition, logoWidth, logoHeight);
+      yPosition += logoHeight + 10;
+    } catch (err) {
+      console.warn("Logo failed to load:", err);
     }
 
     // HEADER: INVOICE
@@ -107,16 +114,20 @@ export class PaymentRequestInvoicePDF {
     );
     yPosition += 12;
 
-    // BUSINESS INFO
+    // ============================================
+    // BILL TO: (ADMIN/BUSINESS - recipient of the invoice)
+    // ============================================
     doc.setFontSize(11);
     doc.setFont("helvetica", "bold");
     applyRGB(doc.setTextColor.bind(doc), colors.text);
-    doc.text(businessSettings.business_name, margin, yPosition);
+    doc.text("Bill To:", margin, yPosition);
     yPosition += 6;
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
     applyRGB(doc.setTextColor.bind(doc), colors.secondary);
+    doc.text(businessSettings.business_name, margin, yPosition);
+    yPosition += 5;
 
     const addressLines = businessSettings.address.split(/,|\n/).map((t) => t.trim());
     for (const line of addressLines) {
@@ -127,12 +138,10 @@ export class PaymentRequestInvoicePDF {
     }
 
     if (businessSettings.contact_person) {
-      yPosition += 2;
       doc.text(businessSettings.contact_person, margin, yPosition);
       yPosition += 5;
     }
 
-    yPosition += 2;
     doc.text(`Phone: ${businessSettings.phone}`, margin, yPosition);
     yPosition += 5;
     doc.text(`Email: ${businessSettings.email}`, margin, yPosition);
@@ -144,13 +153,15 @@ export class PaymentRequestInvoicePDF {
     applyRGB(doc.setDrawColor.bind(doc), colors.border);
     doc.setLineWidth(0.5);
     doc.line(margin, yPosition, pageWidth - margin, yPosition);
-    yPosition += 12;
+    yPosition += 10;
 
-    // ARTIST INFO
+    // ============================================
+    // BILL FROM: (ARTIST - sender of the invoice)
+    // ============================================
     doc.setFont("helvetica", "bold");
     doc.setFontSize(11);
     applyRGB(doc.setTextColor.bind(doc), colors.text);
-    doc.text("Bill To:", margin, yPosition);
+    doc.text("Bill From:", margin, yPosition);
     yPosition += 6;
 
     doc.setFont("helvetica", "normal");
@@ -165,7 +176,22 @@ export class PaymentRequestInvoicePDF {
       yPosition += 5;
     }
 
-    yPosition += 10;
+    if (invoice.artist_address) {
+      const artistAddressLines = invoice.artist_address.split(/,|\n/).map((t) => t.trim());
+      for (const line of artistAddressLines) {
+        if (line) {
+          doc.text(line, margin, yPosition);
+          yPosition += 5;
+        }
+      }
+    }
+
+    if (invoice.artist_tax_id) {
+      doc.text(`TAX ID: ${invoice.artist_tax_id}`, margin, yPosition);
+      yPosition += 5;
+    }
+
+    yPosition += 8;
 
     // LINE
     applyRGB(doc.setDrawColor.bind(doc), colors.border);

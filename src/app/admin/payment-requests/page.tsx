@@ -235,6 +235,8 @@ export default function AdminPaymentRequestsPage() {
             invoice_date: invoiceDate,
             artist_name: data.invoice.artist_name || "Artist",
             artist_email: data.invoice.artist_email || "",
+            artist_address: data.invoice.artist_address || undefined,
+            artist_tax_id: data.invoice.artist_tax_id || undefined,
             total_net: Number(data.invoice.total_net || 0),
             status: (data.invoice.status || "pending") as "pending" | "approved" | "rejected",
             payment_request_id: requestId,

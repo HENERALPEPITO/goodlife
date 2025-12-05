@@ -127,7 +127,7 @@ export default function LoginPage() {
         <div className="text-center px-4 lg:px-12">
           {/* Main Title */}
           <h1 className="text-3xl sm:text-4xl lg:text-5xl xl:text-6xl font-bold text-white mb-3 lg:mb-4 tracking-tight leading-none">
-            Good Life Music Client Portal
+            Client Portal
           </h1>
           
           {/* Quote */}
