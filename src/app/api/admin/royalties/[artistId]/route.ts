@@ -114,19 +114,9 @@ export async function GET(
       );
     }
 
-    // Get accurate totals from PostgreSQL RPC (uses NUMERIC precision)
-    const { data: totalsData, error: totalsError } = await adminClient
-      .rpc("get_artist_royalty_totals", { p_artist_id: artistId });
-    
-    if (totalsError) {
-      console.error("Error fetching artist totals:", totalsError);
-    }
-    
-    const totals = totalsData?.[0] || { total_gross: 0, total_net: 0, record_count: 0 };
-
-    // Fetch ALL records for this artist (needed for quarter grouping)
-    const { data: royalties, error, count } = await adminClient
-      .from("royalties")
+    // Fetch from royalties_summary with track info
+    const { data: summaries, error, count } = await adminClient
+      .from("royalties_summary")
       .select(`
         *,
         tracks:track_id (
@@ -136,42 +126,70 @@ export async function GET(
         )
       `, { count: "exact" })
       .eq("artist_id", artistId)
-      .order("broadcast_date", { ascending: false, nullsFirst: false });
+      .order("year", { ascending: false })
+      .order("quarter", { ascending: false });
 
     if (error) {
-      console.error("Error fetching royalties for artist", artistId, ":");
+      console.error("Error fetching royalties_summary for artist", artistId, ":");
       console.error("Error code:", error.code);
       console.error("Error message:", error.message);
-      console.error("Full error:", JSON.stringify(error, null, 2));
       return NextResponse.json(
-        { error: "Failed to fetch royalties", details: error.message, code: error.code },
+        { error: "Failed to fetch royalties summary", details: error.message, code: error.code },
         { status: 500 }
       );
     }
 
-    // Debug: Log first royalty record to see structure
-    if (royalties && royalties.length > 0) {
-      console.log("📊 Sample royalty record:", JSON.stringify(royalties[0], null, 2));
-    }
+    // Calculate totals from summary data
+    let totalGross = 0;
+    let totalNet = 0;
+    let totalRecords = 0;
+    
+    (summaries || []).forEach((s: any) => {
+      totalGross += parseFloat(s.total_gross || 0);
+      totalNet += parseFloat(s.total_net || 0);
+      totalRecords += s.record_count || 0;
+    });
 
-    // Transform the response to flatten track title and composer
-    const transformedRoyalties = (royalties || []).map((royalty: any) => ({
-      ...royalty,
-      track_title: royalty.tracks?.title || null,
-      composer_name: royalty.tracks?.composer_name || null,
-      isrc: royalty.tracks?.isrc || null,
-      tracks: undefined, // Remove the nested object
+    // Transform summary data to display format
+    // Group by quarter for display
+    const transformedData = (summaries || []).map((summary: any) => ({
+      id: summary.id,
+      track_id: summary.track_id,
+      artist_id: summary.artist_id,
+      year: summary.year,
+      quarter: summary.quarter,
+      track_title: summary.tracks?.title || null,
+      composer_name: summary.tracks?.composer_name || null,
+      isrc: summary.tracks?.isrc || null,
+      total_streams: summary.total_streams,
+      total_revenue: summary.total_revenue,
+      total_gross: summary.total_gross,
+      total_net: summary.total_net,
+      avg_per_stream: summary.avg_per_stream,
+      top_platform: summary.top_platform,
+      top_territory: summary.top_territory,
+      record_count: summary.record_count,
+      platform_distribution: summary.platform_distribution,
+      territory_distribution: summary.territory_distribution,
+      // Create a synthetic broadcast_date for quarter grouping in frontend
+      broadcast_date: `${summary.year}-${String((summary.quarter - 1) * 3 + 1).padStart(2, '0')}-01`,
+      // Map to old field names for compatibility
+      gross_amount: summary.total_gross,
+      net_amount: summary.total_net,
+      usage_count: summary.total_streams,
+      exploitation_source_name: summary.top_platform,
+      territory: summary.top_territory,
+      admin_percent: 0, // Not tracked in summary
     }));
 
-    // Return all records + accurate totals from RPC
+    // Return summary data + totals
     return NextResponse.json({
-      data: transformedRoyalties,
+      data: transformedData,
       total: count || 0,
-      // Accurate totals from PostgreSQL NUMERIC precision
       totals: {
-        totalGross: String(totals.total_gross || 0),
-        totalNet: String(totals.total_net || 0),
-        recordCount: totals.record_count || 0
+        totalGross: String(totalGross.toFixed(2)),
+        totalNet: String(totalNet.toFixed(2)),
+        recordCount: totalRecords
       }
     }, { status: 200 });
   } catch (error) {

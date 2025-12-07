@@ -1,14 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
-import { Upload, AlertCircle, FileText, Download, Loader2 } from "lucide-react";
+import { Upload, AlertCircle, FileText, Download, Loader2, Calendar, History } from "lucide-react";
 import { uploadCsvToStorage } from "@/lib/royalty-storage";
+import type { CsvUploadRecord } from "@/types/royalty-summary";
 
 
 export default function RoyaltyUploaderPage() {
@@ -24,6 +25,22 @@ export default function RoyaltyUploaderPage() {
   const [uploading, setUploading] = useState(false);
   const [loadingArtists, setLoadingArtists] = useState(true);
   const [uploadProgress, setUploadProgress] = useState<string>("");
+  
+  // Year and Quarter selection (required before upload)
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [selectedQuarter, setSelectedQuarter] = useState<number>(Math.ceil((new Date().getMonth() + 1) / 3));
+  
+  // Upload history
+  const [uploadHistory, setUploadHistory] = useState<CsvUploadRecord[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  
+  // Generate year options (current year and 5 years back)
+  const yearOptions = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    return Array.from({ length: 6 }, (_, i) => currentYear - i);
+  }, []);
+  
+  const quarterOptions = [1, 2, 3, 4];
 
   useEffect(() => {
     setMounted(true);
@@ -36,9 +53,17 @@ export default function RoyaltyUploaderPage() {
       router.push("/");
     } else if (user && user.role === "admin") {
       fetchArtists();
+      fetchUploadHistory();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, loading, router]);
+
+  // Fetch upload history when artist changes
+  useEffect(() => {
+    if (selectedArtist) {
+      fetchUploadHistory();
+    }
+  }, [selectedArtist]);
 
   const fetchArtists = async () => {
     try {
@@ -67,6 +92,38 @@ export default function RoyaltyUploaderPage() {
       });
     } finally {
       setLoadingArtists(false);
+    }
+  };
+
+  const fetchUploadHistory = async () => {
+    if (!selectedArtist) return;
+    
+    setLoadingHistory(true);
+    try {
+      const { data, error } = await supabase
+        .from("csv_uploads")
+        .select("*")
+        .eq("artist_id", selectedArtist)
+        .order("created_at", { ascending: false })
+        .limit(10);
+
+      if (error) {
+        // Table might not exist yet if migration hasn't been run
+        if (error.code === '42P01' || error.message?.includes('does not exist')) {
+          console.warn("csv_uploads table not found - run the migration first");
+        } else {
+          console.warn("Error fetching upload history:", error.message || error);
+        }
+        setUploadHistory([]);
+        return;
+      }
+      setUploadHistory(data || []);
+    } catch (error: any) {
+      // Silently fail - history is not critical, table may not exist
+      console.warn("Upload history unavailable:", error?.message || "Table may not exist yet");
+      setUploadHistory([]);
+    } finally {
+      setLoadingHistory(false);
     }
   };
 
@@ -111,7 +168,16 @@ export default function RoyaltyUploaderPage() {
     if (!selectedArtist || !selectedFile) {
       toast({
         title: "Missing Information",
-        description: "Please select both an artist and a CSV file",
+        description: "Please select an artist, year, quarter, and CSV file",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!selectedYear || !selectedQuarter) {
+      toast({
+        title: "Missing Period",
+        description: "Please select both year and quarter for this royalty data",
         variant: "destructive",
       });
       return;
@@ -138,10 +204,10 @@ export default function RoyaltyUploaderPage() {
       }
 
       console.log(`✅ Uploaded to storage: ${uploadResult.path}`);
-      setUploadProgress("Processing CSV in batches...");
+      setUploadProgress("Computing royalty summaries...");
 
-      // Step 2: Trigger batch processing via API
-      const response = await fetch("/api/process-royalties", {
+      // Step 2: Trigger summary processing via new API (with year/quarter)
+      const response = await fetch("/api/process-royalties-summary", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -149,6 +215,10 @@ export default function RoyaltyUploaderPage() {
         body: JSON.stringify({
           artistId: selectedArtist,
           storagePath: uploadResult.path,
+          filename: selectedFile.name,
+          fileSize: selectedFile.size,
+          year: selectedYear,
+          quarter: selectedQuarter,
           batchConfig: {
             batchSize: 500,
             maxConcurrency: 3,
@@ -163,17 +233,17 @@ export default function RoyaltyUploaderPage() {
       if (!response.ok || !result.success) {
         // Get detailed error message
         const errorMsg = result.error 
-          || result.data?.errors?.join(", ")
+          || result.computation?.errors?.join(", ")
           || result.message
           || `Processing failed (status: ${response.status})`;
         throw new Error(errorMsg);
       }
 
       // Step 3: Success!
-      const summary = result.data?.summary;
+      const computation = result.computation;
       toast({
         title: "Upload Successful",
-        description: `Successfully processed ${summary?.successfulInserts || 0} royalty records`,
+        description: `Processed ${computation?.totalRows || 0} rows into ${computation?.summariesCreated || 0} summary records for Q${selectedQuarter} ${selectedYear}`,
       });
 
       // Step 4: Optionally download failed rows CSV
@@ -182,23 +252,25 @@ export default function RoyaltyUploaderPage() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = "failed-rows.csv";
+        a.download = `failed-rows-Q${selectedQuarter}-${selectedYear}.csv`;
         a.click();
         URL.revokeObjectURL(url);
         
         toast({
           title: "Failed Rows Downloaded",
-          description: `${result.data?.failedRows?.length || 0} rows failed validation - check downloaded CSV`,
+          description: "Some rows failed validation - check downloaded CSV",
           variant: "destructive",
         });
       }
 
-      // Reset form
+      // Reset form (keep artist and period for convenience)
       setSelectedFile(null);
-      setSelectedArtist("");
       setUploadProgress("");
       const fileInput = document.getElementById("csv-file-input") as HTMLInputElement;
       if (fileInput) fileInput.value = "";
+      
+      // Refresh upload history
+      fetchUploadHistory();
 
     } catch (error: any) {
       console.error("Upload error:", error);
@@ -321,7 +393,65 @@ export default function RoyaltyUploaderPage() {
                 </option>
               ))}
             </select>
-      </div>
+          </div>
+
+          {/* Year and Quarter Selection */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-2 transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>
+                <Calendar className="inline-block h-4 w-4 mr-1" />
+                Year
+              </label>
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                className="w-full px-3 py-2 rounded-lg border transition-colors"
+                style={{
+                  backgroundColor: isDark ? '#374151' : '#FFFFFF',
+                  color: isDark ? '#FFFFFF' : '#1F2937',
+                  borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+                }}
+              >
+                {yearOptions.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2 transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>
+                Quarter
+              </label>
+              <select
+                value={selectedQuarter}
+                onChange={(e) => setSelectedQuarter(parseInt(e.target.value))}
+                className="w-full px-3 py-2 rounded-lg border transition-colors"
+                style={{
+                  backgroundColor: isDark ? '#374151' : '#FFFFFF',
+                  color: isDark ? '#FFFFFF' : '#1F2937',
+                  borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+                }}
+              >
+                {quarterOptions.map((q) => (
+                  <option key={q} value={q}>
+                    Q{q} ({q === 1 ? 'Jan-Mar' : q === 2 ? 'Apr-Jun' : q === 3 ? 'Jul-Sep' : 'Oct-Dec'})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Period Summary */}
+          <div 
+            className="p-3 rounded-lg text-sm"
+            style={{
+              backgroundColor: isDark ? 'rgba(16, 185, 129, 0.1)' : '#D1FAE5',
+              color: isDark ? '#6EE7B7' : '#065F46',
+            }}
+          >
+            Uploading royalty data for: <strong>Q{selectedQuarter} {selectedYear}</strong>
+          </div>
 
           {/* File Upload */}
           <div>
@@ -368,7 +498,7 @@ export default function RoyaltyUploaderPage() {
             
             <Button
               onClick={handleUpload}
-              disabled={uploading || !selectedArtist}
+              disabled={uploading || !selectedArtist || !selectedYear || !selectedQuarter}
               className="bg-green-600 hover:bg-green-700 text-white"
             >
               {uploading ? (
@@ -394,6 +524,84 @@ export default function RoyaltyUploaderPage() {
               }}
             >
               {uploadProgress}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Upload History */}
+      {selectedArtist && (
+        <section 
+          className="rounded-lg border p-6 transition-colors"
+          style={{
+            backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
+            borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+          }}
+        >
+          <div className="flex items-center gap-2 mb-4">
+            <History className="h-5 w-5" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }} />
+            <h2 className="text-lg font-semibold transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>
+              Recent Uploads for this Artist
+            </h2>
+          </div>
+
+          {loadingHistory ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }} />
+            </div>
+          ) : uploadHistory.length === 0 ? (
+            <p className="text-sm py-4" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
+              No previous uploads found for this artist.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr style={{ borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}` }}>
+                    <th className="text-left py-2 px-2 font-medium" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Filename</th>
+                    <th className="text-left py-2 px-2 font-medium" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Period</th>
+                    <th className="text-left py-2 px-2 font-medium" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Status</th>
+                    <th className="text-left py-2 px-2 font-medium" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Uploaded</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {uploadHistory.map((upload) => (
+                    <tr 
+                      key={upload.id} 
+                      style={{ borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'}` }}
+                    >
+                      <td className="py-2 px-2" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>
+                        {upload.filename}
+                      </td>
+                      <td className="py-2 px-2" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>
+                        Q{upload.quarter} {upload.year}
+                      </td>
+                      <td className="py-2 px-2">
+                        <span 
+                          className="px-2 py-1 rounded-full text-xs font-medium"
+                          style={{
+                            backgroundColor: upload.processing_status === 'completed' 
+                              ? (isDark ? 'rgba(16, 185, 129, 0.2)' : '#D1FAE5')
+                              : upload.processing_status === 'failed'
+                              ? (isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2')
+                              : (isDark ? 'rgba(251, 191, 36, 0.2)' : '#FEF3C7'),
+                            color: upload.processing_status === 'completed'
+                              ? (isDark ? '#6EE7B7' : '#065F46')
+                              : upload.processing_status === 'failed'
+                              ? (isDark ? '#FCA5A5' : '#991B1B')
+                              : (isDark ? '#FCD34D' : '#92400E'),
+                          }}
+                        >
+                          {upload.processing_status}
+                        </span>
+                      </td>
+                      <td className="py-2 px-2" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
+                        {new Date(upload.created_at).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </section>

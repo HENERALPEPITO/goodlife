@@ -90,20 +90,20 @@ export async function PUT(
     // Parse request body
     const body = await request.json();
     
-    // Use admin client to update the royalty record
+    // Use admin client to update the royalty summary record
     const adminClient = getSupabaseAdmin();
 
     const { data, error } = await adminClient
-      .from("royalties")
+      .from("royalties_summary")
       .update(body)
       .eq("id", recordId)
       .select()
       .single();
 
     if (error) {
-      console.error("Error updating royalty record:", error);
+      console.error("Error updating royalty summary record:", error);
       return NextResponse.json(
-        { error: "Failed to update royalty record" },
+        { error: "Failed to update royalty summary record" },
         { status: 500 }
       );
     }
@@ -136,18 +136,18 @@ export async function DELETE(
       );
     }
 
-    // Use admin client to delete the royalty record
+    // Use admin client to delete the royalty summary record
     const adminClient = getSupabaseAdmin();
 
     const { error } = await adminClient
-      .from("royalties")
+      .from("royalties_summary")
       .delete()
       .eq("id", recordId);
 
     if (error) {
-      console.error("Error deleting royalty record:", error);
+      console.error("Error deleting royalty summary record:", error);
       return NextResponse.json(
-        { error: "Failed to delete royalty record" },
+        { error: "Failed to delete royalty summary record" },
         { status: 500 }
       );
     }

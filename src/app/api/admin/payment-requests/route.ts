@@ -121,18 +121,59 @@ export async function GET(request: NextRequest): Promise<NextResponse<GetPayment
     const artistMap = new Map(artists.map(a => [a.id, a]));
     const profileMap = new Map((profiles || []).map(p => [p.id, p]));
 
-    // Count royalties for each request
+    // Count royalties and calculate amounts for each request
     const detailedRequests = await Promise.all(
       requests.map(async (req) => {
         const artist = artistMap.get(req.artist_id);
         const profile = artist?.user_id ? profileMap.get(artist.user_id) : null;
 
-        // Count royalties for this request (those marked as paid)
-        const { count: royaltyCount } = await adminClient
-          .from("royalties")
-          .select("*", { count: "exact", head: true })
-          .eq("artist_id", req.artist_id)
-          .eq("is_paid", true);
+        // Get summary data from royalties_summary for record count
+        const { data: summaryData, count: royaltyCount } = await adminClient
+          .from("royalties_summary")
+          .select("record_count, total_net", { count: "exact" })
+          .eq("artist_id", req.artist_id);
+
+        // Sum up record_count from all summary records
+        const totalRecordCount = (summaryData || []).reduce(
+          (sum, row) => sum + (row.record_count || 0), 0
+        );
+
+        // If the stored amount is 0, recalculate from royalties_summary
+        let totalAmount = parseFloat(req.amount || "0");
+        if (totalAmount === 0 && summaryData && summaryData.length > 0) {
+          // Calculate total earnings from royalties_summary
+          const totalEarnings = summaryData.reduce(
+            (sum, row) => sum + parseFloat(row.total_net || "0"), 0
+          );
+
+          // Get already paid amounts from other payment requests
+          const { data: paidRequests } = await adminClient
+            .from("payment_requests")
+            .select("amount")
+            .eq("artist_id", req.artist_id)
+            .eq("status", "paid")
+            .neq("id", req.id); // Exclude current request
+
+          const paidAmount = (paidRequests || []).reduce(
+            (sum, pr) => sum + parseFloat(pr.amount || "0"), 0
+          );
+
+          totalAmount = totalEarnings - paidAmount;
+
+          // Update the payment request with the correct amount
+          if (totalAmount > 0) {
+            await adminClient
+              .from("payment_requests")
+              .update({ amount: totalAmount })
+              .eq("id", req.id);
+
+            // Also update the invoice if it exists
+            await adminClient
+              .from("invoices")
+              .update({ amount: totalAmount })
+              .eq("payment_request_id", req.id);
+          }
+        }
 
         // Get approver info if exists
         let approverEmail = null;
@@ -149,10 +190,10 @@ export async function GET(request: NextRequest): Promise<NextResponse<GetPayment
           id: req.id,
           artist_id: req.artist_id,
           artist_email: profile?.email || artist?.email || "Unknown",
-          total_amount: req.amount,
+          total_amount: totalAmount,
           status: req.status,
           remarks: req.remarks,
-          royalty_count: royaltyCount || 0,
+          royalty_count: totalRecordCount || royaltyCount || 0,
           created_at: req.created_at,
           updated_at: req.updated_at,
           approved_by: req.approved_by,
@@ -181,341 +222,115 @@ export async function GET(request: NextRequest): Promise<NextResponse<GetPayment
 
 export async function POST(request: NextRequest): Promise<NextResponse<UpdatePaymentRequestResponse>> {
   try {
-    // Verify admin access with request headers
     const admin = await requireAdmin(request.headers);
     if (!admin) {
-      return NextResponse.json(
-        { success: false, error: "Unauthorized. Admin access required." },
-        { status: 403 }
-      );
+      return NextResponse.json({ success: false, error: "Unauthorized. Admin access required." }, { status: 403 });
     }
 
-    // Get admin client
     const adminClient = getSupabaseAdmin();
-
-    // Parse request body
     const body: UpdatePaymentRequestBody = await request.json();
     const { id, status, remarks } = body;
 
-    // Validation
     if (!id || !status) {
-      return NextResponse.json(
-        { success: false, error: "Missing required fields: id, status" },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: "Missing required fields: id, status" }, { status: 400 });
     }
 
     if (!["approved", "rejected", "paid"].includes(status)) {
-      return NextResponse.json(
-        { success: false, error: "Invalid status. Must be 'approved', 'rejected', or 'paid'" },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: "Invalid status" }, { status: 400 });
     }
 
-    // Update payment request
-    // Build update data - try with approved_by/approved_at first, fallback if columns don't exist
-    let updateData: any = {
-      status,
-      updated_at: new Date().toISOString(),
-    };
-
-    // Add remarks if provided
-    if (remarks !== undefined) {
-      updateData.remarks = remarks || null;
-    }
-
-    // Add approved_by and approved_at only if status is approved or rejected
+    const updateData: any = { status, updated_at: new Date().toISOString() };
+    if (remarks !== undefined) updateData.remarks = remarks || null;
     if (status === "approved" || status === "rejected") {
       updateData.approved_by = admin.id;
       updateData.approved_at = new Date().toISOString();
     }
 
-    let paymentRequest: any = null;
-    let updateError: any = null;
-
-    // Try update with all fields
-    const { data: updatedRequest, error: updateErr } = await adminClient
+    const { data: paymentRequest, error: updateError } = await adminClient
       .from("payment_requests")
       .update(updateData)
       .eq("id", id)
       .select()
       .single();
 
-    updateError = updateErr;
-    paymentRequest = updatedRequest;
-
-    // If error is about missing columns, try without approved_by/approved_at
-    if (updateError && (updateError.message?.includes("column") || updateError.code === "42703" || updateError.message?.includes("approved_by") || updateError.message?.includes("approved_at"))) {
-      console.warn("Columns approved_by/approved_at don't exist, updating without them");
-      
-      // Remove approved_by and approved_at and try again
-      const fallbackData: any = {
-        status,
-        updated_at: new Date().toISOString(),
-      };
-      if (remarks !== undefined) {
-        fallbackData.remarks = remarks || null;
-      }
-      
-      const { data: fallbackRequest, error: fallbackError } = await adminClient
-        .from("payment_requests")
-        .update(fallbackData)
-        .eq("id", id)
-        .select()
-        .single();
-      
-      if (fallbackError || !fallbackRequest) {
-        console.error("Error updating payment request (fallback):", fallbackError);
-        return NextResponse.json(
-          { 
-            success: false, 
-            error: `Failed to update payment request: ${fallbackError?.message || "Unknown error"}` 
-          },
-          { status: 500 }
-        );
-      }
-      
-      paymentRequest = fallbackRequest;
-      updateError = null;
-    }
-
     if (updateError || !paymentRequest) {
       console.error("Error updating payment request:", updateError);
-      console.error("Update data:", JSON.stringify(updateData, null, 2));
-      console.error("Payment request ID:", id);
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: `Failed to update payment request: ${updateError?.message || "Unknown error"}` 
-        },
-        { status: 500 }
-      );
+      return NextResponse.json({ success: false, error: "Failed to update payment request" }, { status: 500 });
     }
 
-    // If approved, generate new PDF invoice with approved status
+    // If approved, generate PDF and recalculate amount if needed
     if (status === "approved") {
       try {
-        // Get artist info
-        const { data: artist } = await adminClient
-          .from("artists")
-          .select("id, name, user_id, address, tax_id")
-          .eq("id", paymentRequest.artist_id)
-          .single();
+        const { data: artist } = await adminClient.from("artists").select("id, name, user_id, address, tax_id").eq("id", paymentRequest.artist_id).single();
 
         if (artist) {
-          // Get user profile for email
-          const { data: userProfile } = await adminClient
-            .from("user_profiles")
-            .select("email")
-            .eq("id", artist.user_id)
-            .single();
-
+          const { data: userProfile } = await adminClient.from("user_profiles").select("email").eq("id", artist.user_id).single();
           const artistEmail = userProfile?.email || "";
 
-          // Get existing invoice or create new one
-          const { data: existingInvoice } = await adminClient
-            .from("invoices")
-            .select("*")
-            .eq("payment_request_id", id)
-            .maybeSingle();
+          const { data: existingInvoice } = await adminClient.from("invoices").select("*").eq("payment_request_id", id).maybeSingle();
 
           let invoiceNumber = existingInvoice?.invoice_number;
           if (!invoiceNumber) {
-            // Generate invoice number: INV-[YEAR]-[AUTO_ID]
-            const year = new Date().getFullYear();
-            const autoId = paymentRequest.id.substring(0, 8).toUpperCase();
-            invoiceNumber = `INV-${year}-${autoId}`;
+            invoiceNumber = `INV-${new Date().getFullYear()}-${paymentRequest.id.substring(0, 8).toUpperCase()}`;
           }
 
-          // Generate approved PDF invoice
+          // Recalculate amount from royalties_summary if 0
+          let approvedAmount = Number(paymentRequest.amount || 0);
+          if (approvedAmount === 0) {
+            const { data: summaryData } = await adminClient.from("royalties_summary").select("total_net").eq("artist_id", paymentRequest.artist_id);
+            const totalEarnings = (summaryData || []).reduce((sum: number, row: any) => sum + parseFloat(row.total_net || "0"), 0);
+            const { data: paidRequests } = await adminClient.from("payment_requests").select("amount").eq("artist_id", paymentRequest.artist_id).eq("status", "paid").neq("id", id);
+            const paidAmount = (paidRequests || []).reduce((sum: number, pr: any) => sum + parseFloat(pr.amount || "0"), 0);
+            approvedAmount = totalEarnings - paidAmount;
+            if (approvedAmount > 0) {
+              await adminClient.from("payment_requests").update({ amount: approvedAmount }).eq("id", id);
+            }
+          }
+
           const { generatePaymentRequestInvoicePDF } = await import("@/lib/pdfGenerator");
           const { getInvoiceSettingsAdmin } = await import("@/lib/invoiceSettings");
           const invoiceSettings = await getInvoiceSettingsAdmin();
 
-          const invoiceDate = existingInvoice?.created_at
-            ? new Date(existingInvoice.created_at).toISOString().split("T")[0]
-            : new Date().toISOString().split("T")[0];
-
-          const invoice = {
+          const pdfDoc = await generatePaymentRequestInvoicePDF({
             id: paymentRequest.id,
             invoice_number: invoiceNumber,
-            invoice_date: invoiceDate,
+            invoice_date: new Date().toISOString().split("T")[0],
             artist_name: artist.name || "Artist",
             artist_email: artistEmail,
             artist_address: artist.address || undefined,
             artist_tax_id: artist.tax_id || undefined,
-            total_net: paymentRequest.amount,
-            status: "approved" as const,
+            total_net: approvedAmount,
+            status: "approved",
             payment_request_id: paymentRequest.id,
-          };
+          }, { settings: invoiceSettings });
 
-          const pdfDoc = await generatePaymentRequestInvoicePDF(invoice, {
-            settings: invoiceSettings,
-          });
-
-          // Convert PDF to buffer (server-side compatible)
-          const pdfArrayBuffer = pdfDoc.output("arraybuffer");
-          const pdfBuffer = Buffer.from(pdfArrayBuffer);
-
+          const pdfBuffer = Buffer.from(pdfDoc.output("arraybuffer"));
           const fileName = `invoices/${paymentRequest.artist_id}/${invoiceNumber}.pdf`;
-          const { error: uploadError } = await adminClient.storage
-            .from("invoices")
-            .upload(fileName, pdfBuffer, {
-              contentType: "application/pdf",
-              upsert: true,
-            });
+          await adminClient.storage.from("invoices").upload(fileName, pdfBuffer, { contentType: "application/pdf", upsert: true });
+          const { data: { publicUrl } } = adminClient.storage.from("invoices").getPublicUrl(fileName);
 
-          if (uploadError) {
-            console.error("Error uploading PDF:", uploadError);
-          }
-
-          // Get public URL
-          const {
-            data: { publicUrl },
-          } = adminClient.storage.from("invoices").getPublicUrl(fileName);
-
-          // Update or create invoice record
           if (existingInvoice) {
-            await adminClient
-              .from("invoices")
-              .update({
-                status: "approved",
-                file_url: publicUrl,
-              })
-              .eq("id", existingInvoice.id);
+            await adminClient.from("invoices").update({ status: "approved", file_url: publicUrl, amount: approvedAmount }).eq("id", existingInvoice.id);
           } else {
-            await adminClient.from("invoices").insert({
-              artist_id: paymentRequest.artist_id,
-              payment_request_id: id,
-              amount: paymentRequest.amount,
-              invoice_number: invoiceNumber,
-              mode_of_payment: "Bank Transfer",
-              status: "approved",
-              file_url: publicUrl,
-            });
+            await adminClient.from("invoices").insert({ artist_id: paymentRequest.artist_id, payment_request_id: id, amount: approvedAmount, invoice_number: invoiceNumber, mode_of_payment: "Bank Transfer", status: "approved", file_url: publicUrl });
           }
         }
-      } catch (error) {
-        console.error("Error generating approved invoice PDF:", error);
-        // Continue even if PDF generation fails
-      }
-    }
-
-    // If rejected, restore balance by calling database function
-    if (status === "rejected") {
-      const { error: restoreError } = await adminClient.rpc("restore_royalties_on_rejection", {
-        request_uuid: id,
-      });
-
-      if (restoreError) {
-        console.error("Error restoring royalties:", restoreError);
+      } catch (err) {
+        console.error("Error generating approved invoice PDF:", err);
       }
     }
 
     // Get artist details for response
-    const { data: artist } = await adminClient
-      .from("artists")
-      .select("id, name, email, user_id")
-      .eq("id", paymentRequest.artist_id)
-      .single();
-
+    const { data: artist } = await adminClient.from("artists").select("id, name, email, user_id").eq("id", paymentRequest.artist_id).single();
     let artistEmail = "Unknown";
     if (artist?.user_id) {
-      const { data: profile } = await adminClient
-        .from("user_profiles")
-        .select("email")
-        .eq("id", artist.user_id)
-        .single();
+      const { data: profile } = await adminClient.from("user_profiles").select("email").eq("id", artist.user_id).single();
       artistEmail = profile?.email || artist.email || "Unknown";
     }
 
-    // Send email notification for approval or rejection
-    if ((status === "approved" || status === "rejected") && artistEmail !== "Unknown") {
-      try {
-        // Get invoice details for the email
-        const { data: invoice } = await adminClient
-          .from("invoices")
-          .select("invoice_number")
-          .eq("payment_request_id", id)
-          .maybeSingle();
-
-        const invoiceNumber = invoice?.invoice_number || `INV-${new Date().getFullYear()}-${paymentRequest.id.substring(0, 8).toUpperCase()}`;
-
-        // Try to fetch PDF from storage for attachment
-        let pdfBuffer: Buffer | undefined;
-        try {
-          const fileName = `invoices/${paymentRequest.artist_id}/${invoiceNumber}.pdf`;
-          const { data: pdfData, error: downloadError } = await adminClient.storage
-            .from("invoices")
-            .download(fileName);
-
-          if (!downloadError && pdfData) {
-            pdfBuffer = Buffer.from(await pdfData.arrayBuffer());
-          }
-        } catch (error) {
-          console.error("Error fetching PDF for email:", error);
-          // Continue without PDF attachment
-        }
-
-        if (status === "approved") {
-          const approvalDate = new Date().toLocaleDateString("en-US", {
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-          });
-
-          const emailResult = await sendPaymentApprovedEmailToArtist({
-            artistName: artist?.name || "Artist",
-            artistEmail: artistEmail,
-            amount: paymentRequest.amount,
-            invoiceNumber: invoiceNumber,
-            approvalDate: approvalDate,
-            pdfBuffer: pdfBuffer,
-          });
-
-          if (emailResult?.success) {
-            console.log(`Payment approved email sent for request ${id}: messageId=${emailResult.messageId}`);
-          } else {
-            console.error(`Failed to send payment approved email for request ${id}:`, emailResult?.error || "Unknown error");
-          }
-        } else if (status === "rejected") {
-          const emailResult = await sendPaymentRejectedEmailToArtist({
-            artistName: artist?.name || "Artist",
-            artistEmail: artistEmail,
-            amount: paymentRequest.amount,
-            invoiceNumber: invoiceNumber,
-            pdfBuffer: pdfBuffer,
-          });
-
-          if (emailResult?.success) {
-            console.log(`Payment rejected email sent for request ${id}: messageId=${emailResult.messageId}`);
-          } else {
-            console.error(`Failed to send payment rejected email for request ${id}:`, emailResult?.error || "Unknown error");
-          }
-        }
-      } catch (emailError) {
-        console.error("Error sending payment status email:", emailError);
-        // Don't fail the request if email fails
-      }
-    }
-
-    // Count royalties
-    const { count: royaltyCount } = await adminClient
-      .from("royalties")
-      .select("*", { count: "exact", head: true })
-      .eq("artist_id", paymentRequest.artist_id)
-      .eq("is_paid", true);
-
-    // Get approver email
-    let approverEmail = null;
-    if (paymentRequest.approved_by) {
-      const { data: approver } = await adminClient
-        .from("user_profiles")
-        .select("email")
-        .eq("id", paymentRequest.approved_by)
-        .single();
-      approverEmail = approver?.email || null;
-    }
+    // Get royalty count from royalties_summary
+    const { data: summaryCount } = await adminClient.from("royalties_summary").select("record_count").eq("artist_id", paymentRequest.artist_id);
+    const royaltyCount = (summaryCount || []).reduce((sum: number, r: any) => sum + (r.record_count || 0), 0);
 
     const detailed: PaymentRequestDetailed = {
       id: paymentRequest.id,
@@ -524,26 +339,17 @@ export async function POST(request: NextRequest): Promise<NextResponse<UpdatePay
       total_amount: paymentRequest.amount,
       status: paymentRequest.status,
       remarks: paymentRequest.remarks,
-      royalty_count: royaltyCount || 0,
+      royalty_count: royaltyCount,
       created_at: paymentRequest.created_at,
       updated_at: paymentRequest.updated_at,
       approved_by: paymentRequest.approved_by,
-      approved_by_email: approverEmail,
+      approved_by_email: null,
       approved_at: paymentRequest.approved_at,
     };
 
-    return NextResponse.json(
-      {
-        success: true,
-        paymentRequest: detailed,
-      },
-      { status: 200 }
-    );
+    return NextResponse.json({ success: true, paymentRequest: detailed }, { status: 200 });
   } catch (error) {
     console.error("Unexpected error in POST payment requests:", error);
-    return NextResponse.json(
-      { success: false, error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: "Internal server error" }, { status: 500 });
   }
 }

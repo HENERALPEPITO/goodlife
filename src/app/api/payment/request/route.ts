@@ -27,21 +27,45 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 1. Get unpaid royalties total using database function
-    const { data: unpaidTotal, error: unpaidError } = await adminClient.rpc(
-      "get_unpaid_royalties_total",
-      { artist_uuid: artist_id }
-    );
+    // 1. Get total earnings from royalties_summary
+    const { data: summaryData, error: summaryError } = await adminClient
+      .from("royalties_summary")
+      .select("total_net")
+      .eq("artist_id", artist_id);
 
-    if (unpaidError) {
-      console.error("Error getting unpaid royalties:", unpaidError);
+    if (summaryError) {
+      console.error("Error getting royalties summary:", summaryError);
       return NextResponse.json(
-        { success: false, error: "Failed to calculate unpaid royalties" },
+        { success: false, error: "Failed to calculate royalties" },
         { status: 500 }
       );
     }
 
-    const totalAmount = Number(unpaidTotal || 0);
+    // Sum all total_net from royalties_summary
+    const totalEarnings = (summaryData || []).reduce(
+      (sum, row) => sum + parseFloat(row.total_net || "0"),
+      0
+    );
+
+    // Get already paid amounts from payment_requests
+    const { data: paidRequests } = await adminClient
+      .from("payment_requests")
+      .select("amount")
+      .eq("artist_id", artist_id)
+      .eq("status", "paid");
+
+    const paidAmount = (paidRequests || []).reduce(
+      (sum, req) => sum + parseFloat(req.amount || "0"),
+      0
+    );
+
+    // Available balance = total earnings - paid amounts
+    const totalAmount = totalEarnings - paidAmount;
+
+    console.log("[Payment Request] Artist ID:", artist_id);
+    console.log("[Payment Request] Total earnings from royalties_summary:", totalEarnings);
+    console.log("[Payment Request] Paid amount from payment_requests:", paidAmount);
+    console.log("[Payment Request] Available balance (totalAmount):", totalAmount);
 
     // 2. Check if balance is at least €100
     if (totalAmount < 100) {
@@ -123,24 +147,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 6. Mark royalties as paid
-    const { error: markPaidError } = await adminClient.rpc(
-      "mark_royalties_as_paid",
-      { artist_uuid: artist_id }
-    );
-
-    if (markPaidError) {
-      console.error("Error marking royalties as paid:", markPaidError);
-      // Rollback payment request
-      await adminClient
-        .from("payment_requests")
-        .delete()
-        .eq("id", paymentRequest.id);
-      return NextResponse.json(
-        { success: false, error: "Failed to mark royalties as paid" },
-        { status: 500 }
-      );
-    }
+    // 6. Payment tracking is handled via payment_requests table
+    // When status changes to 'paid', it's subtracted from available balance
 
     // 7. Generate invoice number: INV-[YEAR]-[AUTO_ID]
     const year = new Date().getFullYear();
@@ -163,6 +171,9 @@ export async function POST(request: NextRequest) {
       status: "pending" as const,
       payment_request_id: paymentRequest.id,
     };
+
+    console.log("[Payment Request] Creating PDF with total_net:", totalAmount);
+    console.log("[Payment Request] Payment request amount:", paymentRequest.amount);
 
     const pdfDoc = await generatePaymentRequestInvoicePDF(invoice, {
       settings: invoiceSettings,

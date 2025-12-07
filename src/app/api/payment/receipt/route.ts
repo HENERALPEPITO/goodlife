@@ -9,18 +9,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/authHelpers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
-interface Royalty {
-  id: string;
-  track_title: string;
-  usage_count: number;
-  gross_amount: string;
-  admin_percent: string;
-  net_amount: string;
-  broadcast_date: string;
-  platform: string;
-  territory: string;
-}
-
 interface RoyaltyItem {
   id: string;
   track_title: string;
@@ -160,34 +148,38 @@ export async function GET(request: NextRequest): Promise<NextResponse<ReceiptDat
       );
     }
 
-    // Fetch associated royalties (those marked as paid for this artist)
-    const { data: royalties, error: royaltiesError } = await admin
-      .from("royalties")
-      .select("*")
+    // Fetch royalty summaries from royalties_summary table
+    const { data: summaries, error: summariesError } = await admin
+      .from("royalties_summary")
+      .select(`
+        *,
+        tracks:track_id (title)
+      `)
       .eq("artist_id", paymentRequest.artist_id)
-      .eq("is_paid", true)
-      .order("broadcast_date", { ascending: false });
+      .order("year", { ascending: false })
+      .order("quarter", { ascending: false });
 
-    if (royaltiesError) {
-      console.error("Error fetching royalties:", royaltiesError);
+    if (summariesError) {
+      console.error("Error fetching royalties_summary:", summariesError);
       return NextResponse.json(
         { success: false, error: "Failed to fetch royalty details" },
         { status: 500 }
       );
     }
 
-    // Calculate totals
-    const totals = (royalties as Royalty[] || []).reduce(
+    // Calculate totals from royalties_summary
+    const totals = (summaries || []).reduce(
       (acc: {
         total_gross: number;
         total_admin_fee: number;
         total_net: number;
         royalty_count: number;
-      }, royalty: Royalty) => {
-        acc.total_gross += parseFloat(royalty.gross_amount || "0");
-        acc.total_admin_fee += parseFloat(royalty.gross_amount || "0") * (parseFloat(royalty.admin_percent || "0") / 100);
-        acc.total_net += parseFloat(royalty.net_amount || "0");
-        acc.royalty_count += 1;
+      }, summary: any) => {
+        acc.total_gross += parseFloat(summary.total_gross || "0");
+        // Estimate admin fee as difference between gross and net
+        acc.total_admin_fee += parseFloat(summary.total_gross || "0") - parseFloat(summary.total_net || "0");
+        acc.total_net += parseFloat(summary.total_net || "0");
+        acc.royalty_count += summary.record_count || 1;
         return acc;
       },
       {
@@ -197,6 +189,51 @@ export async function GET(request: NextRequest): Promise<NextResponse<ReceiptDat
         royalty_count: 0,
       }
     );
+
+    // Recalculate total_amount if it's 0
+    let totalAmount = Number(paymentRequest.amount || 0);
+    if (totalAmount === 0 && totals.total_net > 0) {
+      // Get already paid amounts from other payment requests
+      const { data: paidRequests } = await admin
+        .from("payment_requests")
+        .select("amount")
+        .eq("artist_id", paymentRequest.artist_id)
+        .eq("status", "paid")
+        .neq("id", paymentRequestId);
+
+      const paidAmount = (paidRequests || []).reduce(
+        (sum: number, pr: any) => sum + parseFloat(pr.amount || "0"), 0
+      );
+
+      totalAmount = totals.total_net - paidAmount;
+
+      // Update the payment request with the correct amount
+      if (totalAmount > 0) {
+        await admin
+          .from("payment_requests")
+          .update({ amount: totalAmount })
+          .eq("id", paymentRequestId);
+
+        // Also update the invoice if it exists
+        await admin
+          .from("invoices")
+          .update({ amount: totalAmount })
+          .eq("payment_request_id", paymentRequestId);
+      }
+    }
+
+    // Transform summaries to royalty items format
+    const royalties = (summaries || []).map((s: any) => ({
+      id: s.id,
+      track_title: s.tracks?.title || `Track ${s.track_id?.substring(0, 8) || 'Unknown'}`,
+      usage_count: s.total_streams || 0,
+      gross_amount: parseFloat(s.total_gross || "0"),
+      admin_percent: s.total_gross > 0 ? ((parseFloat(s.total_gross || "0") - parseFloat(s.total_net || "0")) / parseFloat(s.total_gross || "1")) * 100 : 0,
+      net_amount: parseFloat(s.total_net || "0"),
+      broadcast_date: `${s.year}-Q${s.quarter}`,
+      platform: s.top_platform || "",
+      territory: s.top_territory || "",
+    }));
 
     // Get invoice number if exists
     const { data: invoice } = await admin
@@ -227,31 +264,12 @@ export async function GET(request: NextRequest): Promise<NextResponse<ReceiptDat
           artist_email: artistEmail,
           artist_address: artist.address || undefined,
           artist_tax_id: artist.tax_id || undefined,
-          total_amount: Number(paymentRequest.amount || 0),
+          total_amount: totalAmount,
           status: paymentRequest.status,
           created_at: paymentRequest.created_at,
           approved_at: paymentRequest.approved_at || null,
           approved_by_email: approvedByEmail,
-          royalties: (royalties as any[] || []).map((r: any) => {
-            // Get track title from track_id if available
-            let trackTitle = "Unknown";
-            if (r.track_id) {
-              // We could fetch track title here, but for now use a placeholder
-              trackTitle = `Track ${r.track_id.substring(0, 8)}`;
-            }
-            
-            return {
-              id: r.id,
-              track_title: trackTitle,
-              usage_count: r.usage_count || 0,
-              gross_amount: parseFloat(r.gross_amount || "0"),
-              admin_percent: parseFloat(r.admin_percent || "0"),
-              net_amount: parseFloat(r.net_amount || "0"),
-              broadcast_date: r.broadcast_date || "",
-              platform: r.exploitation_source_name || r.platform || "",
-              territory: r.territory || "",
-            };
-          }),
+          royalties: royalties,
           totals,
         },
       },
