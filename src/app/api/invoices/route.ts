@@ -136,6 +136,42 @@ export async function GET(request: NextRequest) {
 
       const artistEmail = userProfile?.email || "";
 
+      // Check if payment request amount is 0, if so recalculate from royalties_summary
+      let invoiceAmount = Number(paymentRequest.amount || 0);
+      if (invoiceAmount === 0) {
+        // Calculate total earnings from royalties_summary
+        const { data: summaryData } = await adminClient
+          .from("royalties_summary")
+          .select("total_net")
+          .eq("artist_id", paymentRequest.artist_id);
+
+        const totalEarnings = (summaryData || []).reduce(
+          (sum, row) => sum + parseFloat(row.total_net || "0"), 0
+        );
+
+        // Get already paid amounts from other payment requests
+        const { data: paidRequests } = await adminClient
+          .from("payment_requests")
+          .select("amount")
+          .eq("artist_id", paymentRequest.artist_id)
+          .eq("status", "paid")
+          .neq("id", paymentRequest.id);
+
+        const paidAmount = (paidRequests || []).reduce(
+          (sum, pr) => sum + parseFloat(pr.amount || "0"), 0
+        );
+
+        invoiceAmount = totalEarnings - paidAmount;
+
+        // Update the payment request with the correct amount
+        if (invoiceAmount > 0) {
+          await adminClient
+            .from("payment_requests")
+            .update({ amount: invoiceAmount })
+            .eq("id", paymentRequest.id);
+        }
+      }
+
       // Generate PDF invoice
       const { generatePaymentRequestInvoicePDF } = await import("@/lib/pdfGenerator");
       const { getInvoiceSettingsAdmin } = await import("@/lib/invoiceSettings");
@@ -151,7 +187,7 @@ export async function GET(request: NextRequest) {
         artist_email: artistEmail,
         artist_address: artist.address || undefined,
         artist_tax_id: artist.tax_id || undefined,
-        total_net: Number(paymentRequest.amount || 0),
+        total_net: invoiceAmount,
         status: paymentRequest.status as "pending" | "approved" | "rejected",
         payment_request_id: paymentRequest.id,
       };
@@ -192,7 +228,7 @@ export async function GET(request: NextRequest) {
         .insert({
           artist_id: paymentRequest.artist_id,
           payment_request_id: paymentRequest.id,
-          amount: paymentRequest.amount,
+          amount: invoiceAmount,
           invoice_number: invoiceNumber,
           mode_of_payment: "Bank Transfer",
           status: paymentRequest.status,
@@ -211,7 +247,7 @@ export async function GET(request: NextRequest) {
               id: paymentRequest.id,
               artist_id: paymentRequest.artist_id,
               payment_request_id: paymentRequest.id,
-              amount: paymentRequest.amount,
+              amount: invoiceAmount,
               invoice_number: invoiceNumber,
               mode_of_payment: "Bank Transfer",
               status: paymentRequest.status,
@@ -253,6 +289,45 @@ export async function GET(request: NextRequest) {
 
             const artistEmail = userProfile?.email || "";
 
+            // Check if payment request amount is 0, if so recalculate from royalties_summary
+            let pdfAmount = Number(paymentRequest.amount || 0);
+            if (pdfAmount === 0) {
+              const { data: summaryData } = await adminClient
+                .from("royalties_summary")
+                .select("total_net")
+                .eq("artist_id", paymentRequest.artist_id);
+
+              const totalEarnings = (summaryData || []).reduce(
+                (sum, row) => sum + parseFloat(row.total_net || "0"), 0
+              );
+
+              const { data: paidRequests } = await adminClient
+                .from("payment_requests")
+                .select("amount")
+                .eq("artist_id", paymentRequest.artist_id)
+                .eq("status", "paid")
+                .neq("id", paymentRequest.id);
+
+              const paidAmount = (paidRequests || []).reduce(
+                (sum, pr) => sum + parseFloat(pr.amount || "0"), 0
+              );
+
+              pdfAmount = totalEarnings - paidAmount;
+
+              // Update the payment request and invoice with the correct amount
+              if (pdfAmount > 0) {
+                await adminClient
+                  .from("payment_requests")
+                  .update({ amount: pdfAmount })
+                  .eq("id", paymentRequest.id);
+
+                await adminClient
+                  .from("invoices")
+                  .update({ amount: pdfAmount })
+                  .eq("id", finalInvoice.id);
+              }
+            }
+
             // Generate PDF invoice
             const { generatePaymentRequestInvoicePDF } = await import("@/lib/pdfGenerator");
             const { getInvoiceSettingsAdmin } = await import("@/lib/invoiceSettings");
@@ -269,7 +344,7 @@ export async function GET(request: NextRequest) {
               artist_email: artistEmail,
               artist_address: artist.address || undefined,
               artist_tax_id: artist.tax_id || undefined,
-              total_net: Number(paymentRequest.amount || 0),
+              total_net: pdfAmount,
               status: paymentRequest.status as "pending" | "approved" | "rejected",
               payment_request_id: paymentRequest.id,
             };
@@ -333,6 +408,49 @@ export async function GET(request: NextRequest) {
       artist_tax_id: undefined as string | undefined,
     };
 
+    // Check if the invoice amount is 0 and recalculate if needed
+    let finalAmount = Number(finalInvoice?.amount || paymentRequest?.amount || 0);
+    if (finalAmount === 0 && paymentRequest) {
+      // Calculate total earnings from royalties_summary
+      const { data: summaryData } = await adminClient
+        .from("royalties_summary")
+        .select("total_net")
+        .eq("artist_id", paymentRequest.artist_id);
+
+      const totalEarnings = (summaryData || []).reduce(
+        (sum, row) => sum + parseFloat(row.total_net || "0"), 0
+      );
+
+      // Get already paid amounts from other payment requests
+      const { data: paidRequests } = await adminClient
+        .from("payment_requests")
+        .select("amount")
+        .eq("artist_id", paymentRequest.artist_id)
+        .eq("status", "paid")
+        .neq("id", paymentRequestId);
+
+      const paidAmount = (paidRequests || []).reduce(
+        (sum, pr) => sum + parseFloat(pr.amount || "0"), 0
+      );
+
+      finalAmount = totalEarnings - paidAmount;
+
+      // Update the database records with the correct amount
+      if (finalAmount > 0) {
+        await adminClient
+          .from("payment_requests")
+          .update({ amount: finalAmount })
+          .eq("id", paymentRequestId);
+
+        if (finalInvoice?.id) {
+          await adminClient
+            .from("invoices")
+            .update({ amount: finalAmount })
+            .eq("id", finalInvoice.id);
+        }
+      }
+    }
+
     if (paymentRequest) {
       // Get artist record with full details
       const { data: artist } = await adminClient
@@ -373,7 +491,7 @@ export async function GET(request: NextRequest) {
       ...finalInvoice,
       ...artistDetails,
       invoice_date: paymentRequest?.created_at ? new Date(paymentRequest.created_at).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
-      total_net: Number(finalInvoice?.amount || paymentRequest?.amount || 0),
+      total_net: finalAmount,
     };
 
     return NextResponse.json(

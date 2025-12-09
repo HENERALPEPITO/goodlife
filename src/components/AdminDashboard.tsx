@@ -26,8 +26,8 @@ export default function AdminDashboard() {
 
   const fetchAdminStats = async () => {
     try {
-      // Parallel queries - using RPC for efficient aggregation instead of fetching all rows
-      const [artistResult, trackResult, royaltyTotals] = await Promise.all([
+      // First try the new summary-based RPC (from royalties_summary table)
+      const [artistResult, trackResult, summaryTotals] = await Promise.all([
         supabase
           .from("user_profiles")
           .select("*", { count: "exact", head: true })
@@ -35,33 +35,38 @@ export default function AdminDashboard() {
         supabase
           .from("tracks")
           .select("*", { count: "exact", head: true }),
-        // Use RPC function for efficient aggregation (avoids fetching all rows)
-        supabase.rpc("get_royalty_totals")
+        // Use new RPC from royalties_summary table for fast aggregation
+        supabase.rpc("get_admin_royalties_totals")
       ]);
 
-      // Extract totals from RPC result (returns single row with total_net and total_usage)
-      const totals = royaltyTotals.data?.[0] || { total_net: 0, total_usage: 0, total_gross: 0 };
-
-      // Debug: Log raw PostgreSQL NUMERIC values for precision verification
-      console.group('[Admin Dashboard Precision Debug] RPC get_royalty_totals result');
-      console.log('Raw RPC Response:', royaltyTotals.data);
-      console.log(`Raw total_gross: "${totals.total_gross}" (type: ${typeof totals.total_gross})`);
-      console.log(`Raw total_net: "${totals.total_net}" (type: ${typeof totals.total_net})`);
-      console.log(`Raw total_usage: "${totals.total_usage}" (type: ${typeof totals.total_usage})`);
+      // Check if summary RPC succeeded (table exists and has data)
+      let totals = { total_net: 0, total_streams: 0, total_revenue: 0 };
       
-      const parsedGross = parseFloat(String(totals.total_gross || 0));
+      if (summaryTotals.error) {
+        // Fall back to old RPC if summary table doesn't exist yet
+        console.warn("Summary table not available, falling back to old RPC:", summaryTotals.error.message);
+        const oldTotals = await supabase.rpc("get_royalty_totals");
+        if (oldTotals.data?.[0]) {
+          totals = {
+            total_net: oldTotals.data[0].total_revenue || 0,
+            total_streams: oldTotals.data[0].total_usage || 0,
+            total_revenue: oldTotals.data[0].total_revenue || 0,
+          };
+        }
+      } else if (summaryTotals.data?.[0]) {
+        // Use summary table data
+        totals = summaryTotals.data[0];
+        console.log('[Admin Dashboard] Using royalties_summary table:', totals);
+      }
+
       const parsedNet = parseFloat(String(totals.total_net || totals.total_revenue || 0));
-      console.log(`Parsed Total Gross: €${parsedGross.toFixed(2)}`);
-      console.log(`Parsed Total Net (Revenue): €${parsedNet.toFixed(2)}`);
-      console.log('Compare these values with Royalties Page totals to verify precision match.');
-      console.groupEnd();
+      const parsedStreams = parseInt(String(totals.total_streams || 0), 10);
 
       setStats({
         totalArtists: artistResult.count || 0,
-        // Use parseFloat for precise decimal handling
         totalRevenue: parsedNet,
         totalTracks: trackResult.count || 0,
-        totalStreams: parseInt(String(totals.total_usage || 0), 10),
+        totalStreams: parsedStreams,
       });
     } catch (error) {
       console.error("Error fetching admin stats:", error);

@@ -28,8 +28,7 @@ interface ReceiptData {
   total_amount: number;
   status: string;
   created_at: string;
-  approved_at: string | null;
-  approved_by_email: string | null;
+  updated_at: string;
   royalties: RoyaltyItem[];
   totals: {
     total_gross: number;

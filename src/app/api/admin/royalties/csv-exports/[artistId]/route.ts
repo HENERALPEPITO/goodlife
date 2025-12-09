@@ -1,14 +1,26 @@
 /**
- * PUT /api/admin/royalties/record/:recordId
- * DELETE /api/admin/royalties/record/:recordId
+ * GET /api/admin/royalties/csv-exports/:artistId
  * 
- * Update or delete a specific royalty record
- * Admin-only endpoints
+ * Get all CSV uploads for an artist with signed download URLs
+ * Admin-only endpoint
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+
+interface CsvUpload {
+  id: string;
+  filename: string;
+  storage_path: string;
+  year: number;
+  quarter: number;
+  file_size: number;
+  row_count: number;
+  processing_status: string;
+  created_at: string;
+  download_url?: string;
+}
 
 async function verifyAdmin(request: NextRequest, supabaseUrl: string, supabaseAnonKey: string) {
   const response = NextResponse.next();
@@ -69,12 +81,12 @@ async function verifyAdmin(request: NextRequest, supabaseUrl: string, supabaseAn
   return { isAdmin: false, userId: null };
 }
 
-export async function PUT(
+export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ recordId: string }> }
+  { params }: { params: Promise<{ artistId: string }> }
 ): Promise<NextResponse> {
   try {
-    const { recordId } = await params;
+    const { artistId } = await params;
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://nyxedsuflhvxzijjiktj.supabase.co";
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im55eGVkc3VmbGh2eHppamppa3RqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIzNDAzMjUsImV4cCI6MjA3NzkxNjMyNX0.Fm4MVU2rIO4IqMRUMAE_qUJQXqWn0WWZUMS0RuMKmDo";
 
@@ -87,74 +99,51 @@ export async function PUT(
       );
     }
 
-    // Parse request body
-    const body = await request.json();
-    
-    // Use admin client to update the royalty summary record
+    // Use admin client to fetch CSV uploads
     const adminClient = getSupabaseAdmin();
 
-    const { data, error } = await adminClient
-      .from("royalties_summary")
-      .update(body)
-      .eq("id", recordId)
-      .select()
-      .single();
+    // Get all completed CSV uploads for this artist
+    const { data: csvUploads, error: fetchError } = await adminClient
+      .from("csv_uploads")
+      .select("id, filename, storage_path, year, quarter, file_size, row_count, processing_status, created_at")
+      .eq("artist_id", artistId)
+      .eq("processing_status", "completed")
+      .order("year", { ascending: false })
+      .order("quarter", { ascending: false });
 
-    if (error) {
-      console.error("Error updating royalty summary record:", error);
+    if (fetchError) {
+      console.error("Error fetching CSV uploads:", fetchError);
       return NextResponse.json(
-        { error: "Failed to update royalty summary record" },
+        { error: "Failed to fetch CSV uploads" },
         { status: 500 }
       );
     }
 
-    return NextResponse.json(data, { status: 200 });
-  } catch (error) {
-    console.error("Error in royalty record update endpoint:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
+    // Generate signed download URLs for each CSV
+    const uploadsWithUrls: CsvUpload[] = await Promise.all(
+      (csvUploads || []).map(async (upload) => {
+        let download_url: string | undefined;
+        
+        if (upload.storage_path) {
+          const { data: signedUrl, error: urlError } = await adminClient.storage
+            .from("royalty-uploads")
+            .createSignedUrl(upload.storage_path, 3600); // 1 hour expiry
+          
+          if (!urlError && signedUrl) {
+            download_url = signedUrl.signedUrl;
+          }
+        }
+
+        return {
+          ...upload,
+          download_url,
+        };
+      })
     );
-  }
-}
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ recordId: string }> }
-): Promise<NextResponse> {
-  try {
-    const { recordId } = await params;
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://nyxedsuflhvxzijjiktj.supabase.co";
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im55eGVkc3VmbGh2eHppamppa3RqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIzNDAzMjUsImV4cCI6MjA3NzkxNjMyNX0.Fm4MVU2rIO4IqMRUMAE_qUJQXqWn0WWZUMS0RuMKmDo";
-
-    // Verify admin
-    const { isAdmin } = await verifyAdmin(request, supabaseUrl, supabaseAnonKey);
-    if (!isAdmin) {
-      return NextResponse.json(
-        { error: "Forbidden - Admin access required" },
-        { status: 403 }
-      );
-    }
-
-    // Use admin client to delete the royalty summary record
-    const adminClient = getSupabaseAdmin();
-
-    const { error } = await adminClient
-      .from("royalties_summary")
-      .delete()
-      .eq("id", recordId);
-
-    if (error) {
-      console.error("Error deleting royalty summary record:", error);
-      return NextResponse.json(
-        { error: "Failed to delete royalty summary record" },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ success: true }, { status: 200 });
+    return NextResponse.json(uploadsWithUrls, { status: 200 });
   } catch (error) {
-    console.error("Error in royalty record delete endpoint:", error);
+    console.error("Error in CSV exports endpoint:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

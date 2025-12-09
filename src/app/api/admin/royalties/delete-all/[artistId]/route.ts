@@ -100,20 +100,32 @@ export async function DELETE(
       );
     }
 
-    // Use admin client to delete all royalties for the artist
+    // Use admin client to delete all royalties summary and csv uploads for the artist
     const adminClient = getSupabaseAdmin();
 
-    const { error } = await adminClient
-      .from("royalties")
+    // Delete from royalties_summary
+    const { error: summaryError } = await adminClient
+      .from("royalties_summary")
       .delete()
       .eq("artist_id", artistId);
 
-    if (error) {
-      console.error("Error deleting artist royalties:", error);
+    if (summaryError) {
+      console.error("Error deleting artist royalties_summary:", summaryError);
       return NextResponse.json(
-        { error: "Failed to delete artist royalties" },
+        { error: "Failed to delete artist royalties summary" },
         { status: 500 }
       );
+    }
+
+    // Also delete related csv_uploads
+    const { error: csvError } = await adminClient
+      .from("csv_uploads")
+      .delete()
+      .eq("artist_id", artistId);
+
+    if (csvError) {
+      console.error("Error deleting artist csv_uploads:", csvError);
+      // Don't fail if csv_uploads deletion fails
     }
 
     return NextResponse.json({ success: true }, { status: 200 });

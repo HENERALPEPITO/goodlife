@@ -49,16 +49,18 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { artist_id, title, iswc, composers, release_date, platform, territory } = body;
+    const { artist_id, title, iswc, isrc, composers, release_date, platform, territory, split } = body;
 
     const { data, error } = await supabase.from("tracks").insert({
       artist_id,
       title,
       iswc: iswc || null,
+      isrc: isrc || null,
       composers: composers || null,
       release_date: release_date || null,
       platform: platform || null,
       territory: territory || null,
+      split: split || null,
     }).select().single();
 
     if (error) {
@@ -76,22 +78,46 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const body = await req.json();
-    const { id, title, iswc, composers, release_date, platform, territory } = body;
+    const { 
+      id, 
+      title, 
+      iswc, 
+      isrc, 
+      composers, 
+      release_date, 
+      platform, 
+      territory, 
+      split,
+      spotify_image_url,
+      spotify_track_id,
+      spotify_artist_name,
+      spotify_track_name,
+      spotify_fetched_at,
+    } = body;
 
     if (!id) {
       return NextResponse.json({ error: "id is required" }, { status: 400 });
     }
 
+    // Build update object dynamically to only include provided fields
+    const updateData: Record<string, any> = {};
+    if (title !== undefined) updateData.title = title;
+    if (iswc !== undefined) updateData.iswc = iswc || null;
+    if (isrc !== undefined) updateData.isrc = isrc || null;
+    if (composers !== undefined) updateData.composers = composers || null;
+    if (release_date !== undefined) updateData.release_date = release_date || null;
+    if (platform !== undefined) updateData.platform = platform || null;
+    if (territory !== undefined) updateData.territory = territory || null;
+    if (split !== undefined) updateData.split = split || null;
+    if (spotify_image_url !== undefined) updateData.spotify_image_url = spotify_image_url;
+    if (spotify_track_id !== undefined) updateData.spotify_track_id = spotify_track_id;
+    if (spotify_artist_name !== undefined) updateData.spotify_artist_name = spotify_artist_name;
+    if (spotify_track_name !== undefined) updateData.spotify_track_name = spotify_track_name;
+    if (spotify_fetched_at !== undefined) updateData.spotify_fetched_at = spotify_fetched_at;
+
     const { data, error } = await supabase
       .from("tracks")
-      .update({
-        title,
-        iswc: iswc || null,
-        composers: composers || null,
-        release_date: release_date || null,
-        platform: platform || null,
-        territory: territory || null,
-      })
+      .update(updateData)
       .eq("id", id)
       .select()
       .single();
@@ -113,7 +139,75 @@ export async function DELETE(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
     const deleteAll = searchParams.get("delete_all");
+    const artistId = searchParams.get("artist_id");
 
+    // Delete all tracks for a specific artist
+    if (artistId && deleteAll === "true") {
+      // First count the tracks to be deleted
+      const { count } = await supabase
+        .from("tracks")
+        .select("*", { count: "exact", head: true })
+        .eq("artist_id", artistId);
+
+      const trackCount = count || 0;
+
+      // Delete the tracks
+      const { error } = await supabase
+        .from("tracks")
+        .delete()
+        .eq("artist_id", artistId);
+      
+      if (error) {
+        console.error("Error deleting tracks for artist:", error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      // Send notification and email to the artist
+      if (trackCount > 0) {
+        try {
+          // Get artist info
+          const { data: artist } = await supabase
+            .from("artists")
+            .select("id, name, user_id")
+            .eq("id", artistId)
+            .single();
+
+          if (artist) {
+            // Get artist email
+            const { data: profile } = await supabase
+              .from("user_profiles")
+              .select("email")
+              .eq("id", artist.user_id)
+              .single();
+
+            // Import and call notification/email services
+            const { notifyCatalogDeleted } = await import("@/lib/notificationService");
+            const { sendCatalogDeletedEmailToArtist } = await import("@/lib/emailService");
+
+            // Create notification
+            await notifyCatalogDeleted(artist.id, trackCount);
+
+            // Send email
+            if (profile?.email) {
+              await sendCatalogDeletedEmailToArtist({
+                artistName: artist.name || "Artist",
+                artistEmail: profile.email,
+                trackCount: trackCount,
+              });
+            }
+
+            console.log(`Deleted ${trackCount} tracks for artist ${artist.name}, notifications sent`);
+          }
+        } catch (notifyErr) {
+          console.error("Error sending catalog deletion notifications:", notifyErr);
+          // Don't fail the request if notification fails
+        }
+      }
+
+      return NextResponse.json({ success: true, deletedCount: trackCount });
+    }
+
+    // Delete all tracks (original behavior)
     if (deleteAll === "true") {
       const { error } = await supabase.from("tracks").delete().neq("id", "00000000-0000-0000-0000-000000000000");
       

@@ -6,6 +6,7 @@ import { DollarSign, Music, TrendingUp, FileText, ArrowUp, ArrowDown, Play, Uplo
 import Link from "next/link";
 import { useToast } from "@/components/ui/use-toast";
 import { format } from "date-fns";
+import { NotificationsDropdown } from "@/components/NotificationsDropdown";
 
 interface ArtistStats {
   totalRevenue: number;
@@ -41,6 +42,7 @@ export default function ArtistDashboard() {
   const [topTracks, setTopTracks] = useState<TopTrack[]>([]);
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
   const [sortBy, setSortBy] = useState<'streams' | 'revenue' | 'date'>('streams');
+  const [artistId, setArtistId] = useState<string | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -72,77 +74,142 @@ export default function ArtistDashboard() {
           totalTracks: 0,
           totalStreams: 0,
         });
+        setArtistId(null);
         setLoading(false);
         return;
       }
 
-      // OPTIMIZED: Use RPC for stats (computes totals in SQL, not JS)
-      const [statsResult, royaltiesResult] = await Promise.all([
-        supabase.rpc('get_artist_dashboard_stats', { p_user_id: user.id }),
-        // Still fetch royalties for top tracks and recent activity
-        supabase
-          .from("royalties")
-          .select("*, tracks(title)")
-          .eq("artist_id", artist.id)
-      ]);
+      // Store the artist ID for notifications
+      setArtistId(artist.id);
 
-      // Use RPC stats if available, fallback to JS calculation
-      if (statsResult.data && statsResult.data[0]) {
-        const s = statsResult.data[0];
+      // Try new summary-based RPC first (from royalties_summary table)
+      const summaryResult = await supabase.rpc('get_artist_dashboard_overview', { 
+        _artist_id: artist.id 
+      });
+
+      let usingSummary = false;
+
+      if (summaryResult.data && summaryResult.data[0]) {
+        const s = summaryResult.data[0];
+        let totalStreams = parseInt(String(s.total_streams || 0), 10);
+        
+        // If RPC returns 0 streams, try direct table query as fallback
+        if (totalStreams === 0) {
+          console.log('[Artist Dashboard] RPC returned 0 streams, trying direct query...');
+          const { data: directSummary, error: directError } = await supabase
+            .from('royalties_summary')
+            .select('total_streams, total_net, track_id')
+            .eq('artist_id', artist.id);
+          
+          if (!directError && directSummary && directSummary.length > 0) {
+            totalStreams = directSummary.reduce((sum, row) => sum + Number(row.total_streams || 0), 0);
+            console.log('[Artist Dashboard] Direct query found', directSummary.length, 'records, total_streams:', totalStreams);
+          }
+        }
+        
         setStats({
-          totalRevenue: parseFloat(String(s.total_revenue || 0)),
+          totalRevenue: parseFloat(String(s.total_earnings || s.total_net || 0)),
           totalTracks: parseInt(String(s.total_tracks || 0), 10),
-          totalStreams: parseInt(String(s.total_streams || 0), 10),
+          totalStreams: totalStreams,
         });
-      } else {
-        // Fallback
-        const royalties = royaltiesResult.data || [];
-        setStats({
-          totalRevenue: royalties.reduce((sum, r) => sum + Number(r.net_amount || 0), 0),
-          totalTracks: 0,
-          totalStreams: royalties.reduce((sum, r) => sum + Number(r.usage_count || 0), 0),
+        usingSummary = true;
+        console.log('[Artist Dashboard] Using royalties_summary table, streams:', totalStreams);
+
+        // Fetch top tracks from summary table
+        const topTracksResult = await supabase.rpc('get_artist_top_tracks', {
+          _artist_id: artist.id,
+          _year: null,
+          _quarter: null,
+          _limit: 5
         });
+
+        if (topTracksResult.data && topTracksResult.data.length > 0) {
+          const topTracksData: TopTrack[] = topTracksResult.data.map((t: any, index: number) => ({
+            id: `track-${index}`,
+            title: t.track_title || 'Unknown Track',
+            platform: t.top_platform || 'Various',
+            streams: parseInt(String(t.total_streams || 0), 10),
+            revenue: parseFloat(String(t.total_net || 0)),
+            trend: 0, // Trend calculation would need historical data
+          }));
+          setTopTracks(topTracksData);
+        }
       }
 
-      const royalties = royaltiesResult.data;
-
-      // Calculate top tracks (same pattern as analytics)
-      if (royalties && royalties.length > 0) {
-        const trackMap = new Map<string, { streams: number; revenue: number }>();
+      // Fall back to old method if summary not available
+      if (!usingSummary) {
+        console.warn('[Artist Dashboard] Summary not available, falling back to royalties table');
         
-        royalties.forEach((r) => {
-          const title = r.tracks?.title || r.track_title || "Unknown Track";
-          const existing = trackMap.get(title) || { streams: 0, revenue: 0 };
-          trackMap.set(title, {
-            streams: existing.streams + Number(r.usage_count || 0),
-            revenue: existing.revenue + Number(r.net_amount || 0),
+        const [statsResult, royaltiesResult] = await Promise.all([
+          supabase.rpc('get_artist_dashboard_stats', { p_user_id: user.id }),
+          supabase
+            .from("royalties")
+            .select("*, tracks(title)")
+            .eq("artist_id", artist.id)
+        ]);
+
+        if (statsResult.data && statsResult.data[0]) {
+          const s = statsResult.data[0];
+          setStats({
+            totalRevenue: parseFloat(String(s.total_revenue || 0)),
+            totalTracks: parseInt(String(s.total_tracks || 0), 10),
+            totalStreams: parseInt(String(s.total_streams || 0), 10),
           });
-        });
+        } else {
+          const royalties = royaltiesResult.data || [];
+          setStats({
+            totalRevenue: royalties.reduce((sum, r) => sum + Number(r.net_amount || 0), 0),
+            totalTracks: 0,
+            totalStreams: royalties.reduce((sum, r) => sum + Number(r.usage_count || 0), 0),
+          });
+        }
 
-        const topTracksData: TopTrack[] = Array.from(trackMap.entries())
-          .map(([title, data], index) => ({
-            id: `track-${index}`,
-            title,
-            platform: royalties.find(r => (r.tracks?.title || r.track_title) === title)?.exploitation_source_name || "Various",
-            streams: data.streams,
-            revenue: data.revenue,
-            trend: Math.random() > 0.5 ? Math.random() * 20 : -Math.random() * 10, // Mock trend data
-          }))
-          .sort((a, b) => b.streams - a.streams)
-          .slice(0, 5);
+        const royalties = royaltiesResult.data;
 
-        setTopTracks(topTracksData);
+        if (royalties && royalties.length > 0) {
+          const trackMap = new Map<string, { streams: number; revenue: number }>();
+          
+          royalties.forEach((r) => {
+            const title = r.tracks?.title || r.track_title || "Unknown Track";
+            const existing = trackMap.get(title) || { streams: 0, revenue: 0 };
+            trackMap.set(title, {
+              streams: existing.streams + Number(r.usage_count || 0),
+              revenue: existing.revenue + Number(r.net_amount || 0),
+            });
+          });
 
-        // Generate recent activity from royalties
+          const topTracksData: TopTrack[] = Array.from(trackMap.entries())
+            .map(([title, data], index) => ({
+              id: `track-${index}`,
+              title,
+              platform: royalties.find(r => (r.tracks?.title || r.track_title) === title)?.exploitation_source_name || "Various",
+              streams: data.streams,
+              revenue: data.revenue,
+              trend: 0,
+            }))
+            .sort((a, b) => b.streams - a.streams)
+            .slice(0, 5);
+
+          setTopTracks(topTracksData);
+        }
+      }
+
+      // Still fetch recent activity from royalties table (raw data)
+      const { data: royalties } = await supabase
+        .from("royalties")
+        .select("*, tracks(title)")
+        .eq("artist_id", artist.id)
+        .order("broadcast_date", { ascending: false })
+        .limit(10);
+
+      if (royalties && royalties.length > 0) {
         const activities: RecentActivity[] = royalties
-          .slice(0, 10)
           .map((r, index) => ({
             id: `activity-${index}`,
             type: 'stream' as const,
             description: `${r.tracks?.title || r.track_title || 'Track'} received ${Number(r.usage_count || 0).toLocaleString()} streams from ${r.exploitation_source_name || 'platform'}`,
             date: r.broadcast_date || r.created_at || new Date().toISOString(),
           }))
-          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
           .slice(0, 5);
 
         setRecentActivity(activities);
@@ -206,13 +273,16 @@ export default function ArtistDashboard() {
   return (
     <div className="space-y-8 p-1">
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold transition-colors" style={{ color: 'var(--text-primary)' }}>
-          Artist Dashboard
-        </h1>
-        <p className="text-sm mt-2 transition-colors" style={{ color: 'var(--text-secondary)' }}>
-          Welcome back, {user?.email}! Here's your performance overview.
-        </p>
+      <div className="mb-6 flex items-start justify-between">
+        <div>
+          <h1 className="text-3xl font-bold transition-colors" style={{ color: 'var(--text-primary)' }}>
+            Artist Dashboard
+          </h1>
+          <p className="text-sm mt-2 transition-colors" style={{ color: 'var(--text-secondary)' }}>
+            Welcome back, {user?.email}! Here's your performance overview.
+          </p>
+        </div>
+        <NotificationsDropdown artistId={artistId} />
       </div>
 
       {/* Improved Metric Cards - 3 Column Grid */}

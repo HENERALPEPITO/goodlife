@@ -9,8 +9,8 @@ import { createClientTimer } from "@/lib/performanceLogger";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Edit, Trash2, Plus, Search, Trash } from "lucide-react";
-import type { Track } from "@/types";
+import { Edit, Trash2, Plus, Search, Trash, Music, RefreshCw } from "lucide-react";
+import type { Track, SpotifyAlbumCoverResponse } from "@/types";
 
 export default function CatalogPage() {
   const { user, loading: authLoading } = useAuth();
@@ -27,6 +27,11 @@ export default function CatalogPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<Track | null>(null);
   const [deleteAllConfirm, setDeleteAllConfirm] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  
+  // Track detail modal state (for viewing Spotify artwork)
+  const [selectedTrack, setSelectedTrack] = useState<Track | null>(null);
+  const [detailSpotifyData, setDetailSpotifyData] = useState<SpotifyAlbumCoverResponse | null>(null);
+  const [fetchingDetailImage, setFetchingDetailImage] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -37,10 +42,12 @@ export default function CatalogPage() {
   const [form, setForm] = useState({
     title: "",
     iswc: "",
+    isrc: "",
     composers: "",
     release_date: "",
     platform: "",
     territory: "",
+    split: "",
   });
 
   // Performance timer
@@ -62,7 +69,9 @@ export default function CatalogPage() {
       perfTimer.current.endApiRequest("/api/data/tracks");
 
       if (json.error) throw new Error(json.error);
+      console.log('[Catalog] Fetched tracks:', json.data?.length || 0, 'tracks');
       setTracks(json.data || []);
+      setFilteredTracks(json.data || []); // Initialize filteredTracks immediately
     } catch (error) {
       console.error("Error fetching tracks:", error);
       toast({
@@ -87,10 +96,12 @@ export default function CatalogPage() {
     const filtered = tracks.filter(
       (track) =>
         track.title.toLowerCase().includes(searchLower) ||
+        track.isrc?.toLowerCase().includes(searchLower) ||
         track.iswc?.toLowerCase().includes(searchLower) ||
         track.composers?.toLowerCase().includes(searchLower) ||
         track.platform?.toLowerCase().includes(searchLower) ||
-        track.territory?.toLowerCase().includes(searchLower)
+        track.territory?.toLowerCase().includes(searchLower) ||
+        track.split?.toLowerCase().includes(searchLower)
     );
     setFilteredTracks(filtered);
   };
@@ -119,10 +130,12 @@ export default function CatalogPage() {
           artist_id: user.id,
           title: form.title,
           iswc: form.iswc || null,
+          isrc: form.isrc || null,
           composers: form.composers || null,
           release_date: form.release_date || null,
           platform: form.platform || null,
           territory: form.territory || null,
+          split: form.split || null,
         }),
       });
       const json = await res.json();
@@ -137,10 +150,12 @@ export default function CatalogPage() {
       setForm({
         title: "",
         iswc: "",
+        isrc: "",
         composers: "",
         release_date: "",
         platform: "",
         territory: "",
+        split: "",
       });
       setIsAddDialogOpen(false);
       fetchTracks();
@@ -165,10 +180,12 @@ export default function CatalogPage() {
           id: editingTrack.id,
           title: form.title,
           iswc: form.iswc || null,
+          isrc: form.isrc || null,
           composers: form.composers || null,
           release_date: form.release_date || null,
           platform: form.platform || null,
           territory: form.territory || null,
+          split: form.split || null,
         }),
       });
       const json = await res.json();
@@ -184,10 +201,12 @@ export default function CatalogPage() {
       setForm({
         title: "",
         iswc: "",
+        isrc: "",
         composers: "",
         release_date: "",
         platform: "",
         territory: "",
+        split: "",
       });
       fetchTracks();
     } catch (error) {
@@ -261,10 +280,12 @@ export default function CatalogPage() {
     setForm({
       title: track.title,
       iswc: track.iswc || "",
+      isrc: track.isrc || "",
       composers: track.composers || "",
       release_date: track.release_date || "",
       platform: track.platform || "",
       territory: track.territory || "",
+      split: track.split || "",
     });
   };
 
@@ -273,11 +294,79 @@ export default function CatalogPage() {
     setForm({
       title: "",
       iswc: "",
+      isrc: "",
       composers: "",
       release_date: "",
       platform: "",
       territory: "",
+      split: "",
     });
+  };
+
+  // Fetch Spotify data ONLY when viewing track details (not in table)
+  const fetchSpotifyForDetail = useCallback(async (track: Track) => {
+    if (!track.isrc) {
+      setDetailSpotifyData(null);
+      return;
+    }
+    
+    // If track already has cached Spotify data in DB, use it
+    if (track.spotify_image_url) {
+      setDetailSpotifyData({
+        image: track.spotify_image_url,
+        trackName: track.spotify_track_name,
+        artistName: track.spotify_artist_name,
+        albumName: null,
+        spotifyTrackId: track.spotify_track_id,
+        cached: true,
+      });
+      return;
+    }
+    
+    setFetchingDetailImage(true);
+    try {
+      const res = await fetch("/api/spotify/album-cover", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isrc: track.isrc }),
+      });
+      const data: SpotifyAlbumCoverResponse = await res.json();
+      setDetailSpotifyData(data);
+      
+      // Save to DB for future use
+      if (data.image && !data.error) {
+        await fetch("/api/data/tracks", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: track.id,
+            spotify_image_url: data.image,
+            spotify_track_id: data.spotifyTrackId,
+            spotify_artist_name: data.artistName,
+            spotify_track_name: data.trackName,
+            spotify_fetched_at: new Date().toISOString(),
+          }),
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching Spotify data:", error);
+      setDetailSpotifyData(null);
+    } finally {
+      setFetchingDetailImage(false);
+    }
+  }, []);
+
+  // Open track detail modal and fetch Spotify data
+  const openTrackDetail = (track: Track) => {
+    setSelectedTrack(track);
+    setDetailSpotifyData(null);
+    fetchSpotifyForDetail(track);
+  };
+
+  // Close track detail modal
+  const closeTrackDetail = () => {
+    setSelectedTrack(null);
+    setDetailSpotifyData(null);
   };
 
   if (authLoading || loading) {
@@ -327,11 +416,18 @@ export default function CatalogPage() {
         <Input
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Search by title, ISWC, composer, platform, or territory..."
+          placeholder="Search by title, composer, or ISRC..."
           className="pl-9"
         />
       </div>
 
+      {/* Track count */}
+      <div className="text-sm" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
+        {filteredTracks.length} {filteredTracks.length === 1 ? 'track' : 'tracks'}
+        {searchTerm && ` matching "${searchTerm}"`}
+      </div>
+
+      {/* Text-Only Table - NO IMAGES */}
       <div 
         className="rounded-lg border overflow-x-auto transition-colors"
         style={{
@@ -347,12 +443,12 @@ export default function CatalogPage() {
             }}
           >
             <tr style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
-              <th className="p-4 font-medium">Title</th>
-              <th className="p-4 font-medium">ISWC</th>
-              <th className="p-4 font-medium">Composers</th>
-              <th className="p-4 font-medium">Release Date</th>
-              <th className="p-4 font-medium">Platform</th>
-              <th className="p-4 font-medium">Territory</th>
+              <th className="p-4 font-medium">Song Title</th>
+              <th className="p-4 font-medium">Composer Name</th>
+              <th className="p-4 font-medium">ISRC</th>
+              <th className="p-4 font-medium">Artist Name</th>
+              <th className="p-4 font-medium">Split (%)</th>
+              <th className="p-4 font-medium">Upload Date</th>
               {isAdmin && <th className="p-4 font-medium">Actions</th>}
             </tr>
           </thead>
@@ -367,10 +463,11 @@ export default function CatalogPage() {
               filteredTracks.map((track) => (
                 <tr 
                   key={track.id} 
-                  className="border-t transition-colors"
+                  className="border-t transition-colors cursor-pointer"
                   style={{
                     borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
                   }}
+                  onClick={() => openTrackDetail(track)}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.backgroundColor = isDark ? 'rgba(31, 41, 55, 0.5)' : '#F9FAFB';
                   }}
@@ -379,16 +476,16 @@ export default function CatalogPage() {
                   }}
                 >
                   <td className="p-4 font-medium transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>{track.title}</td>
-                  <td className="p-4 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>{track.iswc || "-"}</td>
                   <td className="p-4 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>{track.composers || "-"}</td>
+                  <td className="p-4 transition-colors font-mono text-xs" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>{track.isrc || "-"}</td>
+                  <td className="p-4 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>{track.spotify_artist_name || "-"}</td>
+                  <td className="p-4 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>{track.split || "-"}</td>
                   <td className="p-4 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
-                    {track.release_date ? new Date(track.release_date).toLocaleDateString() : "-"}
+                    {track.created_at ? new Date(track.created_at).toLocaleDateString() : "-"}
                   </td>
-                  <td className="p-4 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>{track.platform || "-"}</td>
-                  <td className="p-4 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>{track.territory || "-"}</td>
                   {isAdmin && (
                     <td className="p-4">
-                      <div className="flex gap-2">
+                      <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                         <Button
                           size="sm"
                           variant="outline"
@@ -413,6 +510,101 @@ export default function CatalogPage() {
         </table>
       </div>
 
+      {/* Track Detail Modal - Spotify artwork ONLY appears here */}
+      <Dialog open={!!selectedTrack} onOpenChange={(open) => !open && closeTrackDetail()}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Track Details</DialogTitle>
+          </DialogHeader>
+          {selectedTrack && (
+            <div className="space-y-6">
+              {/* Spotify Album Art - ONLY shown in this modal */}
+              <div className="flex justify-center">
+                <div className="w-48 h-48 rounded-xl overflow-hidden bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg">
+                  {fetchingDetailImage ? (
+                    <RefreshCw className="h-12 w-12 text-white/70 animate-spin" />
+                  ) : detailSpotifyData?.image ? (
+                    <img 
+                      src={detailSpotifyData.image} 
+                      alt={selectedTrack.title} 
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <Music className="h-16 w-16 text-white/50" />
+                  )}
+                </div>
+              </div>
+
+              {/* Track Info */}
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs font-medium" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Song Title</label>
+                  <p className="text-lg font-semibold" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>{selectedTrack.title}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-medium" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Composer</label>
+                    <p style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>{selectedTrack.composers || "-"}</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Artist</label>
+                    <p style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>{detailSpotifyData?.artistName || selectedTrack.spotify_artist_name || "-"}</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>ISRC</label>
+                    <p className="font-mono text-sm" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>{selectedTrack.isrc || "-"}</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Split</label>
+                    <p style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>{selectedTrack.split || "-"}</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Upload Date</label>
+                    <p style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>
+                      {selectedTrack.created_at ? new Date(selectedTrack.created_at).toLocaleDateString() : "-"}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>ISWC</label>
+                    <p className="font-mono text-sm" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>{selectedTrack.iswc || "-"}</p>
+                  </div>
+                </div>
+                
+                {/* Spotify Track Name (if different) */}
+                {detailSpotifyData?.trackName && detailSpotifyData.trackName !== selectedTrack.title && (
+                  <div>
+                    <label className="text-xs font-medium" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Spotify Track Name</label>
+                    <p style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>{detailSpotifyData.trackName}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Actions */}
+              {isAdmin && (
+                <div className="flex gap-2 pt-4 border-t" style={{ borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)' }}>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => { closeTrackDetail(); openEditDialog(selectedTrack); }}
+                    className="flex-1"
+                  >
+                    <Edit className="h-4 w-4 mr-2" />
+                    Edit
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => { closeTrackDetail(); setDeleteConfirm(selectedTrack); }}
+                    className="text-red-600 hover:text-red-700"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Add Dialog */}
       <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
         <DialogContent>
@@ -427,6 +619,14 @@ export default function CatalogPage() {
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
                 placeholder="Enter track title"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">ISRC (for Spotify artwork)</label>
+              <Input
+                value={form.isrc}
+                onChange={(e) => setForm({ ...form, isrc: e.target.value })}
+                placeholder="e.g. USRC12345678"
               />
             </div>
             <div>
@@ -469,6 +669,14 @@ export default function CatalogPage() {
                 placeholder="e.g. Global, US, UK"
               />
             </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Split Percentage</label>
+              <Input
+                value={form.split}
+                onChange={(e) => setForm({ ...form, split: e.target.value })}
+                placeholder="e.g. 100%, 50%"
+              />
+            </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)}>
                 Cancel
@@ -485,13 +693,21 @@ export default function CatalogPage() {
           <DialogHeader>
             <DialogTitle>Edit Track</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
             <div>
               <label className="block text-sm font-medium mb-1">Title *</label>
               <Input
                 required
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">ISRC (for Spotify artwork)</label>
+              <Input
+                value={form.isrc}
+                onChange={(e) => setForm({ ...form, isrc: e.target.value })}
+                placeholder="e.g. USRC12345678"
               />
             </div>
             <div>
@@ -528,6 +744,14 @@ export default function CatalogPage() {
               <Input
                 value={form.territory}
                 onChange={(e) => setForm({ ...form, territory: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Split Percentage</label>
+              <Input
+                value={form.split}
+                onChange={(e) => setForm({ ...form, split: e.target.value })}
+                placeholder="e.g. 100%, 50%"
               />
             </div>
           </div>

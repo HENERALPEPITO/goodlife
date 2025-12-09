@@ -37,6 +37,20 @@ interface Royalty {
   tracks: { title: string }[] | { title: string } | null;
 }
 
+// Summary-based analytics data structure
+interface SummaryAnalytics {
+  stats: {
+    totalRevenue: number;
+    totalStreams: number;
+    averagePerStream: number;
+    topTerritory: string;
+  };
+  topTracks: TrackPerformance[];
+  territoryBreakdown: TerritoryData[];
+  sourceBreakdown: SourceData[];
+  quarterlyRevenue: QuarterlyData[];
+}
+
 const GREEN_PALETTE = {
   primary: "#1ABC9C",
   secondary: "#48C9B0",
@@ -59,7 +73,13 @@ export default function AnalyticsPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   
-  const [royalties, setRoyalties] = useState<Royalty[]>([]);
+  const [analytics, setAnalytics] = useState<SummaryAnalytics>({
+    stats: { totalRevenue: 0, totalStreams: 0, averagePerStream: 0, topTerritory: "N/A" },
+    topTracks: [],
+    territoryBreakdown: [],
+    sourceBreakdown: [],
+    quarterlyRevenue: []
+  });
   const [loadingData, setLoadingData] = useState(true);
   const [showAllSourcesModal, setShowAllSourcesModal] = useState(false);
 
@@ -67,7 +87,7 @@ export default function AnalyticsPage() {
     if (!user) return;
 
     try {
-      let artistId = user.id;
+      let artistId: string | null = null;
 
       // For artists, get their artist record first
       if (user.role === "artist") {
@@ -77,35 +97,26 @@ export default function AnalyticsPage() {
           .eq("user_id", user.id)
           .single();
 
-        if (artistError) {
+        if (artistError || !artist) {
           console.error("Error fetching artist:", artistError);
           setLoadingData(false);
           return;
         }
-
-        if (!artist) {
-          console.warn("No artist found for user");
-          setLoadingData(false);
-          return;
-        }
-
         artistId = artist.id;
       }
 
-      // Optimized query - only fetch needed columns, filter early
-      const query = supabase
-        .from("royalties")
-        .select("net_amount, usage_count, territory, exploitation_source_name, broadcast_date, tracks!inner(title)")
-        .order("broadcast_date", { ascending: false });
-
-      // Apply artist filter if needed
-      const { data, error } = user.role === "artist" 
-        ? await query.eq("artist_id", artistId)
-        : await query;
-
-      if (error) throw error;
-
-      setRoyalties(data || []);
+      // Try fetching from royalties_summary first (new system)
+      const summaryResult = await fetchFromSummaryTable(artistId);
+      
+      if (summaryResult) {
+        setAnalytics(summaryResult);
+        console.log('[Analytics] Using royalties_summary table');
+      } else {
+        // Fallback to old royalties table
+        console.warn('[Analytics] Summary table not available, falling back to royalties table');
+        const fallbackResult = await fetchFromRoyaltiesTable(artistId);
+        setAnalytics(fallbackResult);
+      }
     } catch (error) {
       console.error("Error fetching analytics:", error);
     } finally {
@@ -113,17 +124,310 @@ export default function AnalyticsPage() {
     }
   }, [user]);
 
-  useEffect(() => {
-    if (!loading && !user) {
-      router.push("/login");
-    } else if (user) {
-      fetchAnalytics();
-    }
-  }, [user, loading, router, fetchAnalytics]);
+  // Fetch from new royalties_summary table via RPC
+  const fetchFromSummaryTable = async (artistId: string | null): Promise<SummaryAnalytics | null> => {
+    try {
+      let totalRevenue = 0;
+      let totalStreams = 0;
+      let platformDist: Record<string, number> = {};
+      let territoryDist: Record<string, number> = {};
+      let topTerritoryName = "N/A";
 
-  // Memoized calculations - only recalculate when royalties change
-  const analytics = useMemo(() => {
-    if (!royalties.length) {
+      if (artistId) {
+        // Artist-specific data via RPC
+        const { data: overview, error: overviewError } = await supabase.rpc(
+          'get_artist_dashboard_overview', 
+          { _artist_id: artistId }
+        );
+
+        if (overviewError) {
+          console.warn('Summary RPC failed:', overviewError.message);
+          return null;
+        }
+
+        const overviewData = overview?.[0] || {};
+        totalRevenue = parseFloat(overviewData.total_earnings || 0);
+        totalStreams = parseInt(overviewData.total_streams || 0, 10);
+        platformDist = overviewData.platform_distribution || {};
+        territoryDist = overviewData.territory_distribution || {};
+        topTerritoryName = overviewData.top_territory || "N/A";
+        
+        // If RPC returned 0 streams, try direct query as fallback
+        if (totalStreams === 0) {
+          console.log('[Analytics] Artist RPC returned 0 streams, trying direct query...');
+          const { data: directSummary, error: directError } = await supabase
+            .from('royalties_summary')
+            .select('total_streams')
+            .eq('artist_id', artistId);
+          
+          if (!directError && directSummary && directSummary.length > 0) {
+            const directSum = directSummary.reduce((sum, row) => sum + parseInt(String(row.total_streams || 0), 10), 0);
+            if (directSum > 0) {
+              totalStreams = directSum;
+              console.log('[Analytics] Direct query found artist total_streams:', totalStreams);
+            }
+          }
+        }
+      } else {
+        // Admin: aggregate from all summary records
+        const { data: adminTotals, error: adminError } = await supabase.rpc('get_admin_royalties_totals');
+        
+        if (adminError) {
+          console.warn('Admin totals RPC failed:', adminError.message);
+          return null;
+        }
+
+        const adminData = adminTotals?.[0] || {};
+        totalRevenue = parseFloat(adminData.total_net || 0);
+        totalStreams = parseInt(adminData.total_streams || 0, 10);
+
+        // For admin, fetch all summary records and aggregate distributions
+        const { data: allSummaries, error: summaryError } = await supabase
+          .from('royalties_summary')
+          .select('total_net, total_streams, platform_distribution, territory_distribution, top_territory');
+
+        console.log('[Analytics Debug] Fetched summaries:', {
+          count: allSummaries?.length || 0,
+          error: summaryError?.message,
+          sample: allSummaries?.[0] ? {
+            total_net: allSummaries[0].total_net,
+            platform_distribution: allSummaries[0].platform_distribution,
+            territory_distribution: allSummaries[0].territory_distribution,
+            top_territory: allSummaries[0].top_territory
+          } : null
+        });
+
+        if (allSummaries && allSummaries.length > 0) {
+          const platformTotals = new Map<string, number>();
+          const territoryTotals = new Map<string, number>();
+          const topTerritoryCount = new Map<string, number>();
+          
+          // If RPC returned 0 streams, sum directly from records
+          if (totalStreams === 0) {
+            let directStreamsSum = 0;
+            for (const summary of allSummaries) {
+              directStreamsSum += parseInt(String(summary.total_streams || 0), 10);
+            }
+            if (directStreamsSum > 0) {
+              totalStreams = directStreamsSum;
+              console.log('[Analytics] Direct query found total_streams:', totalStreams);
+            }
+          }
+
+          for (const summary of allSummaries) {
+            const net = parseFloat(summary.total_net || 0);
+            
+            // Aggregate platform distributions
+            const platforms = summary.platform_distribution || {};
+            for (const [platform, pct] of Object.entries(platforms)) {
+              const amt = net * (pct as number);
+              platformTotals.set(platform, (platformTotals.get(platform) || 0) + amt);
+            }
+
+            // Aggregate territory distributions
+            const territories = summary.territory_distribution || {};
+            for (const [territory, pct] of Object.entries(territories)) {
+              const amt = net * (pct as number);
+              territoryTotals.set(territory, (territoryTotals.get(territory) || 0) + amt);
+            }
+
+            // Count top territories
+            if (summary.top_territory) {
+              topTerritoryCount.set(summary.top_territory, (topTerritoryCount.get(summary.top_territory) || 0) + net);
+            }
+          }
+
+          // Convert to percentage distributions
+          if (totalRevenue > 0) {
+            platformTotals.forEach((amt, platform) => {
+              platformDist[platform] = amt / totalRevenue;
+            });
+            territoryTotals.forEach((amt, territory) => {
+              territoryDist[territory] = amt / totalRevenue;
+            });
+          }
+
+          // Get top territory by revenue
+          const sortedTerritories = Array.from(topTerritoryCount.entries()).sort((a, b) => b[1] - a[1]);
+          topTerritoryName = sortedTerritories[0]?.[0] || "N/A";
+        }
+      }
+
+      // Get top tracks
+      const { data: topTracksData, error: topTracksError } = artistId
+        ? await supabase.rpc('get_artist_top_tracks', { _artist_id: artistId, _year: null, _quarter: null, _limit: 5 })
+        : await supabase.from('royalties_summary')
+            .select('track_id, total_net, total_streams, tracks(title)')
+            .order('total_net', { ascending: false })
+            .limit(5);
+
+      console.log('[Analytics Debug] Top tracks query:', {
+        count: topTracksData?.length || 0,
+        error: topTracksError?.message,
+        sample: topTracksData?.[0]
+      });
+
+      // Get quarterly trends
+      let quarterlyRevenue: QuarterlyData[] = [];
+      if (artistId) {
+        const { data: trendsData } = await supabase.rpc('get_artist_quarterly_trends', { _artist_id: artistId, _limit: 8 });
+        quarterlyRevenue = (trendsData || []).map((t: any) => ({
+          quarter: t.quarter_label || `Q${t.quarter} ${t.year}`,
+          revenue: parseFloat(t.total_net || 0)
+        })).slice(-8);
+      } else {
+        // Admin: aggregate quarterly data
+        const { data: allQuarterly } = await supabase
+          .from('royalties_summary')
+          .select('year, quarter, total_net');
+
+        if (allQuarterly) {
+          const quarterMap = new Map<string, number>();
+          for (const row of allQuarterly) {
+            const key = `Q${row.quarter} ${row.year}`;
+            quarterMap.set(key, (quarterMap.get(key) || 0) + parseFloat(row.total_net || 0));
+          }
+          quarterlyRevenue = Array.from(quarterMap.entries())
+            .map(([quarter, revenue]) => ({ quarter, revenue }))
+            .sort((a, b) => {
+              const [q1, y1] = a.quarter.split(' ');
+              const [q2, y2] = b.quarter.split(' ');
+              return y1 === y2 ? q1.localeCompare(q2) : y1.localeCompare(y2);
+            })
+            .slice(-8);
+        }
+      }
+
+      // Top tracks
+      const topTracks: TrackPerformance[] = (topTracksData || []).map((t: any) => ({
+        title: t.track_title || t.tracks?.title || 'Unknown',
+        revenue: parseFloat(t.total_net || 0),
+        streams: parseInt(t.total_streams || 0, 10)
+      }));
+
+      // Platform distribution
+      const sourceBreakdown: SourceData[] = Object.entries(platformDist)
+        .map(([source, pct]) => ({
+          source,
+          revenue: totalRevenue * (pct as number)
+        }))
+        .sort((a, b) => b.revenue - a.revenue);
+
+      // Territory distribution
+      const territoryBreakdown: TerritoryData[] = Object.entries(territoryDist)
+        .map(([territory, pct]) => ({
+          territory,
+          revenue: totalRevenue * (pct as number)
+        }))
+        .sort((a, b) => b.revenue - a.revenue)
+        .slice(0, 5);
+
+      console.log('[Analytics] Summary data:', { totalRevenue, totalStreams, topTracks: topTracks.length, sources: sourceBreakdown.length });
+
+      return {
+        stats: {
+          totalRevenue,
+          totalStreams,
+          averagePerStream: totalStreams > 0 ? totalRevenue / totalStreams : 0,
+          topTerritory: topTerritoryName
+        },
+        topTracks,
+        territoryBreakdown,
+        sourceBreakdown,
+        quarterlyRevenue
+      };
+    } catch (error) {
+      console.warn('Error fetching from summary table:', error);
+      return null;
+    }
+  };
+
+  // Fallback: Fetch from old royalties table
+  const fetchFromRoyaltiesTable = async (artistId: string | null): Promise<SummaryAnalytics> => {
+    try {
+      let query = supabase
+        .from("royalties")
+        .select("net_amount, usage_count, territory, exploitation_source_name, broadcast_date, tracks!inner(title)")
+        .order("broadcast_date", { ascending: false });
+
+      if (artistId) {
+        query = query.eq("artist_id", artistId);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      const royalties = data || [];
+      
+      if (!royalties.length) {
+        return {
+          stats: { totalRevenue: 0, totalStreams: 0, averagePerStream: 0, topTerritory: "N/A" },
+          topTracks: [],
+          territoryBreakdown: [],
+          sourceBreakdown: [],
+          quarterlyRevenue: []
+        };
+      }
+
+      // Process data
+      let totalRevenue = 0;
+      let totalStreams = 0;
+      const trackMap = new Map<string, { revenue: number; streams: number }>();
+      const territoryMap = new Map<string, number>();
+      const sourceMap = new Map<string, number>();
+      const quarterlyMap = new Map<string, number>();
+
+      for (const r of royalties) {
+        const revenue = Number(r.net_amount || 0);
+        const streams = Number(r.usage_count || 0);
+        totalRevenue += revenue;
+        totalStreams += streams;
+
+        const title = (Array.isArray(r.tracks) ? r.tracks[0]?.title : (r.tracks as any)?.title) || "Unknown";
+        const track = trackMap.get(title);
+        if (track) {
+          track.revenue += revenue;
+          track.streams += streams;
+        } else {
+          trackMap.set(title, { revenue, streams });
+        }
+
+        const territory = r.territory || "Unknown";
+        territoryMap.set(territory, (territoryMap.get(territory) || 0) + revenue);
+
+        const source = r.exploitation_source_name || "Unknown";
+        sourceMap.set(source, (sourceMap.get(source) || 0) + revenue);
+
+        if (r.broadcast_date) {
+          const date = new Date(r.broadcast_date);
+          const quarter = Math.floor(date.getMonth() / 3) + 1;
+          const quarterKey = `Q${quarter} ${date.getFullYear()}`;
+          quarterlyMap.set(quarterKey, (quarterlyMap.get(quarterKey) || 0) + revenue);
+        }
+      }
+
+      return {
+        stats: {
+          totalRevenue,
+          totalStreams,
+          averagePerStream: totalStreams > 0 ? totalRevenue / totalStreams : 0,
+          topTerritory: Array.from(territoryMap).sort((a, b) => b[1] - a[1])[0]?.[0] || "N/A"
+        },
+        topTracks: Array.from(trackMap, ([title, data]) => ({ title, revenue: data.revenue, streams: data.streams }))
+          .sort((a, b) => b.revenue - a.revenue).slice(0, 5),
+        territoryBreakdown: Array.from(territoryMap, ([territory, revenue]) => ({ territory, revenue }))
+          .sort((a, b) => b.revenue - a.revenue).slice(0, 5),
+        sourceBreakdown: Array.from(sourceMap, ([source, revenue]) => ({ source, revenue }))
+          .sort((a, b) => b.revenue - a.revenue),
+        quarterlyRevenue: Array.from(quarterlyMap, ([quarter, revenue]) => ({ quarter, revenue }))
+          .sort((a, b) => {
+            const [q1, y1] = a.quarter.split(' ');
+            const [q2, y2] = b.quarter.split(' ');
+            return y1 === y2 ? q1.localeCompare(q2) : y1.localeCompare(y2);
+          }).slice(-8)
+      };
+    } catch (error) {
+      console.error('Error fetching from royalties table:', error);
       return {
         stats: { totalRevenue: 0, totalStreams: 0, averagePerStream: 0, topTerritory: "N/A" },
         topTracks: [],
@@ -132,96 +436,15 @@ export default function AnalyticsPage() {
         quarterlyRevenue: []
       };
     }
+  };
 
-    // Single pass through data with pre-allocated maps
-    let totalRevenue = 0;
-    let totalStreams = 0;
-    const trackMap = new Map<string, { revenue: number; streams: number }>();
-    const territoryMap = new Map<string, number>();
-    const sourceMap = new Map<string, number>();
-    const quarterlyMap = new Map<string, number>();
-
-    // Process all data in single loop
-    for (const r of royalties) {
-      const revenue = Number(r.net_amount || 0);
-      const streams = Number(r.usage_count || 0);
-      
-      totalRevenue += revenue;
-      totalStreams += streams;
-
-      // Track aggregation
-      const title = (Array.isArray(r.tracks) ? r.tracks[0]?.title : r.tracks?.title) || "Unknown";
-      const track = trackMap.get(title);
-      if (track) {
-        track.revenue += revenue;
-        track.streams += streams;
-      } else {
-        trackMap.set(title, { revenue, streams });
-      }
-
-      // Territory aggregation
-      const territory = r.territory || "Unknown";
-      territoryMap.set(territory, (territoryMap.get(territory) || 0) + revenue);
-
-      // Source aggregation
-      const source = r.exploitation_source_name || "Unknown";
-      sourceMap.set(source, (sourceMap.get(source) || 0) + revenue);
-
-      // Quarterly aggregation (only if date exists)
-      if (r.broadcast_date) {
-        const date = new Date(r.broadcast_date);
-        const quarter = Math.floor(date.getMonth() / 3) + 1;
-        const quarterKey = `Q${quarter} ${date.getFullYear()}`;
-        quarterlyMap.set(quarterKey, (quarterlyMap.get(quarterKey) || 0) + revenue);
-      }
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push("/login");
+    } else if (user) {
+      fetchAnalytics();
     }
-
-    // Convert maps to sorted arrays
-    const topTracks = Array.from(trackMap, ([title, data]) => ({ 
-      title, 
-      revenue: data.revenue, 
-      streams: data.streams 
-    }))
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 5);
-
-    const territoryBreakdown = Array.from(territoryMap, ([territory, revenue]) => ({ 
-      territory, 
-      revenue 
-    }))
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 5);
-
-    const sourceBreakdown = Array.from(sourceMap, ([source, revenue]) => ({ 
-      source, 
-      revenue 
-    }))
-      .sort((a, b) => b.revenue - a.revenue);
-
-    const quarterlyRevenue = Array.from(quarterlyMap, ([quarter, revenue]) => ({ 
-      quarter, 
-      revenue 
-    }))
-      .sort((a, b) => {
-        const [q1, y1] = a.quarter.split(' ');
-        const [q2, y2] = b.quarter.split(' ');
-        return y1 === y2 ? q1.localeCompare(q2) : y1.localeCompare(y2);
-      })
-      .slice(-8);
-
-    return {
-      stats: {
-        totalRevenue,
-        totalStreams,
-        averagePerStream: totalStreams > 0 ? totalRevenue / totalStreams : 0,
-        topTerritory: territoryBreakdown[0]?.territory || "N/A"
-      },
-      topTracks,
-      territoryBreakdown,
-      sourceBreakdown,
-      quarterlyRevenue
-    };
-  }, [royalties]);
+  }, [user, loading, router, fetchAnalytics]);
 
   if (loading || loadingData) {
     return (
@@ -262,7 +485,7 @@ export default function AnalyticsPage() {
           icon={Music}
           color={GREEN_PALETTE.dark}
           label="Avg per Stream"
-          value={`€${analytics.stats.averagePerStream.toFixed(4)}`}
+          value={`€${analytics.stats.averagePerStream.toFixed(6)}`}
           subtitle="Revenue per play"
         />
         <MetricCard

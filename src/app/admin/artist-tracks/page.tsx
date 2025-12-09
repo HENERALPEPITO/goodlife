@@ -8,9 +8,25 @@ import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Upload, Search, Trash2, Edit, ArrowUpDown, AlertCircle, Download } from "lucide-react";
+import { Upload, Search, Trash2, Edit, ArrowUpDown, AlertCircle, Download, AlertTriangle, CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { parseCatalogCsv, CatalogCsvRow } from "@/lib/catalogCsv";
 import { useTheme } from "next-themes";
+
+// Required columns for Track Catalog CSV validation
+const CATALOG_REQUIRED_COLUMNS = [
+  { key: "songTitle", label: "Song Title", variations: ["Song Title", "song title", "title", "Title", "SongTitle", "song_title"] },
+  { key: "composerName", label: "Composer Name", variations: ["Composer Name", "composer name", "Composer", "composer", "composer_name"] },
+  { key: "isrc", label: "ISRC", variations: ["ISRC", "isrc", "Isrc"] },
+  { key: "artist", label: "Artist", variations: ["Artist", "artist", "Artist Name", "artist_name"] },
+  { key: "split", label: "Split", variations: ["Split", "split", "Split %", "split_percent"] },
+];
+
+interface CatalogColumnValidationResult {
+  isValid: boolean;
+  foundColumns: { key: string; label: string; matchedHeader: string }[];
+  missingColumns: { key: string; label: string }[];
+  csvHeaders: string[];
+}
 
 interface Artist {
   id: string;
@@ -42,12 +58,18 @@ export default function ArtistTrackManagerPage() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<CatalogCsvRow[]>([]);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteAllOpen, setDeleteAllOpen] = useState(false);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [editRow, setEditRow] = useState<TrackRow | null>(null);
   const [page, setPage] = useState(1);
   const [sortColumn, setSortColumn] = useState<keyof TrackRow | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const pageSize = 20;
+  
+  // Column validation state
+  const [columnValidation, setColumnValidation] = useState<CatalogColumnValidationResult | null>(null);
+  const [showValidationModal, setShowValidationModal] = useState(false);
+  const [validatingFile, setValidatingFile] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -154,9 +176,73 @@ export default function ArtistTrackManagerPage() {
     }
   };
 
+  // Validate CSV columns for track catalog
+  const validateCatalogCsvColumns = async (file: File): Promise<CatalogColumnValidationResult> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      
+      reader.onload = (e) => {
+        try {
+          const text = e.target?.result as string;
+          const firstLine = text.split('\n')[0];
+          
+          let csvHeaders: string[] = [];
+          const headerMatch = firstLine.match(/(?:"[^"]*"|[^,]+)/g);
+          if (headerMatch) {
+            csvHeaders = headerMatch.map(h => h.replace(/^"|"$/g, '').trim());
+          } else {
+            csvHeaders = firstLine.split(',').map(h => h.trim());
+          }
+          
+          const headerLowerSet = new Set(csvHeaders.map(h => h.toLowerCase()));
+          
+          const foundColumns: { key: string; label: string; matchedHeader: string }[] = [];
+          const missingColumns: { key: string; label: string }[] = [];
+          
+          for (const col of CATALOG_REQUIRED_COLUMNS) {
+            let matched = false;
+            let matchedHeader = '';
+            
+            for (const variation of col.variations) {
+              if (csvHeaders.includes(variation)) {
+                matched = true;
+                matchedHeader = variation;
+                break;
+              }
+              if (headerLowerSet.has(variation.toLowerCase())) {
+                matched = true;
+                matchedHeader = csvHeaders.find(h => h.toLowerCase() === variation.toLowerCase()) || variation;
+                break;
+              }
+            }
+            
+            if (matched) {
+              foundColumns.push({ key: col.key, label: col.label, matchedHeader });
+            } else {
+              missingColumns.push({ key: col.key, label: col.label });
+            }
+          }
+          
+          resolve({
+            isValid: missingColumns.length === 0,
+            foundColumns,
+            missingColumns,
+            csvHeaders,
+          });
+        } catch (error) {
+          reject(new Error('Failed to parse CSV headers'));
+        }
+      };
+      
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsText(file.slice(0, 4096));
+    });
+  };
+
   const handleChooseFile = async (f: File | null) => {
     setFile(f);
     setPreview([]);
+    setColumnValidation(null);
     if (!f) return;
     if (!selectedArtistId) {
       toast({ title: "No Artist Selected", description: "Please select an artist first", variant: "destructive" });
@@ -169,7 +255,31 @@ export default function ArtistTrackManagerPage() {
       return;
     }
     
-    const parsed = await parseCatalogCsv(f, selectedArtist.name);
+    // Validate columns first
+    setValidatingFile(true);
+    try {
+      const validation = await validateCatalogCsvColumns(f);
+      setColumnValidation(validation);
+      
+      if (!validation.isValid) {
+        setShowValidationModal(true);
+        setValidatingFile(false);
+        return; // Don't parse yet - wait for user to proceed
+      }
+      
+      // If valid, continue with parsing
+      await parseAndPreviewFile(f, selectedArtist.name);
+    } catch (error) {
+      toast({ title: "Validation Error", description: "Failed to validate CSV columns", variant: "destructive" });
+      setFile(null);
+      setColumnValidation(null);
+    } finally {
+      setValidatingFile(false);
+    }
+  };
+
+  const parseAndPreviewFile = async (f: File, artistName: string) => {
+    const parsed = await parseCatalogCsv(f, artistName);
     
     // Separate critical errors from warnings
     const criticalErrors = parsed.errors.filter(e => !e.includes("warning only"));
@@ -192,6 +302,21 @@ export default function ArtistTrackManagerPage() {
     if (parsed.rows.length > 0) {
       toast({ title: "CSV Parsed", description: `Found ${parsed.rows.length} rows ready for preview` });
     }
+  };
+
+  const handleProceedWithMissingColumns = async () => {
+    setShowValidationModal(false);
+    if (!file || !selectedArtistId) return;
+    
+    const selectedArtist = artists.find(a => a.id === selectedArtistId);
+    if (!selectedArtist) return;
+    
+    toast({
+      title: "File Selected",
+      description: `${file.name} - Proceeding with ${columnValidation?.missingColumns.length || 0} missing column(s)`,
+    });
+    
+    await parseAndPreviewFile(file, selectedArtist.name);
   };
 
   const handleConfirmUpload = async () => {
@@ -332,6 +457,29 @@ export default function ArtistTrackManagerPage() {
       console.log("Insert successful, data:", data);
       
       toast({ title: "Success", description: `${rows.length} tracks successfully saved to database`, variant: "default" });
+      
+      // Send email and notification to the artist
+      if (selectedArtistId) {
+        try {
+          const response = await fetch("/api/notifications", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "catalog_upload",
+              artistIds: [selectedArtistId],
+            }),
+          });
+          const result = await response.json();
+          if (result.success) {
+            console.log("Catalog upload notifications sent:", result);
+          } else {
+            console.error("Failed to send catalog notifications:", result.error);
+          }
+        } catch (notifyErr) {
+          console.error("Error sending catalog notifications:", notifyErr);
+        }
+      }
+      
       setFile(null);
       setPreview([]);
       await fetchTracks();
@@ -360,6 +508,37 @@ export default function ArtistTrackManagerPage() {
     toast({ title: "Deleted", description: `${ids.length} tracks removed` });
     setDeleteOpen(false);
     await fetchTracks();
+  };
+
+  const deleteAllForArtist = async () => {
+    if (!selectedArtistId) return;
+    
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/data/tracks?artist_id=${selectedArtistId}&delete_all=true`, {
+        method: "DELETE",
+      });
+      
+      const result = await response.json();
+      
+      if (result.error) {
+        toast({ title: "Delete failed", description: result.error, variant: "destructive" });
+        return;
+      }
+      
+      const artistName = artists.find(a => a.id === selectedArtistId)?.name || "artist";
+      toast({ 
+        title: "Catalog Deleted", 
+        description: `${result.deletedCount || 0} tracks removed for ${artistName}. Notification sent to artist.`,
+      });
+      setDeleteAllOpen(false);
+      await fetchTracks();
+    } catch (err) {
+      console.error("Error deleting all tracks:", err);
+      toast({ title: "Delete failed", description: "An unexpected error occurred", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const saveEdit = async () => {
@@ -641,7 +820,106 @@ export default function ArtistTrackManagerPage() {
             >
               Export CSV
             </button>
+            <button
+              onClick={() => setDeleteAllOpen(true)}
+              disabled={!selectedArtistId || tracks.length === 0}
+              className="px-4 py-2 text-sm rounded-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95 flex items-center gap-2"
+              style={{
+                border: '1px solid rgba(239, 68, 68, 0.5)',
+                color: '#EF4444',
+                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+              }}
+              onMouseEnter={(e) => {
+                if (!e.currentTarget.disabled) {
+                  e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.2)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.1)';
+              }}
+            >
+              <Trash2 className="h-4 w-4" /> Delete All Catalog
+            </button>
           </div>
+
+          {/* Validating File Indicator */}
+          {validatingFile && (
+            <div 
+              className="flex items-center gap-2 p-3 rounded-lg mb-4"
+              style={{
+                backgroundColor: isDark ? 'rgba(59, 130, 246, 0.1)' : '#DBEAFE',
+              }}
+            >
+              <Loader2 className="h-4 w-4 animate-spin" style={{ color: '#3B82F6' }} />
+              <span className="text-sm" style={{ color: isDark ? '#93C5FD' : '#1E40AF' }}>
+                Validating CSV columns...
+              </span>
+            </div>
+          )}
+
+          {/* Column Validation Status */}
+          {columnValidation && file && !validatingFile && (
+            <div 
+              className="p-4 rounded-lg border mb-4"
+              style={{
+                backgroundColor: columnValidation.isValid 
+                  ? (isDark ? 'rgba(16, 185, 129, 0.1)' : '#D1FAE5')
+                  : (isDark ? 'rgba(251, 191, 36, 0.1)' : '#FEF3C7'),
+                borderColor: columnValidation.isValid
+                  ? (isDark ? 'rgba(16, 185, 129, 0.3)' : '#6EE7B7')
+                  : (isDark ? 'rgba(251, 191, 36, 0.3)' : '#FCD34D'),
+              }}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  {columnValidation.isValid ? (
+                    <CheckCircle className="h-5 w-5" style={{ color: isDark ? '#6EE7B7' : '#059669' }} />
+                  ) : (
+                    <AlertTriangle className="h-5 w-5" style={{ color: isDark ? '#FCD34D' : '#D97706' }} />
+                  )}
+                  <span 
+                    className="font-medium text-sm"
+                    style={{ 
+                      color: columnValidation.isValid 
+                        ? (isDark ? '#6EE7B7' : '#059669')
+                        : (isDark ? '#FCD34D' : '#D97706')
+                    }}
+                  >
+                    {columnValidation.isValid 
+                      ? 'All required columns found' 
+                      : `${columnValidation.missingColumns.length} missing column(s)`}
+                  </span>
+                </div>
+                {!columnValidation.isValid && (
+                  <button
+                    onClick={() => setShowValidationModal(true)}
+                    className="text-xs underline"
+                    style={{ color: isDark ? '#FCD34D' : '#D97706' }}
+                  >
+                    View Details
+                  </button>
+                )}
+              </div>
+              
+              {!columnValidation.isValid && (
+                <div className="flex flex-wrap gap-2">
+                  {columnValidation.missingColumns.map((col) => (
+                    <span 
+                      key={col.key}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium"
+                      style={{
+                        backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2',
+                        color: isDark ? '#FCA5A5' : '#DC2626',
+                      }}
+                    >
+                      <XCircle className="h-3 w-3" />
+                      {col.label}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {preview.length > 0 && (
             <div className="mt-6">
@@ -971,32 +1249,73 @@ export default function ArtistTrackManagerPage() {
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="text-black">Confirm bulk delete</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm py-4 text-black">
+              This will permanently delete {selectedCount} selected tracks.
+            </p>
+            <DialogFooter className="gap-2">
+              <button
+                onClick={() => setDeleteOpen(false)}
+                className="px-4 py-2 text-sm rounded-md transition-all duration-200 hover:scale-105 active:scale-95 border border-gray-300 text-gray-800 bg-gray-50 hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={bulkDelete}
+                className="px-4 py-2 text-sm rounded-md text-white transition-all duration-200 hover:scale-105 active:scale-95 bg-red-600 hover:bg-red-700 shadow-lg hover:shadow-xl shadow-red-200 hover:shadow-red-300"
+              >
+                Delete
+              </button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      {/* Delete All Catalog Confirmation Dialog */}
+      <Dialog open={deleteAllOpen} onOpenChange={setDeleteAllOpen}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle style={{ color: 'rgba(255, 255, 255, 0.95)' }}>Confirm bulk delete</DialogTitle>
+           <DialogHeader>
+            <DialogTitle style={{ color: '#000000' }}>
+              <div className="flex items-center gap-2">
+                <AlertCircle className="h-5 w-5 text-red-500" />
+                Delete All Catalog
+              </div>
+            </DialogTitle>
           </DialogHeader>
-          <p className="text-sm py-4" style={{ color: 'rgba(156, 163, 175, 0.8)' }}>This will permanently delete {selectedCount} selected tracks.</p>
-          <DialogFooter className="gap-2">
+         <div className="py-4">
+              <p className="text-sm text-black">
+                Are you sure you want to delete all catalog entries for <strong>{artists.find(a => a.id === selectedArtistId)?.name || 'this artist'}</strong>?
+              </p>
+              <p className="text-sm mt-2 font-semibold text-black text-center">
+                This action cannot be undone.
+              </p>
+              <p className="text-sm mt-2 text-black">
+                {tracks.length} track(s) will be permanently deleted. The artist will be notified via email.
+              </p>
+            </div>
+         <DialogFooter className="gap-2">
             <button
-              onClick={() => setDeleteOpen(false)}
+              onClick={() => setDeleteAllOpen(false)}
               className="px-4 py-2 text-sm rounded-md transition-all duration-200 hover:scale-105 active:scale-95"
               style={{
-                border: '1px solid rgba(255, 255, 255, 0.2)',
-                color: 'rgba(255, 255, 255, 0.9)',
-                backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid rgba(0, 0, 0, 0.2)',
+                color: 'rgba(0, 0, 0, 0.9)',
+                backgroundColor: 'rgba(0, 0, 0, 0.05)',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                e.currentTarget.style.backgroundColor = 'rgba(0, 0, 0, 0.1)';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+                e.currentTarget.style.backgroundColor = 'rgba(0, 0, 0, 0.05)';
               }}
             >
               Cancel
             </button>
             <button
-              onClick={bulkDelete}
-              className="px-4 py-2 text-sm rounded-md text-white transition-all duration-200 hover:scale-105 active:scale-95"
+              onClick={deleteAllForArtist}
+              disabled={loading}
+              className="px-4 py-2 text-sm rounded-md text-white transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50"
               style={{
                 backgroundColor: '#DC2626',
                 boxShadow: '0 4px 15px rgba(220, 38, 38, 0.4)',
@@ -1010,7 +1329,7 @@ export default function ArtistTrackManagerPage() {
                 e.currentTarget.style.boxShadow = '0 4px 15px rgba(220, 38, 38, 0.4)';
               }}
             >
-              Delete
+              {loading ? 'Deleting...' : 'Delete All Catalog'}
             </button>
           </DialogFooter>
         </DialogContent>
@@ -1168,6 +1487,161 @@ export default function ArtistTrackManagerPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Column Validation Modal */}
+      {showValidationModal && columnValidation && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 bg-black/50" 
+            onClick={() => {
+              setShowValidationModal(false);
+              setFile(null);
+              setColumnValidation(null);
+            }}
+          />
+          
+          {/* Modal */}
+          <div 
+            className="relative z-10 w-full max-w-2xl mx-4 rounded-lg border shadow-xl"
+            style={{
+              backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
+              borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+            }}
+          >
+            {/* Header */}
+            <div 
+              className="flex items-center gap-3 p-6 border-b"
+              style={{ borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)' }}
+            >
+              <AlertTriangle className="h-6 w-6 text-amber-500" />
+              <div>
+                <h2 className="text-lg font-semibold" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>
+                  Missing CSV Columns Detected
+                </h2>
+                <p className="text-sm" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
+                  {file?.name}
+                </p>
+              </div>
+            </div>
+            
+            {/* Content */}
+            <div className="p-6 max-h-96 overflow-y-auto">
+              {/* Missing Columns */}
+              {columnValidation.missingColumns.length > 0 && (
+                <div className="mb-6">
+                  <h3 className="text-sm font-semibold mb-3 flex items-center gap-2" style={{ color: isDark ? '#FCA5A5' : '#DC2626' }}>
+                    <XCircle className="h-4 w-4" />
+                    Missing Columns ({columnValidation.missingColumns.length})
+                  </h3>
+                  <div className="space-y-2">
+                    {columnValidation.missingColumns.map((col) => (
+                      <div 
+                        key={col.key}
+                        className="flex items-center gap-2 p-2 rounded"
+                        style={{
+                          backgroundColor: isDark ? 'rgba(239, 68, 68, 0.1)' : '#FEE2E2',
+                        }}
+                      >
+                        <XCircle className="h-4 w-4 flex-shrink-0" style={{ color: isDark ? '#FCA5A5' : '#DC2626' }} />
+                        <span className="font-medium" style={{ color: isDark ? '#FCA5A5' : '#DC2626' }}>
+                          {col.label}
+                        </span>
+                        <span className="text-xs" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
+                          — not found in CSV
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {/* Found Columns */}
+              {columnValidation.foundColumns.length > 0 && (
+                <div className="mb-6">
+                  <h3 className="text-sm font-semibold mb-3 flex items-center gap-2" style={{ color: isDark ? '#6EE7B7' : '#059669' }}>
+                    <CheckCircle className="h-4 w-4" />
+                    Found Columns ({columnValidation.foundColumns.length})
+                  </h3>
+                  <div className="space-y-2">
+                    {columnValidation.foundColumns.map((col) => (
+                      <div 
+                        key={col.key}
+                        className="flex items-center gap-2 p-2 rounded"
+                        style={{
+                          backgroundColor: isDark ? 'rgba(16, 185, 129, 0.1)' : '#D1FAE5',
+                        }}
+                      >
+                        <CheckCircle className="h-4 w-4 flex-shrink-0" style={{ color: isDark ? '#6EE7B7' : '#059669' }} />
+                        <span className="font-medium" style={{ color: isDark ? '#6EE7B7' : '#059669' }}>
+                          {col.label}
+                        </span>
+                        <span className="text-xs" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
+                          → matched: "{col.matchedHeader}"
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {/* CSV Headers Found */}
+              <div>
+                <h3 className="text-sm font-semibold mb-3" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
+                  Headers in your CSV file:
+                </h3>
+                <div 
+                  className="text-xs font-mono p-3 rounded break-all"
+                  style={{
+                    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : '#F3F4F6',
+                    color: isDark ? '#D1D5DB' : '#4B5563',
+                  }}
+                >
+                  {columnValidation.csvHeaders.join(', ')}
+                </div>
+              </div>
+            </div>
+            
+            {/* Warning Message */}
+            <div 
+              className="px-6 py-4 border-t"
+              style={{
+                backgroundColor: isDark ? 'rgba(251, 191, 36, 0.1)' : '#FEF3C7',
+                borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+              }}
+            >
+              <p className="text-sm" style={{ color: isDark ? '#FCD34D' : '#92400E' }}>
+                <strong>Warning:</strong> Uploading with missing columns may result in incomplete data. 
+                Rows without required data (like Song Title) will be skipped during processing.
+              </p>
+            </div>
+            
+            {/* Footer */}
+            <div 
+              className="flex items-center justify-end gap-3 p-6 border-t"
+              style={{ borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)' }}
+            >
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowValidationModal(false);
+                  setFile(null);
+                  setColumnValidation(null);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="bg-amber-600 hover:bg-amber-700 text-white"
+                onClick={handleProceedWithMissingColumns}
+              >
+                <AlertTriangle className="h-4 w-4 mr-2" />
+                Proceed Anyway
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

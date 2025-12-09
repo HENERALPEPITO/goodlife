@@ -2,7 +2,7 @@ import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-const ADMIN_EMAIL = "carlitoelipan@gmail.com";
+const ADMIN_EMAIL = "goodlifemusicpublishing@gmail.com";
 const EMAIL_FROM = process.env.EMAIL_FROM || "Good Life Music Portal <noreply@goodlife-publishing.com>";
 
 /**
@@ -37,7 +37,7 @@ function getNewRequestEmailForAdmin(data: {
         
         <div style="background-color: #f9fafb; padding: 15px; border-radius: 6px; margin-top: 20px; text-align: center;">
           <p style="color: #6b7280; font-size: 12px; margin: 0;">
-            <a href="https://goodlifemusic.com/admin/payment-requests" style="color: #2563EB; text-decoration: none;">View in Admin Dashboard</a>
+            <a href="https://clientportal.goodlife-publishing.com/login" style="color: #2563EB; text-decoration: none;">View in Admin Dashboard</a>
           </p>
         </div>
       </div>
@@ -287,6 +287,204 @@ export async function sendTestEmail(to: string, message: string): Promise<{ succ
     return { success: true, messageId: response.data?.id };
   } catch (error) {
     console.error("Error in sendTestEmail:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+/**
+ * Email templates for uploads
+ */
+function getCatalogUploadEmailForArtist(artistName: string): string {
+  return `
+    <div style="font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width:600px; margin:auto; padding:20px;">
+      <div style="background-color: #8b5cf6; padding: 30px; border-radius: 8px 8px 0 0; color: white;">
+        <h2 style="margin: 0; font-size: 24px;">🎵 New Catalog Uploaded</h2>
+      </div>
+      <div style="background-color: white; border: 1px solid #e5e7eb; border-top: none; padding: 30px; border-radius: 0 0 8px 8px;">
+        <p style="color: #374151; margin-top: 0;">Hi ${artistName},</p>
+        <p style="color: #374151; font-size: 16px;">Congratulations! A new catalog has been uploaded.</p>
+        <p style="color: #374151;">Please check your dashboard to view the updates.</p>
+        
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="https://clientportal.goodlife-publishing.com/login" 
+             style="background-color: #8b5cf6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 500;">
+            View Your Catalog
+          </a>
+        </div>
+        
+        <p style="color: #6b7280; font-size: 14px; margin-top: 20px;">Thank you for being part of Good Life Music!</p>
+      </div>
+      <div style="background-color: #f9fafb; padding: 20px; margin-top: 20px; border-radius: 4px; text-align: center;">
+        <p style="color: #6b7280; font-size: 12px; margin: 0;">
+          Automated message — do not reply<br/>
+          Good Life Music S.L | Profesor Hermida 6, 3-3C, 36960 Sanxenxo (Spain)
+        </p>
+      </div>
+    </div>
+  `;
+}
+
+function getRoyaltyUploadEmailForArtist(artistName: string, quarter: number, year: number): string {
+  return `
+    <div style="font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width:600px; margin:auto; padding:20px;">
+      <div style="background-color: #10b981; padding: 30px; border-radius: 8px 8px 0 0; color: white;">
+        <h2 style="margin: 0; font-size: 24px;">💰 New Royalties Available</h2>
+      </div>
+      <div style="background-color: white; border: 1px solid #e5e7eb; border-top: none; padding: 30px; border-radius: 0 0 8px 8px;">
+        <p style="color: #374151; margin-top: 0;">Hi ${artistName},</p>
+        <p style="color: #374151; font-size: 16px;">Congratulations! New royalties have been uploaded for <strong>Q${quarter} ${year}</strong>.</p>
+        <p style="color: #374151;">Please check your dashboard to submit your invoice.</p>
+        
+        <div style="background-color: #f0fdf4; border-left: 4px solid #10b981; padding: 15px; margin: 20px 0; border-radius: 4px;">
+          <p style="margin: 0; font-weight: 500; color: #374151;">Quarter: Q${quarter} ${year}</p>
+        </div>
+        
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="https://goodlifemusic.com/artist/royalties" 
+             style="background-color: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 500;">
+            View Your Royalties
+          </a>
+        </div>
+        
+        <p style="color: #6b7280; font-size: 14px; margin-top: 20px;">Thank you for being part of Good Life Music!</p>
+      </div>
+      <div style="background-color: #f9fafb; padding: 20px; margin-top: 20px; border-radius: 4px; text-align: center;">
+        <p style="color: #6b7280; font-size: 12px; margin: 0;">
+          Automated message — do not reply<br/>
+          Good Life Music S.L | Profesor Hermida 6, 3-3C, 36960 Sanxenxo (Spain)
+        </p>
+      </div>
+    </div>
+  `;
+}
+
+function getCatalogDeletedEmailForArtist(artistName: string, trackCount: number): string {
+  return `
+    <div style="font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width:600px; margin:auto; padding:20px;">
+      <div style="background-color: #f59e0b; padding: 30px; border-radius: 8px 8px 0 0; color: white;">
+        <h2 style="margin: 0; font-size: 24px;">📋 Catalog Update Notice</h2>
+      </div>
+      <div style="background-color: white; border: 1px solid #e5e7eb; border-top: none; padding: 30px; border-radius: 0 0 8px 8px;">
+        <p style="color: #374151; margin-top: 0;">Hi ${artistName},</p>
+        <p style="color: #374151; font-size: 16px;">Your catalog has been updated by an administrator.</p>
+        <p style="color: #374151;">${trackCount} track(s) have been removed from your catalog.</p>
+        
+        <p style="color: #6b7280; font-size: 14px; margin-top: 20px;">If you have any questions, please contact us.</p>
+      </div>
+      <div style="background-color: #f9fafb; padding: 20px; margin-top: 20px; border-radius: 4px; text-align: center;">
+        <p style="color: #6b7280; font-size: 12px; margin: 0;">
+          Automated message — do not reply<br/>
+          Good Life Music S.L | Profesor Hermida 6, 3-3C, 36960 Sanxenxo (Spain)
+        </p>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Send catalog upload notification email to artist
+ */
+export async function sendCatalogUploadEmailToArtist(data: {
+  artistName: string;
+  artistEmail: string;
+}): Promise<{ success: boolean; error?: string; messageId?: string }> {
+  try {
+    console.log("[Email] Sending catalog upload notification to:", data.artistEmail);
+    
+    const html = getCatalogUploadEmailForArtist(data.artistName);
+
+    const response = await resend.emails.send({
+      from: EMAIL_FROM,
+      to: data.artistEmail,
+      subject: "🎵 New Catalog Uploaded",
+      html,
+    });
+
+    if (response.error) {
+      console.error("[Email] Error sending catalog upload email:", response.error);
+      return { success: false, error: response.error.message };
+    }
+
+    console.log("[Email] Catalog upload email sent successfully, messageId:", response.data?.id);
+    return { success: true, messageId: response.data?.id };
+  } catch (error) {
+    console.error("[Email] Error in sendCatalogUploadEmailToArtist:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+/**
+ * Send royalty upload notification email to artist
+ */
+export async function sendRoyaltyUploadEmailToArtist(data: {
+  artistName: string;
+  artistEmail: string;
+  quarter: number;
+  year: number;
+}): Promise<{ success: boolean; error?: string; messageId?: string }> {
+  try {
+    console.log("[Email] Sending royalty upload notification to:", data.artistEmail, `Q${data.quarter} ${data.year}`);
+    
+    const html = getRoyaltyUploadEmailForArtist(data.artistName, data.quarter, data.year);
+
+    const response = await resend.emails.send({
+      from: EMAIL_FROM,
+      to: data.artistEmail,
+      subject: `💰 New Royalties Available — Q${data.quarter} ${data.year}`,
+      html,
+    });
+
+    if (response.error) {
+      console.error("[Email] Error sending royalty upload email:", response.error);
+      return { success: false, error: response.error.message };
+    }
+
+    console.log("[Email] Royalty upload email sent successfully, messageId:", response.data?.id);
+    return { success: true, messageId: response.data?.id };
+  } catch (error) {
+    console.error("[Email] Error in sendRoyaltyUploadEmailToArtist:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+/**
+ * Send catalog deleted notification email to artist
+ */
+export async function sendCatalogDeletedEmailToArtist(data: {
+  artistName: string;
+  artistEmail: string;
+  trackCount: number;
+}): Promise<{ success: boolean; error?: string; messageId?: string }> {
+  try {
+    console.log("[Email] Sending catalog deleted notification to:", data.artistEmail);
+    
+    const html = getCatalogDeletedEmailForArtist(data.artistName, data.trackCount);
+
+    const response = await resend.emails.send({
+      from: EMAIL_FROM,
+      to: data.artistEmail,
+      subject: "📋 Catalog Update Notice",
+      html,
+    });
+
+    if (response.error) {
+      console.error("[Email] Error sending catalog deleted email:", response.error);
+      return { success: false, error: response.error.message };
+    }
+
+    console.log("[Email] Catalog deleted email sent successfully, messageId:", response.data?.id);
+    return { success: true, messageId: response.data?.id };
+  } catch (error) {
+    console.error("[Email] Error in sendCatalogDeletedEmailToArtist:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",

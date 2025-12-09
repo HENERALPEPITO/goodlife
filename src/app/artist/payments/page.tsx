@@ -30,7 +30,6 @@ interface PaymentRequest {
   remarks: string | null;
   created_at: string;
   updated_at: string;
-  approved_at: string | null;
 }
 
 export default function ArtistPaymentsPage() {
@@ -193,7 +192,7 @@ export default function ArtistPaymentsPage() {
                   <TableHead>Request Date</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Approved Date</TableHead>
+                  <TableHead>Processed Date</TableHead>
                   <TableHead>Remarks</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -209,8 +208,8 @@ export default function ArtistPaymentsPage() {
                     </TableCell>
                     <TableCell>{getStatusBadge(request.status)}</TableCell>
                     <TableCell>
-                      {request.approved_at
-                        ? new Date(request.approved_at).toLocaleDateString()
+                      {request.status !== "pending" && request.updated_at
+                        ? new Date(request.updated_at).toLocaleDateString()
                         : "—"}
                     </TableCell>
                     <TableCell className="max-w-xs truncate">

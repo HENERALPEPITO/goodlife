@@ -115,33 +115,38 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // First, get all unique artist_ids from royalties
-    const { data: royaltiesData, error: royaltiesError } = await adminClient
-      .from("royalties")
-      .select("artist_id")
+    // Get all unique artist_ids from royalties_summary with their record counts
+    const { data: summaryData, error: summaryError } = await adminClient
+      .from("royalties_summary")
+      .select("artist_id, record_count")
       .not("artist_id", "is", null);
 
-    if (royaltiesError) {
-      console.error("Error fetching royalties:", royaltiesError);
+    if (summaryError) {
+      console.error("Error fetching royalties_summary:", summaryError);
       return NextResponse.json(
-        { error: "Failed to fetch royalties" },
+        { error: "Failed to fetch royalties summary" },
         { status: 500 }
       );
     }
 
+    // Aggregate record counts per artist
+    const artistRecordCounts = new Map<string, number>();
+    (summaryData || []).forEach((record: { artist_id: string; record_count: number }) => {
+      const count = artistRecordCounts.get(record.artist_id) || 0;
+      artistRecordCounts.set(record.artist_id, count + (record.record_count || 0));
+    });
+
     // Get unique artist IDs
-    const artistIds = Array.from(
-      new Set((royaltiesData || []).map((r: { artist_id: string }) => r.artist_id))
-    );
+    const artistIds = Array.from(artistRecordCounts.keys());
 
     if (artistIds.length === 0) {
       return NextResponse.json([], { status: 200 });
     }
 
-    // Get artists for these artist IDs (from artists table, not user_profiles)
+    // Get artists with their names (from artists table)
     const { data: artists, error: artistsError } = await adminClient
       .from("artists")
-      .select("id, email")
+      .select("id, name, email, user_id")
       .in("id", artistIds);
 
     if (artistsError) {
@@ -152,18 +157,23 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // Count records per artist
-    const artistRecordCounts = new Map<string, number>();
-    (royaltiesData || []).forEach((record: { artist_id: string }) => {
-      const count = artistRecordCounts.get(record.artist_id) || 0;
-      artistRecordCounts.set(record.artist_id, count + 1);
+    // Get user emails for artists without email in artists table
+    const userIds = (artists || []).map((a: any) => a.user_id).filter(Boolean);
+    const { data: userProfiles } = await adminClient
+      .from("user_profiles")
+      .select("id, email")
+      .in("id", userIds);
+
+    const userEmailMap = new Map<string, string>();
+    (userProfiles || []).forEach((u: any) => {
+      userEmailMap.set(u.id, u.email);
     });
 
     // Combine data
     const resultArtists: Artist[] = (artists || [])
-      .map((artist: { id: string; email: string }) => ({
+      .map((artist: { id: string; name: string; email: string | null; user_id: string }) => ({
         id: artist.id,
-        email: artist.email,
+        email: artist.name || artist.email || userEmailMap.get(artist.user_id) || "Unknown Artist",
         record_count: artistRecordCounts.get(artist.id) || 0,
       }))
       .sort((a: Artist, b: Artist) => a.email.localeCompare(b.email));

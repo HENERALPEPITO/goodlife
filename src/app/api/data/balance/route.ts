@@ -33,42 +33,52 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ balance: 0, artistId: null, _perf: { requestId } });
     }
 
-    // Use database function for precise calculation
+    // Fetch totals from royalties_summary table
     const q2 = performance.now();
-    const { data: totalsData, error } = await supabase
-      .rpc("get_artist_royalty_totals", { p_artist_id: artist.id });
-    logSupabaseQuery("royalties", "RPC get_artist_royalty_totals", q2, requestId);
+    const { data: summaryData, error: summaryError } = await supabase
+      .from("royalties_summary")
+      .select("total_net, total_gross")
+      .eq("artist_id", artist.id);
+    logSupabaseQuery("royalties_summary", "SELECT total_net, total_gross", q2, requestId);
 
-    if (error) {
-      console.error("Error fetching balance:", error);
-      // Fallback to manual calculation if function doesn't exist
-      const { data: royaltiesData, error: fallbackError } = await supabase
-        .from("royalties")
-        .select("net_amount")
-        .eq("artist_id", artist.id)
-        .eq("is_paid", false);
-      
-      if (fallbackError) {
-        logRouteEnd("/api/data/balance", start, requestId);
-        return NextResponse.json({ error: fallbackError.message }, { status: 500 });
-      }
-      
-      const total = (royaltiesData || []).reduce((sum, royalty) => {
-        return sum + parseFloat(royalty.net_amount || "0");
-      }, 0);
-      
+    if (summaryError) {
+      console.error("Error fetching balance from royalties_summary:", summaryError);
       logRouteEnd("/api/data/balance", start, requestId);
-      return NextResponse.json({ balance: total, artistId: artist.id, _perf: { requestId } });
+      return NextResponse.json({ error: summaryError.message }, { status: 500 });
     }
 
-    // Use the precise calculation from database
-    const result = totalsData?.[0] || { unpaid_balance: 0, total_gross: 0, total_net: 0 };
+    // Sum up all totals from royalties_summary
+    const totals = (summaryData || []).reduce(
+      (acc, row) => ({
+        total_net: acc.total_net + parseFloat(row.total_net || "0"),
+        total_gross: acc.total_gross + parseFloat(row.total_gross || "0"),
+      }),
+      { total_net: 0, total_gross: 0 }
+    );
+
+    // Get paid amounts from payment_requests to calculate available balance
+    const q3 = performance.now();
+    const { data: paidRequests } = await supabase
+      .from("payment_requests")
+      .select("amount")
+      .eq("artist_id", artist.id)
+      .eq("status", "paid");
+    logSupabaseQuery("payment_requests", "SELECT amount WHERE paid", q3, requestId);
+
+    const paidAmount = (paidRequests || []).reduce(
+      (sum, req) => sum + parseFloat(req.amount || "0"),
+      0
+    );
+
+    // Available balance = total net earnings - paid amounts
+    const availableBalance = totals.total_net - paidAmount;
 
     logRouteEnd("/api/data/balance", start, requestId);
     return NextResponse.json({ 
-      balance: parseFloat(result.unpaid_balance) || 0,
-      totalGross: parseFloat(result.total_gross) || 0,
-      totalNet: parseFloat(result.total_net) || 0,
+      balance: availableBalance > 0 ? availableBalance : 0,
+      totalGross: totals.total_gross,
+      totalNet: totals.total_net,
+      paidAmount: paidAmount,
       artistId: artist.id, 
       _perf: { requestId } 
     });
