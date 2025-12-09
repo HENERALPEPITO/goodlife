@@ -6,6 +6,7 @@ import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { useToast } from "@/components/ui/use-toast";
 import { EditableRoyaltyTable } from "@/components/royalties/EditableRoyaltyTable";
+import { CsvExportDropdown } from "@/components/royalties/CsvExportDropdown";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader, AlertCircle, Trash2, ChevronDown, ChevronRight, Download } from "lucide-react";
 import type { Royalty } from "@/types";
@@ -519,6 +520,8 @@ export default function ArtistRoyaltiesPage() {
               </p>
             </div>
           </div>
+          {/* Export Original CSV Button */}
+          <CsvExportDropdown artistId={artistId} />
         </div>
 
         {/* Error State */}

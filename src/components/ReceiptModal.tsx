@@ -47,8 +47,7 @@ interface ReceiptData {
   total_amount: number;
   status: string;
   created_at: string;
-  approved_at: string | null;
-  approved_by_email: string | null;
+  updated_at: string;
   royalties: RoyaltyItem[];
   totals: {
     total_gross: number;
@@ -225,21 +224,13 @@ export function ReceiptModal({
                     {new Date(receiptData.created_at).toLocaleDateString()}
                   </p>
                 </div>
-                {receiptData.approved_at && (
-                  <>
-                    <div>
-                      <p className="text-sm text-slate-600">Approved Date</p>
-                      <p className="font-medium">
-                        {new Date(receiptData.approved_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-slate-600">Approved By</p>
-                      <p className="font-medium">
-                        {receiptData.approved_by_email || "—"}
-                      </p>
-                    </div>
-                  </>
+                {receiptData.status !== "pending" && receiptData.updated_at && (
+                  <div>
+                    <p className="text-sm text-slate-600">Processed Date</p>
+                    <p className="font-medium">
+                      {new Date(receiptData.updated_at).toLocaleDateString()}
+                    </p>
+                  </div>
                 )}
               </div>
             </div>

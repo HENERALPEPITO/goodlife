@@ -17,9 +17,6 @@ interface PaymentRequestDetailed {
   royalty_count: number;
   created_at: string;
   updated_at: string;
-  approved_by: string | null;
-  approved_by_email: string | null;
-  approved_at: string | null;
 }
 
 interface GetPaymentRequestsResponse {
@@ -175,17 +172,6 @@ export async function GET(request: NextRequest): Promise<NextResponse<GetPayment
           }
         }
 
-        // Get approver info if exists
-        let approverEmail = null;
-        if (req.approved_by) {
-          const { data: approver } = await adminClient
-            .from("user_profiles")
-            .select("email")
-            .eq("id", req.approved_by)
-            .single();
-          approverEmail = approver?.email || null;
-        }
-
         return {
           id: req.id,
           artist_id: req.artist_id,
@@ -196,9 +182,6 @@ export async function GET(request: NextRequest): Promise<NextResponse<GetPayment
           royalty_count: totalRecordCount || royaltyCount || 0,
           created_at: req.created_at,
           updated_at: req.updated_at,
-          approved_by: req.approved_by,
-          approved_by_email: approverEmail,
-          approved_at: req.approved_at,
         } as PaymentRequestDetailed;
       })
     );
@@ -241,10 +224,6 @@ export async function POST(request: NextRequest): Promise<NextResponse<UpdatePay
 
     const updateData: any = { status, updated_at: new Date().toISOString() };
     if (remarks !== undefined) updateData.remarks = remarks || null;
-    if (status === "approved" || status === "rejected") {
-      updateData.approved_by = admin.id;
-      updateData.approved_at = new Date().toISOString();
-    }
 
     const { data: paymentRequest, error: updateError } = await adminClient
       .from("payment_requests")
@@ -255,7 +234,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<UpdatePay
 
     if (updateError || !paymentRequest) {
       console.error("Error updating payment request:", updateError);
-      return NextResponse.json({ success: false, error: "Failed to update payment request" }, { status: 500 });
+      const errorMessage = updateError?.message || (paymentRequest ? "Unknown error" : "Payment request not found");
+      return NextResponse.json({ success: false, error: `Failed to update payment request: ${errorMessage}` }, { status: 500 });
     }
 
     // If approved, generate PDF and recalculate amount if needed
@@ -328,6 +308,40 @@ export async function POST(request: NextRequest): Promise<NextResponse<UpdatePay
       artistEmail = profile?.email || artist.email || "Unknown";
     }
 
+    // Send email notifications based on status
+    if (artist && artistEmail !== "Unknown") {
+      const { data: invoice } = await adminClient.from("invoices").select("invoice_number").eq("payment_request_id", id).maybeSingle();
+      const invoiceNumber = invoice?.invoice_number || `INV-${new Date().getFullYear()}-${paymentRequest.id.substring(0, 8).toUpperCase()}`;
+      const amount = Number(paymentRequest.amount || 0);
+
+      if (status === "approved") {
+        try {
+          await sendPaymentApprovedEmailToArtist({
+            artistName: artist.name || "Artist",
+            artistEmail: artistEmail,
+            amount: amount,
+            invoiceNumber: invoiceNumber,
+            approvalDate: new Date().toLocaleDateString(),
+          });
+          console.log("Approval email sent to:", artistEmail);
+        } catch (emailErr) {
+          console.error("Error sending approval email:", emailErr);
+        }
+      } else if (status === "rejected") {
+        try {
+          await sendPaymentRejectedEmailToArtist({
+            artistName: artist.name || "Artist",
+            artistEmail: artistEmail,
+            amount: amount,
+            invoiceNumber: invoiceNumber,
+          });
+          console.log("Rejection email sent to:", artistEmail);
+        } catch (emailErr) {
+          console.error("Error sending rejection email:", emailErr);
+        }
+      }
+    }
+
     // Get royalty count from royalties_summary
     const { data: summaryCount } = await adminClient.from("royalties_summary").select("record_count").eq("artist_id", paymentRequest.artist_id);
     const royaltyCount = (summaryCount || []).reduce((sum: number, r: any) => sum + (r.record_count || 0), 0);
@@ -342,9 +356,6 @@ export async function POST(request: NextRequest): Promise<NextResponse<UpdatePay
       royalty_count: royaltyCount,
       created_at: paymentRequest.created_at,
       updated_at: paymentRequest.updated_at,
-      approved_by: paymentRequest.approved_by,
-      approved_by_email: null,
-      approved_at: paymentRequest.approved_at,
     };
 
     return NextResponse.json({ success: true, paymentRequest: detailed }, { status: 200 });

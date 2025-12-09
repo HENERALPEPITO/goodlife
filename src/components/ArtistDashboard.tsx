@@ -85,13 +85,29 @@ export default function ArtistDashboard() {
 
       if (summaryResult.data && summaryResult.data[0]) {
         const s = summaryResult.data[0];
+        let totalStreams = parseInt(String(s.total_streams || 0), 10);
+        
+        // If RPC returns 0 streams, try direct table query as fallback
+        if (totalStreams === 0) {
+          console.log('[Artist Dashboard] RPC returned 0 streams, trying direct query...');
+          const { data: directSummary, error: directError } = await supabase
+            .from('royalties_summary')
+            .select('total_streams, total_net, track_id')
+            .eq('artist_id', artist.id);
+          
+          if (!directError && directSummary && directSummary.length > 0) {
+            totalStreams = directSummary.reduce((sum, row) => sum + Number(row.total_streams || 0), 0);
+            console.log('[Artist Dashboard] Direct query found', directSummary.length, 'records, total_streams:', totalStreams);
+          }
+        }
+        
         setStats({
           totalRevenue: parseFloat(String(s.total_earnings || s.total_net || 0)),
           totalTracks: parseInt(String(s.total_tracks || 0), 10),
-          totalStreams: parseInt(String(s.total_streams || 0), 10),
+          totalStreams: totalStreams,
         });
         usingSummary = true;
-        console.log('[Artist Dashboard] Using royalties_summary table');
+        console.log('[Artist Dashboard] Using royalties_summary table, streams:', totalStreams);
 
         // Fetch top tracks from summary table
         const topTracksResult = await supabase.rpc('get_artist_top_tracks', {

@@ -34,8 +34,7 @@ interface ReceiptData {
     total_amount: number;
     status: string;
     created_at: string;
-    approved_at: string | null;
-    approved_by_email: string | null;
+    updated_at: string;
     royalties: RoyaltyItem[];
     totals: {
       total_gross: number;
@@ -242,17 +241,6 @@ export async function GET(request: NextRequest): Promise<NextResponse<ReceiptDat
       .eq("payment_request_id", paymentRequestId)
       .maybeSingle();
 
-    // Get approver email if exists
-    let approvedByEmail = null;
-    if (paymentRequest.approved_by) {
-      const { data: approver } = await admin
-        .from("user_profiles")
-        .select("email")
-        .eq("id", paymentRequest.approved_by)
-        .single();
-      approvedByEmail = approver?.email || null;
-    }
-
     return NextResponse.json(
       {
         success: true,
@@ -267,8 +255,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<ReceiptDat
           total_amount: totalAmount,
           status: paymentRequest.status,
           created_at: paymentRequest.created_at,
-          approved_at: paymentRequest.approved_at || null,
-          approved_by_email: approvedByEmail,
+          updated_at: paymentRequest.updated_at,
           royalties: royalties,
           totals,
         },

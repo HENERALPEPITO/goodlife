@@ -151,6 +151,23 @@ export default function AnalyticsPage() {
         platformDist = overviewData.platform_distribution || {};
         territoryDist = overviewData.territory_distribution || {};
         topTerritoryName = overviewData.top_territory || "N/A";
+        
+        // If RPC returned 0 streams, try direct query as fallback
+        if (totalStreams === 0) {
+          console.log('[Analytics] Artist RPC returned 0 streams, trying direct query...');
+          const { data: directSummary, error: directError } = await supabase
+            .from('royalties_summary')
+            .select('total_streams')
+            .eq('artist_id', artistId);
+          
+          if (!directError && directSummary && directSummary.length > 0) {
+            const directSum = directSummary.reduce((sum, row) => sum + parseInt(String(row.total_streams || 0), 10), 0);
+            if (directSum > 0) {
+              totalStreams = directSum;
+              console.log('[Analytics] Direct query found artist total_streams:', totalStreams);
+            }
+          }
+        }
       } else {
         // Admin: aggregate from all summary records
         const { data: adminTotals, error: adminError } = await supabase.rpc('get_admin_royalties_totals');
@@ -184,6 +201,18 @@ export default function AnalyticsPage() {
           const platformTotals = new Map<string, number>();
           const territoryTotals = new Map<string, number>();
           const topTerritoryCount = new Map<string, number>();
+          
+          // If RPC returned 0 streams, sum directly from records
+          if (totalStreams === 0) {
+            let directStreamsSum = 0;
+            for (const summary of allSummaries) {
+              directStreamsSum += parseInt(String(summary.total_streams || 0), 10);
+            }
+            if (directStreamsSum > 0) {
+              totalStreams = directStreamsSum;
+              console.log('[Analytics] Direct query found total_streams:', totalStreams);
+            }
+          }
 
           for (const summary of allSummaries) {
             const net = parseFloat(summary.total_net || 0);
@@ -456,7 +485,7 @@ export default function AnalyticsPage() {
           icon={Music}
           color={GREEN_PALETTE.dark}
           label="Avg per Stream"
-          value={`€${analytics.stats.averagePerStream.toFixed(4)}`}
+          value={`€${analytics.stats.averagePerStream.toFixed(6)}`}
           subtitle="Revenue per play"
         />
         <MetricCard

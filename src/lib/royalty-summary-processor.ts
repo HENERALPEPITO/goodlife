@@ -37,11 +37,19 @@ const COLUMN_VARIATIONS_MAP: Record<keyof ColumnMapping, string[]> = {
   date: ["Date", "date", "Broadcast Date", "broadcast_date", "BroadcastDate"],
   territory: ["Territory", "territory", "Country", "country", "Region"],
   source: ["Source", "source", "Platform", "platform", "Exploitation Source", "exploitation_source"],
-  usageCount: ["Usage Count", "usage count", "Usage Cou", "Usage", "usage", "usage_count", "UsageCount"],
+  usageCount: ["Usage Count", "usage count", "Usage Cou", "Usage", "usage", "usage_count", "UsageCount", "Streams", "streams", "Stream Count", "stream_count", "Play Count", "play_count", "Plays", "plays", "Quantity", "quantity", "Count", "count", "Units", "units"],
   gross: ["Gross", "gross", "Gross Amount", "gross_amount", "GrossAmount"],
   adminPercent: ["Admin %", "admin %", "Admin Percent", "admin_percent", "AdminPercent", "Admin"],
   net: ["Net", "net", "Net Amount", "net_amount", "NetAmount"],
 };
+
+/**
+ * Clean header string by removing BOM and trimming
+ */
+function cleanHeader(header: string): string {
+  // Remove BOM (Byte Order Mark) and other invisible characters
+  return header.replace(/[\uFEFF\u200B\u200C\u200D\u2060]/g, '').trim();
+}
 
 /**
  * Build column mapping from CSV headers
@@ -61,15 +69,20 @@ function buildColumnMapping(headers: string[]): ColumnMapping {
     net: null,
   };
 
+  // Clean headers to remove BOM and other invisible characters
+  const cleanedHeaders = headers.map(h => cleanHeader(h));
+  
   const headerLowerMap = new Map<string, string>();
-  headers.forEach(h => headerLowerMap.set(h.toLowerCase().trim(), h));
+  cleanedHeaders.forEach((h, i) => headerLowerMap.set(h.toLowerCase().trim(), headers[i]));
 
   for (const [field, variations] of Object.entries(COLUMN_VARIATIONS_MAP)) {
     const key = field as keyof ColumnMapping;
     
+    // First pass: exact match with cleaned headers
     for (const variation of variations) {
-      if (headers.includes(variation)) {
-        mapping[key] = variation;
+      const idx = cleanedHeaders.indexOf(variation);
+      if (idx !== -1) {
+        mapping[key] = headers[idx]; // Use original header for data access
         break;
       }
     }
@@ -120,11 +133,16 @@ function parseBig(value: string): Big {
 
 /**
  * Parse integer from string
+ * Handles various formats: "1,000", "1.5", "1000.00", empty strings
  */
 function parseIntSafe(value: string): number {
-  const cleaned = value.replace(/[,\s]/g, '').trim();
-  const num = parseInt(cleaned, 10);
-  return isNaN(num) ? 0 : num;
+  if (!value || typeof value !== 'string') return 0;
+  // Remove commas, spaces, and currency symbols
+  const cleaned = value.replace(/[,\s$€£¥]/g, '').trim();
+  if (!cleaned || cleaned === '-') return 0;
+  // Parse as float first to handle decimals, then floor to get integer
+  const num = parseFloat(cleaned);
+  return isNaN(num) ? 0 : Math.floor(num);
 }
 
 /**
@@ -427,15 +445,18 @@ async function upsertSummaries(
       const territoryDistribution = computeDistributions(agg.territories, totalNet);
       const monthlyBreakdown = monthsToJson(agg.months);
 
-      // Debug: Log first record's distribution data
+      // Debug: Log first record's distribution data and stream metrics
       if (records.length === 0) {
-        console.log('[CSV Processor Debug] First track distributions:', {
+        console.log('[CSV Processor Debug] First track data:', {
           trackId,
           trackTitle: agg.track_title,
+          total_streams: agg.total_streams,
+          total_net: totalNet.toString(),
+          total_gross: totalGross.toString(),
+          avg_per_stream: agg.total_streams > 0 ? totalNet.div(agg.total_streams).toFixed(10) : '0',
+          revenue_per_play: agg.total_streams > 0 ? totalRevenue.div(agg.total_streams).toFixed(10) : '0',
           platformsCount: agg.platforms.size,
           territoriesCount: agg.territories.size,
-          platformDistribution,
-          territoryDistribution,
           topTerritory: topTerritory?.key,
           topPlatform: topPlatform?.key,
         });
@@ -549,6 +570,12 @@ export async function processRoyaltySummary(
     // Build column mapping
     const mapping = buildColumnMapping(parsed.headers);
     console.log(`   Column mapping: ${JSON.stringify(mapping)}`);
+    
+    // Warn if usageCount (streams) column not detected - this affects avg_per_stream and revenue_per_play calculations
+    if (!mapping.usageCount) {
+      console.warn('⚠️ WARNING: No usage count/streams column detected. avg_per_stream and revenue_per_play will be 0.');
+      console.warn('   Available headers:', parsed.headers.join(', '));
+    }
 
     // Validate essential columns exist
     if (!mapping.songTitle) {

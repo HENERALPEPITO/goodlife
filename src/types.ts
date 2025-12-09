@@ -14,11 +14,28 @@ export interface Track {
   artist_id: string;
   title: string;
   iswc: string | null;
+  isrc: string | null;
   composers: string | null;
   release_date: string | null;
   platform: string | null;
   territory: string | null;
+  split: string | null;
+  spotify_image_url: string | null;
+  spotify_track_id: string | null;
+  spotify_artist_name: string | null;
+  spotify_track_name: string | null;
+  spotify_fetched_at: string | null;
   created_at: string;
+}
+
+export interface SpotifyAlbumCoverResponse {
+  image: string | null;
+  trackName: string | null;
+  artistName: string | null;
+  albumName: string | null;
+  spotifyTrackId: string | null;
+  cached: boolean;
+  error?: string;
 }
 
 export interface Royalty {
@@ -48,9 +65,7 @@ export interface PaymentRequest {
   artist_id: string;
   amount: number;
   status: "pending" | "approved" | "rejected" | "paid";
-  remarks: string | null;
-  approved_by: string | null;
-  approved_at: string | null;
+  remarks?: string | null;
   created_at: string;
   updated_at: string;
 }

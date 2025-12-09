@@ -31,9 +31,6 @@ interface PaymentRequest {
   royalty_count: number;
   created_at: string;
   updated_at: string;
-  approved_by: string | null;
-  approved_by_email: string | null;
-  approved_at: string | null;
 }
 
 export default function AdminPaymentRequestsPage() {
