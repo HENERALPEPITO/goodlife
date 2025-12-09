@@ -6,6 +6,7 @@ import { DollarSign, Music, TrendingUp, FileText, ArrowUp, ArrowDown, Play, Uplo
 import Link from "next/link";
 import { useToast } from "@/components/ui/use-toast";
 import { format } from "date-fns";
+import { NotificationsDropdown } from "@/components/NotificationsDropdown";
 
 interface ArtistStats {
   totalRevenue: number;
@@ -41,6 +42,7 @@ export default function ArtistDashboard() {
   const [topTracks, setTopTracks] = useState<TopTrack[]>([]);
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
   const [sortBy, setSortBy] = useState<'streams' | 'revenue' | 'date'>('streams');
+  const [artistId, setArtistId] = useState<string | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -72,9 +74,13 @@ export default function ArtistDashboard() {
           totalTracks: 0,
           totalStreams: 0,
         });
+        setArtistId(null);
         setLoading(false);
         return;
       }
+
+      // Store the artist ID for notifications
+      setArtistId(artist.id);
 
       // Try new summary-based RPC first (from royalties_summary table)
       const summaryResult = await supabase.rpc('get_artist_dashboard_overview', { 
@@ -267,13 +273,16 @@ export default function ArtistDashboard() {
   return (
     <div className="space-y-8 p-1">
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold transition-colors" style={{ color: 'var(--text-primary)' }}>
-          Artist Dashboard
-        </h1>
-        <p className="text-sm mt-2 transition-colors" style={{ color: 'var(--text-secondary)' }}>
-          Welcome back, {user?.email}! Here's your performance overview.
-        </p>
+      <div className="mb-6 flex items-start justify-between">
+        <div>
+          <h1 className="text-3xl font-bold transition-colors" style={{ color: 'var(--text-primary)' }}>
+            Artist Dashboard
+          </h1>
+          <p className="text-sm mt-2 transition-colors" style={{ color: 'var(--text-secondary)' }}>
+            Welcome back, {user?.email}! Here's your performance overview.
+          </p>
+        </div>
+        <NotificationsDropdown artistId={artistId} />
       </div>
 
       {/* Improved Metric Cards - 3 Column Grid */}

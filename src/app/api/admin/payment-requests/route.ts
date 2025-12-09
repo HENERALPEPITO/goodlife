@@ -6,6 +6,11 @@ import {
   sendPaymentApprovedEmailToArtist,
   sendPaymentRejectedEmailToArtist,
 } from "@/lib/emailService";
+import {
+  notifyPaymentApproved,
+  notifyPaymentRejected,
+  notifyPaymentPaid,
+} from "@/lib/notificationService";
 
 interface PaymentRequestDetailed {
   id: string;
@@ -308,7 +313,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<UpdatePay
       artistEmail = profile?.email || artist.email || "Unknown";
     }
 
-    // Send email notifications based on status
+    // Send email and create notifications based on status
     if (artist && artistEmail !== "Unknown") {
       const { data: invoice } = await adminClient.from("invoices").select("invoice_number").eq("payment_request_id", id).maybeSingle();
       const invoiceNumber = invoice?.invoice_number || `INV-${new Date().getFullYear()}-${paymentRequest.id.substring(0, 8).toUpperCase()}`;
@@ -327,6 +332,12 @@ export async function POST(request: NextRequest): Promise<NextResponse<UpdatePay
         } catch (emailErr) {
           console.error("Error sending approval email:", emailErr);
         }
+        try {
+          await notifyPaymentApproved(paymentRequest.artist_id, amount, invoiceNumber);
+          console.log("Approval notification created");
+        } catch (notifErr) {
+          console.error("Error creating approval notification:", notifErr);
+        }
       } else if (status === "rejected") {
         try {
           await sendPaymentRejectedEmailToArtist({
@@ -338,6 +349,19 @@ export async function POST(request: NextRequest): Promise<NextResponse<UpdatePay
           console.log("Rejection email sent to:", artistEmail);
         } catch (emailErr) {
           console.error("Error sending rejection email:", emailErr);
+        }
+        try {
+          await notifyPaymentRejected(paymentRequest.artist_id, amount, invoiceNumber);
+          console.log("Rejection notification created");
+        } catch (notifErr) {
+          console.error("Error creating rejection notification:", notifErr);
+        }
+      } else if (status === "paid") {
+        try {
+          await notifyPaymentPaid(paymentRequest.artist_id, amount, invoiceNumber);
+          console.log("Payment notification created");
+        } catch (notifErr) {
+          console.error("Error creating payment notification:", notifErr);
         }
       }
     }

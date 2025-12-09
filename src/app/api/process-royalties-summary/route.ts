@@ -20,6 +20,8 @@ import { cookies } from 'next/headers';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { downloadCsvFromStorage } from '@/lib/royalty-storage';
 import { processRoyaltySummary, generateFailedRowsCsv } from '@/lib/royalty-summary-processor';
+import { sendRoyaltyUploadEmailToArtist } from '@/lib/emailService';
+import { notifyRoyaltyUpload } from '@/lib/notificationService';
 import type { ProcessSummaryResponse } from '@/types/royalty-summary';
 
 // Request body type
@@ -258,6 +260,49 @@ export async function POST(request: NextRequest): Promise<NextResponse<ProcessSu
     console.log(`   Summaries created: ${result.summariesCreated}`);
     console.log(`   Summaries updated: ${result.summariesUpdated}`);
     console.log(`   Total rows processed: ${result.totalRows}`);
+
+    // Step 6: Send email and create notification for the artist
+    if (result.success) {
+      try {
+        const supabaseAdmin = getSupabaseAdmin();
+        
+        // Get artist info for email
+        const { data: artist } = await supabaseAdmin
+          .from('artists')
+          .select('id, name, user_id')
+          .eq('id', artistId)
+          .single();
+
+        if (artist) {
+          // Get artist email from user_profiles
+          const { data: profile } = await supabaseAdmin
+            .from('user_profiles')
+            .select('email')
+            .eq('id', artist.user_id)
+            .single();
+
+          const artistEmail = profile?.email;
+
+          // Send email notification
+          if (artistEmail) {
+            const emailResult = await sendRoyaltyUploadEmailToArtist({
+              artistName: artist.name || 'Artist',
+              artistEmail: artistEmail,
+              quarter: quarter,
+              year: year,
+            });
+            console.log(`📧 Royalty upload email to ${artistEmail}:`, emailResult.success ? 'sent' : emailResult.error);
+          }
+
+          // Create in-app notification
+          const notifResult = await notifyRoyaltyUpload(artist.id, quarter, year);
+          console.log(`🔔 Royalty upload notification:`, notifResult.success ? 'created' : notifResult.error);
+        }
+      } catch (notifyError) {
+        console.error('Error sending royalty upload notifications:', notifyError);
+        // Don't fail the request if notification fails
+      }
+    }
 
     return NextResponse.json(
       {

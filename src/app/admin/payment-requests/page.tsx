@@ -215,7 +215,7 @@ export default function AdminPaymentRequestsPage() {
             business_name: "Good Life Music S.L",
             address: "Profesor Hermida 6, 3-3C, 36960 Sanxenxo (Spain)",
             phone: "+34 693 43 25 06",
-            email: "info@goodlifemusic.com",
+            email: "hello@goodlifemgmt.net",
             tax_id: "B72510704",
             updated_at: new Date().toISOString(),
             contact_person: null,

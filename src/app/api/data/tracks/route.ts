@@ -139,7 +139,75 @@ export async function DELETE(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
     const deleteAll = searchParams.get("delete_all");
+    const artistId = searchParams.get("artist_id");
 
+    // Delete all tracks for a specific artist
+    if (artistId && deleteAll === "true") {
+      // First count the tracks to be deleted
+      const { count } = await supabase
+        .from("tracks")
+        .select("*", { count: "exact", head: true })
+        .eq("artist_id", artistId);
+
+      const trackCount = count || 0;
+
+      // Delete the tracks
+      const { error } = await supabase
+        .from("tracks")
+        .delete()
+        .eq("artist_id", artistId);
+      
+      if (error) {
+        console.error("Error deleting tracks for artist:", error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      // Send notification and email to the artist
+      if (trackCount > 0) {
+        try {
+          // Get artist info
+          const { data: artist } = await supabase
+            .from("artists")
+            .select("id, name, user_id")
+            .eq("id", artistId)
+            .single();
+
+          if (artist) {
+            // Get artist email
+            const { data: profile } = await supabase
+              .from("user_profiles")
+              .select("email")
+              .eq("id", artist.user_id)
+              .single();
+
+            // Import and call notification/email services
+            const { notifyCatalogDeleted } = await import("@/lib/notificationService");
+            const { sendCatalogDeletedEmailToArtist } = await import("@/lib/emailService");
+
+            // Create notification
+            await notifyCatalogDeleted(artist.id, trackCount);
+
+            // Send email
+            if (profile?.email) {
+              await sendCatalogDeletedEmailToArtist({
+                artistName: artist.name || "Artist",
+                artistEmail: profile.email,
+                trackCount: trackCount,
+              });
+            }
+
+            console.log(`Deleted ${trackCount} tracks for artist ${artist.name}, notifications sent`);
+          }
+        } catch (notifyErr) {
+          console.error("Error sending catalog deletion notifications:", notifyErr);
+          // Don't fail the request if notification fails
+        }
+      }
+
+      return NextResponse.json({ success: true, deletedCount: trackCount });
+    }
+
+    // Delete all tracks (original behavior)
     if (deleteAll === "true") {
       const { error } = await supabase.from("tracks").delete().neq("id", "00000000-0000-0000-0000-000000000000");
       

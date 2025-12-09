@@ -42,6 +42,7 @@ export default function ArtistTrackManagerPage() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<CatalogCsvRow[]>([]);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteAllOpen, setDeleteAllOpen] = useState(false);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [editRow, setEditRow] = useState<TrackRow | null>(null);
   const [page, setPage] = useState(1);
@@ -332,6 +333,29 @@ export default function ArtistTrackManagerPage() {
       console.log("Insert successful, data:", data);
       
       toast({ title: "Success", description: `${rows.length} tracks successfully saved to database`, variant: "default" });
+      
+      // Send email and notification to the artist
+      if (selectedArtistId) {
+        try {
+          const response = await fetch("/api/notifications", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "catalog_upload",
+              artistIds: [selectedArtistId],
+            }),
+          });
+          const result = await response.json();
+          if (result.success) {
+            console.log("Catalog upload notifications sent:", result);
+          } else {
+            console.error("Failed to send catalog notifications:", result.error);
+          }
+        } catch (notifyErr) {
+          console.error("Error sending catalog notifications:", notifyErr);
+        }
+      }
+      
       setFile(null);
       setPreview([]);
       await fetchTracks();
@@ -360,6 +384,37 @@ export default function ArtistTrackManagerPage() {
     toast({ title: "Deleted", description: `${ids.length} tracks removed` });
     setDeleteOpen(false);
     await fetchTracks();
+  };
+
+  const deleteAllForArtist = async () => {
+    if (!selectedArtistId) return;
+    
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/data/tracks?artist_id=${selectedArtistId}&delete_all=true`, {
+        method: "DELETE",
+      });
+      
+      const result = await response.json();
+      
+      if (result.error) {
+        toast({ title: "Delete failed", description: result.error, variant: "destructive" });
+        return;
+      }
+      
+      const artistName = artists.find(a => a.id === selectedArtistId)?.name || "artist";
+      toast({ 
+        title: "Catalog Deleted", 
+        description: `${result.deletedCount || 0} tracks removed for ${artistName}. Notification sent to artist.`,
+      });
+      setDeleteAllOpen(false);
+      await fetchTracks();
+    } catch (err) {
+      console.error("Error deleting all tracks:", err);
+      toast({ title: "Delete failed", description: "An unexpected error occurred", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const saveEdit = async () => {
@@ -640,6 +695,26 @@ export default function ArtistTrackManagerPage() {
               }}
             >
               Export CSV
+            </button>
+            <button
+              onClick={() => setDeleteAllOpen(true)}
+              disabled={!selectedArtistId || tracks.length === 0}
+              className="px-4 py-2 text-sm rounded-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95 flex items-center gap-2"
+              style={{
+                border: '1px solid rgba(239, 68, 68, 0.5)',
+                color: '#EF4444',
+                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+              }}
+              onMouseEnter={(e) => {
+                if (!e.currentTarget.disabled) {
+                  e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.2)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.1)';
+              }}
+            >
+              <Trash2 className="h-4 w-4" /> Delete All Catalog
             </button>
           </div>
 
@@ -971,32 +1046,73 @@ export default function ArtistTrackManagerPage() {
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="text-black">Confirm bulk delete</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm py-4 text-black">
+              This will permanently delete {selectedCount} selected tracks.
+            </p>
+            <DialogFooter className="gap-2">
+              <button
+                onClick={() => setDeleteOpen(false)}
+                className="px-4 py-2 text-sm rounded-md transition-all duration-200 hover:scale-105 active:scale-95 border border-gray-300 text-gray-800 bg-gray-50 hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={bulkDelete}
+                className="px-4 py-2 text-sm rounded-md text-white transition-all duration-200 hover:scale-105 active:scale-95 bg-red-600 hover:bg-red-700 shadow-lg hover:shadow-xl shadow-red-200 hover:shadow-red-300"
+              >
+                Delete
+              </button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      {/* Delete All Catalog Confirmation Dialog */}
+      <Dialog open={deleteAllOpen} onOpenChange={setDeleteAllOpen}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle style={{ color: 'rgba(255, 255, 255, 0.95)' }}>Confirm bulk delete</DialogTitle>
+           <DialogHeader>
+            <DialogTitle style={{ color: '#000000' }}>
+              <div className="flex items-center gap-2">
+                <AlertCircle className="h-5 w-5 text-red-500" />
+                Delete All Catalog
+              </div>
+            </DialogTitle>
           </DialogHeader>
-          <p className="text-sm py-4" style={{ color: 'rgba(156, 163, 175, 0.8)' }}>This will permanently delete {selectedCount} selected tracks.</p>
-          <DialogFooter className="gap-2">
+         <div className="py-4">
+              <p className="text-sm text-black">
+                Are you sure you want to delete all catalog entries for <strong>{artists.find(a => a.id === selectedArtistId)?.name || 'this artist'}</strong>?
+              </p>
+              <p className="text-sm mt-2 font-semibold text-black text-center">
+                This action cannot be undone.
+              </p>
+              <p className="text-sm mt-2 text-black">
+                {tracks.length} track(s) will be permanently deleted. The artist will be notified via email.
+              </p>
+            </div>
+         <DialogFooter className="gap-2">
             <button
-              onClick={() => setDeleteOpen(false)}
+              onClick={() => setDeleteAllOpen(false)}
               className="px-4 py-2 text-sm rounded-md transition-all duration-200 hover:scale-105 active:scale-95"
               style={{
-                border: '1px solid rgba(255, 255, 255, 0.2)',
-                color: 'rgba(255, 255, 255, 0.9)',
-                backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid rgba(0, 0, 0, 0.2)',
+                color: 'rgba(0, 0, 0, 0.9)',
+                backgroundColor: 'rgba(0, 0, 0, 0.05)',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                e.currentTarget.style.backgroundColor = 'rgba(0, 0, 0, 0.1)';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+                e.currentTarget.style.backgroundColor = 'rgba(0, 0, 0, 0.05)';
               }}
             >
               Cancel
             </button>
             <button
-              onClick={bulkDelete}
-              className="px-4 py-2 text-sm rounded-md text-white transition-all duration-200 hover:scale-105 active:scale-95"
+              onClick={deleteAllForArtist}
+              disabled={loading}
+              className="px-4 py-2 text-sm rounded-md text-white transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50"
               style={{
                 backgroundColor: '#DC2626',
                 boxShadow: '0 4px 15px rgba(220, 38, 38, 0.4)',
@@ -1010,7 +1126,7 @@ export default function ArtistTrackManagerPage() {
                 e.currentTarget.style.boxShadow = '0 4px 15px rgba(220, 38, 38, 0.4)';
               }}
             >
-              Delete
+              {loading ? 'Deleting...' : 'Delete All Catalog'}
             </button>
           </DialogFooter>
         </DialogContent>
