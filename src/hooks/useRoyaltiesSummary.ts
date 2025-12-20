@@ -355,29 +355,23 @@ function computeAnalytics(summaries: ArtistRoyaltiesSummaryResponse[]): Computed
     }))
     .sort((a, b) => b.revenue - a.revenue);
 
-  // Monthly breakdown
-  const monthlyTotals = new Map<string, number>();
+  // Quarter breakdown - aggregate all months for the quarter
+  const quarterTotalRevenue = summaries.reduce((sum, s) => {
+    const monthlyBreakdown = s.monthly_breakdown || {};
+    const monthSum = Object.values(monthlyBreakdown).reduce((m, val) => m + (val as number), 0);
+    return sum + monthSum;
+  }, 0);
 
-  summaries.forEach(s => {
-    Object.entries(s.monthly_breakdown || {}).forEach(([month, revenue]) => {
-      const current = monthlyTotals.get(month) || 0;
-      monthlyTotals.set(month, current + (revenue as number));
-    });
-  });
-
-  const monthOrder = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const monthlyRevenue = monthOrder
-    .filter(month => monthlyTotals.has(month))
-    .map(month => ({
-      month,
-      revenue: parseFloat((monthlyTotals.get(month) || 0).toFixed(2)),
-    }));
+  const quarterRevenue = [{
+    quarter: 'Total',
+    revenue: parseFloat(quarterTotalRevenue.toFixed(2)),
+  }];
 
   return {
     topTracks,
     revenueBySource,
     revenueByTerritory,
-    monthlyRevenue,
+    monthlyRevenue: quarterRevenue,
     totalRevenue: parseFloat(totalRevenue.toFixed(2)),
     totalStreams,
     avgPerStream: totalStreams > 0 ? parseFloat((totalRevenue / totalStreams).toFixed(6)) : 0,

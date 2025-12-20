@@ -971,18 +971,18 @@ export default function RoyaltiesPage() {
                     )}
                   </div>
 
-                  {/* Monthly Revenue */}
+                  {/* Quarter Revenue */}
                   <div className="bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow duration-300 p-6 border border-gray-200">
                     <div className="mb-5 pb-3 border-b border-gray-100">
-                      <h3 className="text-lg font-bold text-gray-900">Monthly Revenue</h3>
-                      <p className="text-xs text-gray-500 mt-1">Revenue by month in quarter</p>
+                      <h3 className="text-lg font-bold text-gray-900">Quarter Revenue</h3>
+                      <p className="text-xs text-gray-500 mt-1">Revenue breakdown by quarter</p>
                     </div>
                     {analytics.monthlyRevenue.length > 0 ? (
                       <ResponsiveContainer width="100%" height={320}>
                         <BarChart data={analytics.monthlyRevenue} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke={GREEN_PALETTE.grid} opacity={0.5} />
                           <XAxis 
-                            dataKey="month" 
+                            dataKey="quarter" 
                             tick={{ fill: "#374151", fontSize: 12, fontWeight: 500 }} 
                           />
                           <YAxis 
@@ -995,7 +995,7 @@ export default function RoyaltiesPage() {
                                 const data = payload[0].payload;
                                 return (
                                   <div className="bg-white border-2 border-emerald-200 rounded-xl shadow-xl p-4">
-                                    <p className="font-bold text-gray-900 mb-2">{data.month}</p>
+                                    <p className="font-bold text-gray-900 mb-2">{selectedQuarter?.label}</p>
                                     <p className="text-sm text-emerald-700 font-semibold">
                                       Revenue: €{toNumber(data.revenue).toFixed(2)}
                                     </p>
@@ -1009,7 +1009,7 @@ export default function RoyaltiesPage() {
                             {analytics.monthlyRevenue.map((entry, index) => (
                               <Cell 
                                 key={`cell-${index}`} 
-                                fill={[GREEN_PALETTE.primary, GREEN_PALETTE.secondary, GREEN_PALETTE.dark][index % 3]} 
+                                fill={GREEN_PALETTE.primary} 
                               />
                             ))}
                           </Bar>

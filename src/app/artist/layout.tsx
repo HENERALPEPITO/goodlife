@@ -4,7 +4,6 @@
  */
 
 import type { Metadata } from "next";
-import { ArtistHeader } from "@/components/ArtistHeader";
 
 export const metadata: Metadata = {
   title: "Artist Dashboard - Goodlife",
@@ -18,7 +17,6 @@ export default function ArtistLayout({
 }) {
   return (
     <div className="min-h-screen bg-slate-50">
-      <ArtistHeader />
       <main>{children}</main>
     </div>
   );

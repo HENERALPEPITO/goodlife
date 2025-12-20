@@ -134,40 +134,65 @@ export default function AnalyticsPage() {
       let topTerritoryName = "N/A";
 
       if (artistId) {
-        // Artist-specific data via RPC
-        const { data: overview, error: overviewError } = await supabase.rpc(
-          'get_artist_dashboard_overview', 
-          { _artist_id: artistId }
-        );
+        // Artist-specific data: fetch summary records directly and aggregate
+        // (Same approach as admin to ensure accurate territory/platform distribution)
+        const { data: artistSummaries, error: summaryError } = await supabase
+          .from('royalties_summary')
+          .select('total_net, total_streams, platform_distribution, territory_distribution, top_territory')
+          .eq('artist_id', artistId);
 
-        if (overviewError) {
-          console.warn('Summary RPC failed:', overviewError.message);
+        if (summaryError) {
+          console.warn('Artist summary query failed:', summaryError.message);
           return null;
         }
 
-        const overviewData = overview?.[0] || {};
-        totalRevenue = parseFloat(overviewData.total_earnings || 0);
-        totalStreams = parseInt(overviewData.total_streams || 0, 10);
-        platformDist = overviewData.platform_distribution || {};
-        territoryDist = overviewData.territory_distribution || {};
-        topTerritoryName = overviewData.top_territory || "N/A";
-        
-        // If RPC returned 0 streams, try direct query as fallback
-        if (totalStreams === 0) {
-          console.log('[Analytics] Artist RPC returned 0 streams, trying direct query...');
-          const { data: directSummary, error: directError } = await supabase
-            .from('royalties_summary')
-            .select('total_streams')
-            .eq('artist_id', artistId);
+        if (artistSummaries && artistSummaries.length > 0) {
+          const platformTotals = new Map<string, number>();
+          const territoryTotals = new Map<string, number>();
           
-          if (!directError && directSummary && directSummary.length > 0) {
-            const directSum = directSummary.reduce((sum, row) => sum + parseInt(String(row.total_streams || 0), 10), 0);
-            if (directSum > 0) {
-              totalStreams = directSum;
-              console.log('[Analytics] Direct query found artist total_streams:', totalStreams);
+          for (const summary of artistSummaries) {
+            const net = parseFloat(String(summary.total_net || 0));
+            totalRevenue += net;
+            totalStreams += parseInt(String(summary.total_streams || 0), 10);
+
+            // Aggregate platform distributions
+            // Check if values are percentages (sum ~1.0) or absolute amounts
+            const platforms = summary.platform_distribution || {};
+            const platformValues = Object.values(platforms) as number[];
+            const platformSum = platformValues.reduce((a, b) => a + b, 0);
+            const platformIsPercentage = platformSum > 0 && platformSum <= 1.1;
+            
+            for (const [platform, val] of Object.entries(platforms)) {
+              const amt = platformIsPercentage ? net * (val as number) : (val as number);
+              platformTotals.set(platform, (platformTotals.get(platform) || 0) + amt);
+            }
+
+            // For territory: use top_territory field directly with the record's net revenue
+            // This is more reliable than the distribution JSON which may have inconsistent formats
+            if (summary.top_territory) {
+              territoryTotals.set(
+                summary.top_territory, 
+                (territoryTotals.get(summary.top_territory) || 0) + net
+              );
             }
           }
+
+          // Convert to percentage distributions
+          if (totalRevenue > 0) {
+            platformTotals.forEach((amt, platform) => {
+              platformDist[platform] = amt / totalRevenue;
+            });
+            territoryTotals.forEach((amt, territory) => {
+              territoryDist[territory] = amt / totalRevenue;
+            });
+          }
+
+          // Get top territory by revenue
+          const sortedTerritories = Array.from(territoryTotals.entries()).sort((a, b) => b[1] - a[1]);
+          topTerritoryName = sortedTerritories[0]?.[0] || "N/A";
         }
+
+        console.log('[Analytics] Artist data aggregated:', { totalRevenue, totalStreams, territories: Object.keys(territoryDist).length });
       } else {
         // Admin: aggregate from all summary records
         const { data: adminTotals, error: adminError } = await supabase.rpc('get_admin_royalties_totals');
@@ -192,7 +217,6 @@ export default function AnalyticsPage() {
           sample: allSummaries?.[0] ? {
             total_net: allSummaries[0].total_net,
             platform_distribution: allSummaries[0].platform_distribution,
-            territory_distribution: allSummaries[0].territory_distribution,
             top_territory: allSummaries[0].top_territory
           } : null
         });
@@ -218,22 +242,24 @@ export default function AnalyticsPage() {
             const net = parseFloat(summary.total_net || 0);
             
             // Aggregate platform distributions
+            // Check if values are percentages (sum ~1.0) or absolute amounts
             const platforms = summary.platform_distribution || {};
-            for (const [platform, pct] of Object.entries(platforms)) {
-              const amt = net * (pct as number);
+            const platformValues = Object.values(platforms) as number[];
+            const platformSum = platformValues.reduce((a, b) => a + b, 0);
+            const platformIsPercentage = platformSum > 0 && platformSum <= 1.1;
+            
+            for (const [platform, val] of Object.entries(platforms)) {
+              const amt = platformIsPercentage ? net * (val as number) : (val as number);
               platformTotals.set(platform, (platformTotals.get(platform) || 0) + amt);
             }
 
-            // Aggregate territory distributions
-            const territories = summary.territory_distribution || {};
-            for (const [territory, pct] of Object.entries(territories)) {
-              const amt = net * (pct as number);
-              territoryTotals.set(territory, (territoryTotals.get(territory) || 0) + amt);
-            }
-
-            // Count top territories
+            // For territory: use top_territory field directly with the record's net revenue
+            // This is more reliable than the distribution JSON which may have inconsistent formats
             if (summary.top_territory) {
-              topTerritoryCount.set(summary.top_territory, (topTerritoryCount.get(summary.top_territory) || 0) + net);
+              territoryTotals.set(
+                summary.top_territory, 
+                (territoryTotals.get(summary.top_territory) || 0) + net
+              );
             }
           }
 
@@ -248,7 +274,7 @@ export default function AnalyticsPage() {
           }
 
           // Get top territory by revenue
-          const sortedTerritories = Array.from(topTerritoryCount.entries()).sort((a, b) => b[1] - a[1]);
+          const sortedTerritories = Array.from(territoryTotals.entries()).sort((a, b) => b[1] - a[1]);
           topTerritoryName = sortedTerritories[0]?.[0] || "N/A";
         }
       }
