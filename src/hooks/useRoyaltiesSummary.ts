@@ -288,7 +288,7 @@ interface ComputedAnalytics {
   topTracks: { title: string; revenue: number }[];
   revenueBySource: { source: string; revenue: number; percentage: number }[];
   revenueByTerritory: { territory: string; revenue: number }[];
-  monthlyRevenue: { month: string; revenue: number }[];
+  monthlyRevenue: { quarter: string; revenue: number }[];
   totalRevenue: number;
   totalStreams: number;
   avgPerStream: number;
