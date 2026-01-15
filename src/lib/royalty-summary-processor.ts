@@ -121,7 +121,7 @@ function buildColumnMapping(headers: string[]): ColumnMapping {
  */
 function parseBig(value: string): Big {
   try {
-    const cleaned = value.replace(/[,\s$€£]/g, '').trim();
+    const cleaned = value.replace(/[,\s$$£]/g, '').trim();
     if (!cleaned || cleaned === '' || cleaned === '-') {
       return new Big(0);
     }
@@ -138,7 +138,7 @@ function parseBig(value: string): Big {
 function parseIntSafe(value: string): number {
   if (!value || typeof value !== 'string') return 0;
   // Remove commas, spaces, and currency symbols
-  const cleaned = value.replace(/[,\s$€£¥]/g, '').trim();
+  const cleaned = value.replace(/[,\s$$£¥]/g, '').trim();
   if (!cleaned || cleaned === '-') return 0;
   // Parse as float first to handle decimals, then floor to get integer
   const num = parseFloat(cleaned);

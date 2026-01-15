@@ -497,7 +497,7 @@ export default function AnalyticsPage() {
           icon={DollarSign}
           color={GREEN_PALETTE.primary}
           label="Total Revenue"
-          value={`€${analytics.stats.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          value={`$${analytics.stats.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           subtitle="Total Earnings"
         />
         <MetricCard
@@ -511,7 +511,7 @@ export default function AnalyticsPage() {
           icon={Music}
           color={GREEN_PALETTE.dark}
           label="Avg per Stream"
-          value={`€${analytics.stats.averagePerStream.toFixed(6)}`}
+          value={`$${analytics.stats.averagePerStream.toFixed(6)}`}
           subtitle="Revenue per play"
         />
         <MetricCard
@@ -536,10 +536,10 @@ export default function AnalyticsPage() {
                   axisLine={{ stroke: GREEN_PALETTE.grid }}
                   tickFormatter={(value) => value.length > 12 ? value.substring(0, 10) + '...' : value}
                 />
-                <YAxis tick={{ fill: '#6B7280', fontSize: 12 }} axisLine={{ stroke: GREEN_PALETTE.grid }} tickFormatter={(value) => `€${value.toFixed(2)}`} />
+                <YAxis tick={{ fill: '#6B7280', fontSize: 12 }} axisLine={{ stroke: GREEN_PALETTE.grid }} tickFormatter={(value) => `$${value.toFixed(2)}`} />
                 <Tooltip
                   contentStyle={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)' }}
-                  formatter={(value: any) => `€${Number(value).toFixed(2)}`}
+                  formatter={(value: any) => `$${Number(value).toFixed(2)}`}
                 />
                 <Bar dataKey="revenue" fill={GREEN_PALETTE.primary} radius={[8, 8, 0, 0]} />
               </BarChart>
@@ -573,7 +573,7 @@ export default function AnalyticsPage() {
                       </Pie>
                       <Tooltip
                         contentStyle={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)' }}
-                        formatter={(value: any) => `€${Number(value).toFixed(2)}`}
+                        formatter={(value: any) => `$${Number(value).toFixed(2)}`}
                       />
                     </PieChart>
                   </ResponsiveContainer>
@@ -610,7 +610,7 @@ export default function AnalyticsPage() {
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={analytics.territoryBreakdown} layout="vertical" margin={{ left: 20, right: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={GREEN_PALETTE.grid} opacity={0.3} />
-                <XAxis type="number" tick={{ fill: '#6B7280', fontSize: 12 }} axisLine={{ stroke: GREEN_PALETTE.grid }} tickFormatter={(value) => `€${value.toFixed(2)}`} />
+                <XAxis type="number" tick={{ fill: '#6B7280', fontSize: 12 }} axisLine={{ stroke: GREEN_PALETTE.grid }} tickFormatter={(value) => `$${value.toFixed(2)}`} />
                 <YAxis 
                   dataKey="territory" 
                   type="category" 
@@ -621,7 +621,7 @@ export default function AnalyticsPage() {
                 />
                 <Tooltip
                   contentStyle={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)' }}
-                  formatter={(value: any) => `€${Number(value).toFixed(2)}`}
+                  formatter={(value: any) => `$${Number(value).toFixed(2)}`}
                 />
                 <Bar dataKey="revenue" fill={GREEN_PALETTE.secondary} radius={[0, 8, 8, 0]} />
               </BarChart>
@@ -637,10 +637,10 @@ export default function AnalyticsPage() {
               <BarChart data={analytics.quarterlyRevenue}>
                 <CartesianGrid strokeDasharray="3 3" stroke={GREEN_PALETTE.grid} opacity={0.3} />
                 <XAxis dataKey="quarter" tick={{ fill: '#6B7280', fontSize: 12 }} axisLine={{ stroke: GREEN_PALETTE.grid }} />
-                <YAxis tick={{ fill: '#6B7280', fontSize: 12 }} axisLine={{ stroke: GREEN_PALETTE.grid }} tickFormatter={(value) => `€${value.toFixed(2)}`} />
+                <YAxis tick={{ fill: '#6B7280', fontSize: 12 }} axisLine={{ stroke: GREEN_PALETTE.grid }} tickFormatter={(value) => `$${value.toFixed(2)}`} />
                 <Tooltip
                   contentStyle={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)' }}
-                  formatter={(value: any) => `€${Number(value).toFixed(2)}`}
+                  formatter={(value: any) => `$${Number(value).toFixed(2)}`}
                 />
                 <Bar dataKey="revenue" fill={GREEN_PALETTE.dark} radius={[8, 8, 0, 0]} />
               </BarChart>
@@ -707,7 +707,7 @@ const SourceLegend = React.memo(({ sources, colors, totalRevenue }: any) => (
               <span className="text-sm font-medium text-gray-700">{item.source}</span>
             </div>
             <div className="flex flex-col items-end">
-              <span className="text-sm font-semibold text-gray-900">€{item.revenue.toFixed(2)}</span>
+              <span className="text-sm font-semibold text-gray-900">${item.revenue.toFixed(2)}</span>
               <span className="text-xs text-gray-500">{percentage}%</span>
             </div>
           </div>
@@ -751,7 +751,7 @@ const SourceModal = React.memo(({ sources, colors, onClose }: any) => {
                   </div>
                   <div className="flex items-center gap-6">
                     <div className="text-right">
-                      <div className="text-sm font-bold text-gray-900">€{item.revenue.toFixed(2)}</div>
+                      <div className="text-sm font-bold text-gray-900">${item.revenue.toFixed(2)}</div>
                       <div className="text-xs text-gray-500">{percentage}% of total</div>
                     </div>
                     <div className="w-16">
@@ -768,7 +768,7 @@ const SourceModal = React.memo(({ sources, colors, onClose }: any) => {
           <div className="mt-6 p-4 bg-gradient-to-r from-green-50 to-teal-50 rounded-xl border border-green-200">
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold text-gray-700">Total Revenue</span>
-              <span className="text-lg font-bold text-green-700">€{totalRevenue.toFixed(2)}</span>
+              <span className="text-lg font-bold text-green-700">${totalRevenue.toFixed(2)}</span>
             </div>
             <div className="flex items-center justify-between mt-2">
               <span className="text-sm font-semibold text-gray-700">Total Sources</span>

@@ -171,7 +171,7 @@ export default function PaymentRequestPage() {
         <div className="mb-6">
           <h2 className="text-xl font-semibold mb-4">Current Balance</h2>
           <div className="text-4xl font-bold text-green-600 mb-2">
-            €{balance.toFixed(2)}
+            ${balance.toFixed(2)}
           </div>
           <p className="text-sm text-slate-600">
             Total unpaid royalties available for withdrawal
@@ -197,10 +197,10 @@ export default function PaymentRequestPage() {
         {!canRequest && !hasPendingRequest && (
           <div className="mb-6 p-4 bg-slate-50 border border-slate-200 rounded-md">
             <p className="text-sm text-slate-600">
-              You can request a payout once your balance reaches €{minBalance} or more.
+              You can request a payout once your balance reaches ${minBalance} or more.
             </p>
             <p className="text-xs text-slate-500 mt-2">
-              Current balance: €{balance.toFixed(2)} / €{minBalance.toFixed(2)} required
+              Current balance: ${balance.toFixed(2)} / ${minBalance.toFixed(2)} required
             </p>
           </div>
         )}
@@ -233,13 +233,13 @@ export default function PaymentRequestPage() {
           </DialogHeader>
           <div className="py-4">
             <p className="text-sm text-slate-600 mb-4">
-              This will withdraw your entire balance and reset it to €0.
+              This will withdraw your entire balance and reset it to $0.
             </p>
             <div className="bg-slate-50 p-4 rounded-md">
               <div className="flex justify-between items-center">
                 <span className="text-sm font-medium">Amount to withdraw:</span>
                 <span className="text-lg font-bold text-green-600">
-                  €{balance.toFixed(2)}
+                  ${balance.toFixed(2)}
                 </span>
               </div>
             </div>

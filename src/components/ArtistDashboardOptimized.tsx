@@ -29,7 +29,7 @@ export default function ArtistDashboardOptimized() {
     return [
       {
         label: "Total Revenue",
-        value: `€${data.stats.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        value: `$${data.stats.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         sub: "Total Earnings",
         icon: DollarSign,
         color: "#4ADE80",
@@ -182,7 +182,7 @@ export default function ArtistDashboardOptimized() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="text-sm font-medium text-gray-900">
-                        €{track.revenue.toFixed(2)}
+                        ${track.revenue.toFixed(2)}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">

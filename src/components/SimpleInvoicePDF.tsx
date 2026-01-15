@@ -173,7 +173,7 @@ export class SimpleInvoicePDF {
     doc.setFontSize(24);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(...colors.totals);
-    const currency = data.currency || "€";
+    const currency = data.currency || "$";
     doc.text(`${currency}${data.total_amount.toFixed(2)}`, centerX, yPosition, { align: "center" });
 
     yPosition += 20;

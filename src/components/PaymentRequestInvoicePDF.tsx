@@ -234,7 +234,7 @@ export class PaymentRequestInvoicePDF {
     applyRGB(doc.setTextColor.bind(doc), colors.text);
     doc.text("Total Amount:", margin, yPosition);
 
-    const totalText = `€${Number(invoice.total_net).toFixed(2)}`;
+    const totalText = `$${Number(invoice.total_net).toFixed(2)}`;
     const totalWidth = doc.getTextWidth(totalText);
     doc.text(totalText, pageWidth - margin - totalWidth, yPosition);
     yPosition += 18;

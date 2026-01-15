@@ -408,7 +408,7 @@ export default function AdminPaymentRequestsPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Artist Name</TableHead>
-                    <TableHead className="text-right">Amount (€)</TableHead>
+                    <TableHead className="text-right">Amount ($)</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -419,7 +419,7 @@ export default function AdminPaymentRequestsPage() {
                     <TableRow key={request.id}>
                       <TableCell className="font-medium">{request.artist_email}</TableCell>
                       <TableCell className="text-right font-semibold">
-                        €{Number(request.total_amount || 0).toFixed(2)}
+                        ${Number(request.total_amount || 0).toFixed(2)}
                       </TableCell>
                       <TableCell>
                         {new Date(request.created_at).toLocaleDateString()}

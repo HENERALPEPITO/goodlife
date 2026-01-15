@@ -80,7 +80,7 @@ export function convertInvoiceToInvoiceData(
       : undefined,
     total: invoice.amount,
     status: invoice.status,
-    currency: options?.currency || '€',
+    currency: options?.currency || '$',
     notes: options?.notes || invoice.remarks || undefined,
   };
 }

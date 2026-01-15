@@ -151,7 +151,7 @@ export class InvoicePDF {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(11);
     const totalNet = Number(invoice.total_net || 0).toFixed(2);
-    doc.text(`TOTAL NET: €${totalNet}`, margin + 5, yPosition);
+    doc.text(`TOTAL NET: $${totalNet}`, margin + 5, yPosition);
     yPosition += 12;
 
     // ============================================

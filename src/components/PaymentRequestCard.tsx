@@ -118,7 +118,7 @@ export function PaymentRequestCard({ user }: PaymentRequestCardProps) {
 
       toast({
         title: "Success",
-        description: `✅ Payment request of €${confirmedAmount.toFixed(2)} submitted successfully. An invoice has been generated and is available in the Invoices section. Your balance has been reset to €0.`,
+        description: `✅ Payment request of $${confirmedAmount.toFixed(2)} submitted successfully. An invoice has been generated and is available in the Invoices section. Your balance has been reset to $0.`,
       });
 
       // Refresh balance and status
@@ -141,7 +141,7 @@ export function PaymentRequestCard({ user }: PaymentRequestCardProps) {
       return "You already have a pending payment request.";
     }
     if (balance < MINIMUM_BALANCE) {
-      return `Minimum payout is €${MINIMUM_BALANCE}. You currently have €${balance.toFixed(2)}.`;
+      return `Minimum payout is $${MINIMUM_BALANCE}. You currently have $${balance.toFixed(2)}.`;
     }
     return "";
   };
@@ -155,7 +155,7 @@ export function PaymentRequestCard({ user }: PaymentRequestCardProps) {
               Current Balance
             </h3>
             <div className="text-3xl font-bold text-gray-900">
-              €{loading ? "..." : balance.toFixed(2)}
+              ${loading ? "..." : balance.toFixed(2)}
             </div>
             {hasPendingRequest && (
               <p className="text-sm text-amber-600 mt-2">
@@ -181,7 +181,7 @@ export function PaymentRequestCard({ user }: PaymentRequestCardProps) {
               {hasPendingRequest
                 ? "You already have a pending payment request. Please wait for admin approval."
                 : balance < MINIMUM_BALANCE
-                ? `Minimum payout is €${MINIMUM_BALANCE}. You currently have €${balance.toFixed(2)}.`
+                ? `Minimum payout is $${MINIMUM_BALANCE}. You currently have $${balance.toFixed(2)}.`
                 : ""}
             </p>
           </div>

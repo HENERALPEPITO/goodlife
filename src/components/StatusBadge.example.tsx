@@ -28,7 +28,7 @@ export default function StatusBadgeExamples() {
               <td className="p-4">
                 <StatusBadge status="pending" />
               </td>
-              <td className="p-4 text-sm text-gray-900">€1,500.00</td>
+              <td className="p-4 text-sm text-gray-900">$1,500.00</td>
               <td className="p-4">
                 <div className="flex gap-2">
                   <button className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded-md transition-colors">
@@ -45,7 +45,7 @@ export default function StatusBadgeExamples() {
               <td className="p-4">
                 <StatusBadge status="approved" />
               </td>
-              <td className="p-4 text-sm text-gray-900">€2,300.00</td>
+              <td className="p-4 text-sm text-gray-900">$2,300.00</td>
               <td className="p-4">
                 <span className="text-sm text-gray-500">Completed</span>
               </td>
@@ -55,7 +55,7 @@ export default function StatusBadgeExamples() {
               <td className="p-4">
                 <StatusBadge status="rejected" />
               </td>
-              <td className="p-4 text-sm text-gray-900">€850.00</td>
+              <td className="p-4 text-sm text-gray-900">$850.00</td>
               <td className="p-4">
                 <span className="text-sm text-gray-500">No action available</span>
               </td>

@@ -196,9 +196,9 @@ export class PDFGenerator {
       royalty.platform || "—",
       royalty.territory || "—",
       royalty.usage_count.toString(),
-      `€${royalty.gross_amount.toFixed(2)}`,
+      `$${royalty.gross_amount.toFixed(2)}`,
       `${royalty.admin_percent.toFixed(1)}%`,
-      `€${royalty.net_amount.toFixed(2)}`,
+      `$${royalty.net_amount.toFixed(2)}`,
     ]);
 
     autoTable(doc, {
@@ -227,11 +227,11 @@ export class PDFGenerator {
     doc.setFont("helvetica", "normal");
 
     doc.text("Total Gross Amount:", totalsX, yPosition);
-    doc.text(`€${data.totals.total_gross.toFixed(2)}`, totalsX + 60, yPosition, { align: "right" });
+    doc.text(`$${data.totals.total_gross.toFixed(2)}`, totalsX + 60, yPosition, { align: "right" });
 
     yPosition += 6;
     doc.text("Total Admin Fee:", totalsX, yPosition);
-    doc.text(`€${data.totals.total_admin_fee.toFixed(2)}`, totalsX + 60, yPosition, { align: "right" });
+    doc.text(`$${data.totals.total_admin_fee.toFixed(2)}`, totalsX + 60, yPosition, { align: "right" });
 
     yPosition += 6;
     doc.setLineWidth(0.3);
@@ -241,7 +241,7 @@ export class PDFGenerator {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(12);
     doc.text("Net Payable Amount:", totalsX, yPosition);
-    doc.text(`€${data.totals.total_net.toFixed(2)}`, totalsX + 60, yPosition, { align: "right" });
+    doc.text(`$${data.totals.total_net.toFixed(2)}`, totalsX + 60, yPosition, { align: "right" });
 
     // Signature Section
     yPosition += 20;

@@ -430,7 +430,7 @@ export default function InvoiceManagement({ user }: InvoiceManagementProps) {
                   )}
                   <td className="px-4 py-3 text-gray-700">{invoice.period || "—"}</td>
                   <td className="px-4 py-3 font-semibold text-gray-900">
-                    €{Number(invoice.total_net || invoice.total_amount || 0).toFixed(2)}
+                    ${Number(invoice.total_net || invoice.total_amount || 0).toFixed(2)}
                   </td>
                   <td className="px-4 py-3 text-gray-600">
                     {new Date(invoice.invoice_date || invoice.created_at).toLocaleDateString()}

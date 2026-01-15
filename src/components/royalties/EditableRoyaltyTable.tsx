@@ -92,7 +92,7 @@ export function EditableRoyaltyTable({
     // Keep exact precision - use toString() to show full value
     const numValue = typeof value === "string" ? parseFloat(value) : value;
     if (isNaN(numValue)) return "—";
-    return `€${numValue.toString()}`;  // Shows exact value like €0.0000178
+    return `$${numValue.toString()}`;  // Shows exact value like $0.0000178
   };
 
   const formatPercent = (value: number | string | null | undefined) => {

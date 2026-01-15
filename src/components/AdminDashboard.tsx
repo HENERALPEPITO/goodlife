@@ -85,7 +85,7 @@ export default function AdminDashboard() {
     },
     {
       label: "Total Revenue",
-      value: `€${stats.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      value: `$${stats.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       sub: "Total Earnings",
       icon: DollarSign,
       color: "#4ADE80",

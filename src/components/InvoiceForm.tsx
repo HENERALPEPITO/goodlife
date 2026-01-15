@@ -287,7 +287,7 @@ export function InvoiceForm({ invoice, user, artists, onClose, onSave }: Invoice
           {/* Total NET */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              TOTAL NET (€) *
+              TOTAL NET ($) *
             </label>
             <Input
               type="number"
