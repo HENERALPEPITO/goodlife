@@ -69,7 +69,7 @@ Big.RM = Big.roundHalfUp;
 
 // Parse value preserving exact CSV representation
 function parseNumericPrecise(value: string): string {
-  const cleaned = value.replace(/[$€£¥₱,\s]/g, '');
+  const cleaned = value.replace(/[$$£¥₱,\s]/g, '');
   const bigValue = new Big(cleaned);
   return bigValue.toString(); // Exact string representation
 }

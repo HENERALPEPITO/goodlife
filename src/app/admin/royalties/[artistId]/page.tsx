@@ -613,13 +613,13 @@ export default function ArtistRoyaltiesPage() {
                             <div className="text-right">
                               <p className="text-sm text-slate-600">Gross</p>
                               <p className="text-lg font-semibold text-slate-900">
-                                €{parseFloat(group.totalGross).toFixed(2)}
+                                ${parseFloat(group.totalGross).toFixed(2)}
                               </p>
                             </div>
                             <div className="text-right">
                               <p className="text-sm text-slate-600">Net</p>
                               <p className="text-lg font-semibold text-green-600">
-                                €{parseFloat(group.totalNet).toFixed(2)}
+                                ${parseFloat(group.totalNet).toFixed(2)}
                               </p>
                             </div>
                             <Button

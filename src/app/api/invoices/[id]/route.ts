@@ -108,7 +108,7 @@ export async function PUT(
         tax_rate: tax_rate || 0,
         tax_amount: taxAmount,
         amount: total,
-        currency: currency || "€",
+        currency: currency || "$",
         notes,
         logo_url,
         remarks: notes, // Store notes in remarks field for backward compatibility

@@ -89,7 +89,7 @@ export default function InvoiceManager({ user }: InvoiceManagerProps) {
     recipient_phone: "",
     recipient_address: "",
     tax_rate: 0,
-    currency: "€",
+    currency: "$",
     notes: "",
     logo_url: "",
     line_items: [] as InvoiceLineItem[],
@@ -187,7 +187,7 @@ export default function InvoiceManager({ user }: InvoiceManagerProps) {
       recipient_phone: "",
       recipient_address: "",
       tax_rate: 0,
-      currency: "€",
+      currency: "$",
       notes: "",
       logo_url: "",
       line_items: [{ description: "", quantity: 1, unit_price: 0, subtotal: 0 }],
@@ -208,7 +208,7 @@ export default function InvoiceManager({ user }: InvoiceManagerProps) {
       recipient_phone: invoice.recipient_phone || "",
       recipient_address: invoice.recipient_address || "",
       tax_rate: invoice.tax_rate || 0,
-      currency: invoice.currency || "€",
+      currency: invoice.currency || "$",
       notes: invoice.notes || "",
       logo_url: invoice.logo_url || "",
       line_items: invoice.invoice_line_items && invoice.invoice_line_items.length > 0
@@ -369,7 +369,7 @@ export default function InvoiceManager({ user }: InvoiceManagerProps) {
         tax_amount: invoice.tax_amount || 0,
         total: invoice.amount,
         status: invoice.status as any,
-        currency: invoice.currency || "€",
+        currency: invoice.currency || "$",
         notes: invoice.notes || undefined,
       };
 
@@ -528,7 +528,7 @@ export default function InvoiceManager({ user }: InvoiceManagerProps) {
                     {new Date(invoice.invoice_date || invoice.created_at).toLocaleDateString()}
                   </td>
                   <td className="p-4 font-semibold" style={{ color: '#166534' }}>
-                    {invoice.currency || "€"}{invoice.amount.toFixed(2)}
+                    {invoice.currency || "$"}{invoice.amount.toFixed(2)}
                   </td>
                   {isAdmin && (
                     <td className="p-4">
@@ -857,7 +857,7 @@ function InvoiceEditModal({
                   </div>
                   <div className="w-32">
                     <Input
-                      value={`${formData.currency || '€'}${item.subtotal.toFixed(2)}`}
+                      value={`${formData.currency || '$'}${item.subtotal.toFixed(2)}`}
                       disabled
                       style={{ backgroundColor: '#F9FAFB' }}
                     />
@@ -881,7 +881,7 @@ function InvoiceEditModal({
               <div className="w-64 space-y-2">
                 <div className="flex justify-between">
                   <span style={{ color: '#6B7280' }}>Subtotal:</span>
-                  <span style={{ color: '#1F2937' }}>{formData.currency || '€'}{totals.subtotal.toFixed(2)}</span>
+                  <span style={{ color: '#1F2937' }}>{formData.currency || '$'}{totals.subtotal.toFixed(2)}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Input
@@ -893,12 +893,12 @@ function InvoiceEditModal({
                     step="0.01"
                   />
                   <span style={{ color: '#6B7280' }}>Tax Rate (%):</span>
-                  <span style={{ color: '#1F2937' }}>{formData.currency || '€'}{totals.taxAmount.toFixed(2)}</span>
+                  <span style={{ color: '#1F2937' }}>{formData.currency || '$'}{totals.taxAmount.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between pt-2 border-t" style={{ borderColor: '#E5E7EB' }}>
                   <span className="font-bold" style={{ color: '#1F2937' }}>Total:</span>
                   <span className="font-bold text-lg" style={{ color: '#1F2937' }}>
-                    {formData.currency || '€'}{totals.total.toFixed(2)}
+                    {formData.currency || '$'}{totals.total.toFixed(2)}
                   </span>
                 </div>
               </div>

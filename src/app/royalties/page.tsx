@@ -379,7 +379,7 @@ export default function RoyaltiesPage() {
               <div className="flex items-center gap-4 flex-shrink-0">
                 <div className="text-right">
                   <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Available Balance</p>
-                  <p className="text-2xl font-bold text-emerald-600 mt-0.5 tabular-nums">€{balance.toFixed(2)}</p>
+                  <p className="text-2xl font-bold text-emerald-600 mt-0.5 tabular-nums">${balance.toFixed(2)}</p>
                 </div>
                 <Button
                   onClick={() => setConfirmOpen(true)}
@@ -405,7 +405,7 @@ export default function RoyaltiesPage() {
               <div className="mt-4">
                 <div className="px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl flex items-start gap-3">
                   <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-                  <p className="text-sm text-blue-900 font-medium">Minimum balance of €{minBalance} required for payment requests</p>
+                  <p className="text-sm text-blue-900 font-medium">Minimum balance of ${minBalance} required for payment requests</p>
                 </div>
               </div>
             )}
@@ -473,7 +473,7 @@ export default function RoyaltiesPage() {
                   <div className="grid grid-cols-12 gap-6 px-6 py-4">
                     <div className="col-span-2 text-xs font-bold text-gray-800 uppercase tracking-wider">Quarter</div>
                     <div className="col-span-3 text-xs font-bold text-gray-800 uppercase tracking-wider">Date Range</div>
-                    <div className="col-span-2 text-xs font-bold text-gray-800 uppercase tracking-wider text-right">Total Net (€)</div>
+                    <div className="col-span-2 text-xs font-bold text-gray-800 uppercase tracking-wider text-right">Total Net ($)</div>
                     <div className="col-span-2 text-xs font-bold text-gray-800 uppercase tracking-wider text-center">Tracks</div>
                     <div className="col-span-2 text-xs font-bold text-gray-800 uppercase tracking-wider text-center">Status</div>
                     <div className="col-span-1 text-xs font-bold text-gray-800 uppercase tracking-wider text-center">Actions</div>
@@ -503,7 +503,7 @@ export default function RoyaltiesPage() {
                         </div>
 
                         <div className="col-span-2 flex items-center justify-end">
-                          <span className="text-sm font-bold text-gray-900 tabular-nums">€{quarter.total_net.toFixed(2)}</span>
+                          <span className="text-sm font-bold text-gray-900 tabular-nums">${quarter.total_net.toFixed(2)}</span>
                         </div>
 
                         <div className="col-span-2 flex items-center justify-center">
@@ -561,7 +561,7 @@ export default function RoyaltiesPage() {
                       <div className="px-5 py-4 space-y-3">
                         <div className="flex items-center justify-between">
                           <span className="text-sm font-medium text-gray-600">Total Net</span>
-                          <span className="text-lg font-bold text-gray-900 tabular-nums">€{quarter.total_net.toFixed(2)}</span>
+                          <span className="text-lg font-bold text-gray-900 tabular-nums">${quarter.total_net.toFixed(2)}</span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-sm font-medium text-gray-600">Tracks</span>
@@ -607,11 +607,11 @@ export default function RoyaltiesPage() {
               <DialogDescription>Are you sure you want to request payment?</DialogDescription>
             </DialogHeader>
             <div className="py-4">
-              <p className="text-sm text-gray-600 mb-4">This will withdraw your entire balance and reset it to €0.</p>
+              <p className="text-sm text-gray-600 mb-4">This will withdraw your entire balance and reset it to $0.</p>
               <div className="bg-gray-50 p-4 rounded-md">
                 <div className="flex justify-between items-center">
                   <span className="text-sm font-medium">Amount to withdraw:</span>
-                  <span className="text-lg font-bold text-emerald-600 tabular-nums">€{balance.toFixed(2)}</span>
+                  <span className="text-lg font-bold text-emerald-600 tabular-nums">${balance.toFixed(2)}</span>
                 </div>
               </div>
             </div>
@@ -683,10 +683,10 @@ export default function RoyaltiesPage() {
                         Streams
                       </th>
                       <th className="px-3 md:px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
-                        Gross (€)
+                        Gross ($)
                       </th>
                       <th className="px-3 md:px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
-                        Net (€)
+                        Net ($)
                       </th>
                       <th className="px-3 md:px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
                         Avg/Stream
@@ -719,13 +719,13 @@ export default function RoyaltiesPage() {
                             {r.total_streams.toLocaleString()}
                           </td>
                           <td className="px-3 md:px-4 py-3 text-right text-[#222] whitespace-nowrap tabular-nums">
-                            €{toNumber(r.total_gross).toFixed(2)}
+                            ${toNumber(r.total_gross).toFixed(2)}
                           </td>
                           <td className="px-3 md:px-4 py-3 text-right text-[#222] font-semibold whitespace-nowrap tabular-nums">
-                            €{toNumber(r.total_net).toFixed(2)}
+                            ${toNumber(r.total_net).toFixed(2)}
                           </td>
                           <td className="px-3 md:px-4 py-3 text-right text-[#222] whitespace-nowrap tabular-nums">
-                            €{toNumber(r.avg_per_stream).toFixed(6)}
+                            ${toNumber(r.avg_per_stream).toFixed(6)}
                           </td>
                           <td className="px-3 md:px-4 py-3 text-[#222] whitespace-nowrap">{r.top_platform || "—"}</td>
                           <td className="px-3 md:px-4 py-3 text-[#222] whitespace-nowrap">{r.top_territory || "—"}</td>
@@ -784,7 +784,7 @@ export default function RoyaltiesPage() {
                             <XAxis 
                               type="number" 
                               tick={{ fill: "#374151", fontSize: 12, fontWeight: 500 }}
-                              tickFormatter={(value) => `€${value.toFixed(0)}`}
+                              tickFormatter={(value) => `$${value.toFixed(0)}`}
                             />
                             <YAxis
                               type="category"
@@ -801,7 +801,7 @@ export default function RoyaltiesPage() {
                                     <div className="bg-white border-2 border-emerald-200 rounded-xl shadow-xl p-4">
                                       <p className="font-bold text-gray-900 mb-2">{data.title}</p>
                                       <p className="text-sm text-emerald-700 font-semibold">
-                                        Revenue: €{toNumber(data.revenue).toFixed(2)}
+                                        Revenue: ${toNumber(data.revenue).toFixed(2)}
                                       </p>
                                     </div>
                                   );
@@ -862,7 +862,7 @@ export default function RoyaltiesPage() {
                                     return (
                                       <div className="bg-white border-2 border-emerald-200 rounded-xl shadow-xl p-4">
                                         <p className="font-bold text-gray-900 mb-1">{data.source}</p>
-                                        <p className="text-sm text-emerald-700 font-semibold">Revenue: €{toNumber(data.revenue).toFixed(2)}</p>
+                                        <p className="text-sm text-emerald-700 font-semibold">Revenue: ${toNumber(data.revenue).toFixed(2)}</p>
                                         <p className="text-xs text-gray-600 mt-1">Share: {data.percentage.toFixed(1)}%</p>
                                       </div>
                                     );
@@ -892,7 +892,7 @@ export default function RoyaltiesPage() {
                                 </div>
                                 <div className="flex flex-col items-end">
                                   <span className="text-sm font-semibold text-gray-900">
-                                    €{toNumber(item.revenue).toFixed(2)}
+                                    ${toNumber(item.revenue).toFixed(2)}
                                   </span>
                                   <span className="text-xs text-gray-500">
                                     {item.percentage.toFixed(1)}%
@@ -948,7 +948,7 @@ export default function RoyaltiesPage() {
                                   <div className="bg-white border-2 border-emerald-200 rounded-xl shadow-xl p-4">
                                     <p className="font-bold text-gray-900 mb-2">{data.territory}</p>
                                     <p className="text-sm text-emerald-700 font-semibold">
-                                      Revenue: €{toNumber(data.revenue).toFixed(2)}
+                                      Revenue: ${toNumber(data.revenue).toFixed(2)}
                                     </p>
                                   </div>
                                 );
@@ -987,7 +987,7 @@ export default function RoyaltiesPage() {
                           />
                           <YAxis 
                             tick={{ fill: "#374151", fontSize: 12, fontWeight: 500 }}
-                            tickFormatter={(value) => `€${value.toFixed(0)}`}
+                            tickFormatter={(value) => `$${value.toFixed(0)}`}
                           />
                           <Tooltip 
                             content={({ active, payload }) => {
@@ -997,7 +997,7 @@ export default function RoyaltiesPage() {
                                   <div className="bg-white border-2 border-emerald-200 rounded-xl shadow-xl p-4">
                                     <p className="font-bold text-gray-900 mb-2">{selectedQuarter?.label}</p>
                                     <p className="text-sm text-emerald-700 font-semibold">
-                                      Revenue: €{toNumber(data.revenue).toFixed(2)}
+                                      Revenue: ${toNumber(data.revenue).toFixed(2)}
                                     </p>
                                   </div>
                                 );
@@ -1042,11 +1042,11 @@ export default function RoyaltiesPage() {
             <DialogDescription>Are you sure you want to request payment?</DialogDescription>
           </DialogHeader>
           <div className="py-4">
-            <p className="text-sm text-gray-600 mb-4">This will withdraw your entire balance and reset it to €0.</p>
+            <p className="text-sm text-gray-600 mb-4">This will withdraw your entire balance and reset it to $0.</p>
             <div className="bg-gray-50 p-4 rounded-md">
               <div className="flex justify-between items-center">
                 <span className="text-sm font-medium">Amount to withdraw:</span>
-                <span className="text-lg font-bold text-green-600">€{balance.toFixed(2)}</span>
+                <span className="text-lg font-bold text-green-600">${balance.toFixed(2)}</span>
               </div>
             </div>
           </div>
@@ -1104,7 +1104,7 @@ export default function RoyaltiesPage() {
                     <div className="flex items-center gap-6">
                       <div className="text-right">
                         <div className="text-sm font-bold text-gray-900">
-                          €{toNumber(item.revenue).toFixed(2)}
+                          ${toNumber(item.revenue).toFixed(2)}
                         </div>
                         <div className="text-xs text-gray-500">
                           {item.percentage.toFixed(1)}% of total
@@ -1128,7 +1128,7 @@ export default function RoyaltiesPage() {
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-semibold text-gray-700">Total Revenue</span>
                   <span className="text-xl font-bold text-emerald-700">
-                    €{analytics.totalRevenue.toFixed(2)}
+                    ${analytics.totalRevenue.toFixed(2)}
                   </span>
                 </div>
               </div>

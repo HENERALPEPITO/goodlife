@@ -137,7 +137,7 @@ export default function ArtistsPage() {
             <DollarSign className="h-5 w-5 transition-colors" style={{ color: '#10B981' }} />
           </div>
           <div className="mt-2 text-3xl font-semibold transition-colors" style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>
-            €{totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            ${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
           <div className="text-xs mt-1 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>All artists combined</div>
         </div>
@@ -220,7 +220,7 @@ export default function ArtistsPage() {
                       {artist.totalTracks}
                     </td>
                     <td className="p-4 font-semibold transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
-                      €{artist.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      ${artist.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
                     <td className="p-4 transition-colors" style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>
                       {artist.totalStreams.toLocaleString()}

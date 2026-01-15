@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabaseClient";
 import { Input } from "@/components/ui/input";
-import { Search, Music, Loader2 } from "lucide-react";
+import { Search, Music, Loader2, Image as ImageIcon } from "lucide-react";
 import { useTheme } from "next-themes";
 
 interface TrackRow {
@@ -16,6 +16,7 @@ interface TrackRow {
   artist_name: string;
   split: string;
   created_at: string;
+  spotify_image_url: string | null;
 }
 
 export default function MyCatalogPage() {
@@ -29,6 +30,7 @@ export default function MyCatalogPage() {
   const [search, setSearch] = useState("");
   const [fetching, setFetching] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [fetchingImages, setFetchingImages] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -44,7 +46,6 @@ export default function MyCatalogPage() {
     if (!user) return;
     const init = async () => {
       console.log('🔍 Finding artist for user:', user.id);
-      // Find artist row linked to this user
       const { data: artist, error: artistError } = await supabase
         .from("artists")
         .select("id")
@@ -79,7 +80,7 @@ export default function MyCatalogPage() {
     setFetching(true);
     const { data, error } = await supabase
       .from("tracks")
-      .select("id,song_title,composer_name,isrc,artist_name,split,created_at")
+      .select("id,song_title,composer_name,isrc,artist_name,split,created_at,spotify_image_url")
       .eq("artist_id", aid)
       .order("created_at", { ascending: false });
     
@@ -94,6 +95,44 @@ export default function MyCatalogPage() {
     setTracks((data as any) || []);
     setLastUpdated(data && data.length > 0 ? data[0].created_at : null);
     setFetching(false);
+
+    // Auto-fetch missing images
+    const tracksWithoutImages = (data || []).filter(t => !t.spotify_image_url && t.isrc);
+    if (tracksWithoutImages.length > 0) {
+      await fetchMissingImages(tracksWithoutImages.map(t => t.id));
+    }
+  };
+
+  const fetchMissingImages = async (trackIds: string[]) => {
+    if (trackIds.length === 0) return;
+    
+    setFetchingImages(true);
+    try {
+      const response = await fetch('/api/spotify/fetch-images', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trackIds }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('✅ Fetched images:', result);
+        
+        // Update tracks state directly instead of refetching
+        // This prevents infinite loops by not calling fetchTracks again
+        setTracks(prevTracks =>
+          prevTracks.map(track =>
+            result.updatedImages?.[track.id]
+              ? { ...track, spotify_image_url: result.updatedImages[track.id] }
+              : track
+          )
+        );
+      }
+    } catch (error) {
+      console.error('❌ Error fetching images:', error);
+    } finally {
+      setFetchingImages(false);
+    }
   };
 
   const filtered = useMemo(() => {
@@ -209,7 +248,8 @@ export default function MyCatalogPage() {
                 <th className="font-medium" style={{ 
                   color: isDark ? '#d1d5db' : '#1A1A1A', 
                   padding: '14px 16px', 
-                  fontWeight: 500 
+                  fontWeight: 500,
+                  width: '280px'
                 }}>
                   Song Title
                 </th>
@@ -260,18 +300,11 @@ export default function MyCatalogPage() {
                       padding: '48px 16px',
                       color: isDark ? '#9ca3af' : '#8A8A8A',
                       backgroundColor: isDark ? '#1a1a1a' : '#FFFFFF',
-                      animation: 'fadeIn 0.5s ease-in-out',
                     }}
                   >
-                    <style jsx>{`
-                      @keyframes fadeIn {
-                        from { opacity: 0; }
-                        to { opacity: 1; }
-                      }
-                    `}</style>
                     <div className="flex flex-col items-center gap-3">
                       <Loader2 className="h-6 w-6 animate-spin" style={{ color: isDark ? '#9ca3af' : '#9CA3AF' }} />
-                      <span style={{ animation: 'fadeIn 0.5s ease-in-out' }}>Loading...</span>
+                      <span>Loading...</span>
                     </div>
                   </td>
                 </tr>
@@ -334,14 +367,45 @@ export default function MyCatalogPage() {
                       e.currentTarget.style.boxShadow = 'none';
                     }}
                   >
-                    <td 
-                      className="p-4" 
-                      style={{ 
-                        color: isDark ? '#e4e4e7' : '#1A1A1A',
-                        fontWeight: index === 0 ? 500 : 400,
-                      }}
-                    >
-                      {t.song_title}
+                    <td className="p-4">
+                      <div className="flex items-center gap-3">
+                        <div 
+                          style={{
+                            width: '48px',
+                            height: '48px',
+                            borderRadius: '6px',
+                            overflow: 'hidden',
+                            backgroundColor: isDark ? '#2a2a2a' : '#f3f4f6',
+                            flexShrink: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          {t.spotify_image_url ? (
+                            <img 
+                              src={t.spotify_image_url} 
+                              alt={t.song_title}
+                              style={{
+                                width: '100%',
+                                height: '100%',
+                                objectFit: 'cover',
+                              }}
+                            />
+                          ) : (
+                            <ImageIcon 
+                              className="h-5 w-5" 
+                              style={{ color: isDark ? '#4b5563' : '#9ca3af' }} 
+                            />
+                          )}
+                        </div>
+                        <span style={{ 
+                          color: isDark ? '#e4e4e7' : '#1A1A1A',
+                          fontWeight: index === 0 ? 500 : 400,
+                        }}>
+                          {t.song_title}
+                        </span>
+                      </div>
                     </td>
                     <td className="p-4" style={{ color: isDark ? '#d1d5db' : '#1A1A1A' }}>
                       {t.composer_name}
@@ -372,7 +436,7 @@ export default function MyCatalogPage() {
         </div>
       </div>
 
-      {/* Summary Card (if tracks exist) */}
+      {/* Summary Card */}
       {!fetching && filtered.length > 0 && (
         <div 
           className="rounded-xl p-4 transition-all"
@@ -403,11 +467,19 @@ export default function MyCatalogPage() {
                 </p>
               </div>
             </div>
-            {search && (
-              <div className="text-sm" style={{ color: isDark ? '#a1a1aa' : '#6B7280' }}>
-                Showing {filtered.length} of {tracks.length} tracks
-              </div>
-            )}
+            <div className="flex items-center gap-4">
+              {fetchingImages && (
+                <div className="flex items-center gap-2 text-sm" style={{ color: isDark ? '#a1a1aa' : '#6B7280' }}>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Fetching images...
+                </div>
+              )}
+              {search && (
+                <div className="text-sm" style={{ color: isDark ? '#a1a1aa' : '#6B7280' }}>
+                  Showing {filtered.length} of {tracks.length} tracks
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

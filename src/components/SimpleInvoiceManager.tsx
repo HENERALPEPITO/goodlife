@@ -322,7 +322,7 @@ export default function SimpleInvoiceManager({ user }: SimpleInvoiceManagerProps
         status: invoice.status,
         payment_method: invoice.payment_method,
         notes: invoice.notes,
-        currency: "€",
+        currency: "$",
       };
 
       // Try to load logo, but don't fail if it doesn't work
@@ -384,7 +384,7 @@ export default function SimpleInvoiceManager({ user }: SimpleInvoiceManagerProps
         status: invoice.status,
         payment_method: invoice.payment_method,
         notes: invoice.notes,
-        currency: "€",
+        currency: "$",
       };
 
       // Try to load logo, but don't fail if it doesn't work
@@ -516,7 +516,7 @@ export default function SimpleInvoiceManager({ user }: SimpleInvoiceManagerProps
                     {new Date(invoice.invoice_date || invoice.created_at).toLocaleDateString()}
                   </td>
                   <td className="p-4 font-semibold" style={{ color: '#166534' }}>
-                    €{(invoice.total_amount || invoice.amount || 0).toFixed(2)}
+                    ${(invoice.total_amount || invoice.amount || 0).toFixed(2)}
                   </td>
                   <td className="p-4">
                     <InvoiceStatusBadge status={invoice.status} />

@@ -39,7 +39,7 @@ export function InvoicePDFExample({ invoice, recipient }: InvoicePDFExampleProps
         invoice,
         recipient,
         {
-          currency: '€',
+          currency: '$',
           due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days from now
           notes: invoice.remarks || undefined,
         }
@@ -62,7 +62,7 @@ export function InvoicePDFExample({ invoice, recipient }: InvoicePDFExampleProps
         invoice,
         recipient,
         {
-          currency: '€',
+          currency: '$',
           due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
           notes: invoice.remarks || undefined,
         }
@@ -126,7 +126,7 @@ export function generateInvoiceWithLineItems() {
     tax_amount: 157.50,
     total: 907.50,
     status: "paid",
-    currency: "€",
+    currency: "$",
     notes: "Payment terms: Net 30 days. Thank you for your business!",
   };
 

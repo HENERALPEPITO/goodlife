@@ -140,7 +140,7 @@ export async function notifyPaymentApproved(
 ): Promise<NotificationResult> {
   return createNotification({
     artistId,
-    message: `Your payment request of €${amount.toFixed(2)} has been approved. Invoice: ${invoiceNumber}`,
+    message: `Your payment request of $${amount.toFixed(2)} has been approved. Invoice: ${invoiceNumber}`,
     type: "payment_approved",
     metadata: { amount, invoiceNumber },
   });
@@ -156,7 +156,7 @@ export async function notifyPaymentRejected(
 ): Promise<NotificationResult> {
   return createNotification({
     artistId,
-    message: `Your payment request of €${amount.toFixed(2)} has been rejected. Invoice: ${invoiceNumber}`,
+    message: `Your payment request of $${amount.toFixed(2)} has been rejected. Invoice: ${invoiceNumber}`,
     type: "payment_rejected",
     metadata: { amount, invoiceNumber },
   });
@@ -172,7 +172,7 @@ export async function notifyPaymentPaid(
 ): Promise<NotificationResult> {
   return createNotification({
     artistId,
-    message: `Your payment of €${amount.toFixed(2)} has been processed. Invoice: ${invoiceNumber}`,
+    message: `Your payment of $${amount.toFixed(2)} has been processed. Invoice: ${invoiceNumber}`,
     type: "payment_paid",
     metadata: { amount, invoiceNumber },
   });

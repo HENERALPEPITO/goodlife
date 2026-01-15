@@ -47,7 +47,7 @@ export function parseNumericPrecise(value: string): string {
   try {
     // Remove any currency symbols and thousands separators
     const cleaned = value
-      .replace(/[$€£¥₱,\s]/g, '')
+      .replace(/[$$£¥₱,\s]/g, '')
       .replace(/[()]/g, match => match === '(' ? '-' : '')
       .trim();
 
@@ -212,7 +212,7 @@ export function validateRow(row: NormalizedRoyaltyRow): ValidatedRoyaltyRow {
     const value = row[field];
     if (value && value.trim() !== '') {
       try {
-        new Big(value.replace(/[$€£¥₱,\s]/g, ''));
+        new Big(value.replace(/[$$£¥₱,\s]/g, ''));
       } catch {
         errors.push(`Invalid ${field} value: "${value}"`);
       }

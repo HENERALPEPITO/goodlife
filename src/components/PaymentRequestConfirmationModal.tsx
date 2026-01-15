@@ -35,12 +35,12 @@ export function PaymentRequestConfirmationModal({
           <p className="text-gray-700 mb-6">
             Are you sure you want to request a payout of{" "}
             <span className="font-bold text-xl text-gray-900">
-              €{balance.toFixed(2)}
+              ${balance.toFixed(2)}
             </span>
             ?
           </p>
           <p className="text-sm text-gray-600 mb-6">
-            This will reset your balance to €0 once submitted.
+            This will reset your balance to $0 once submitted.
           </p>
 
           {/* Actions */}

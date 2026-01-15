@@ -67,12 +67,12 @@ export async function POST(request: NextRequest) {
     console.log("[Payment Request] Paid amount from payment_requests:", paidAmount);
     console.log("[Payment Request] Available balance (totalAmount):", totalAmount);
 
-    // 2. Check if balance is at least €100
+    // 2. Check if balance is at least $100
     if (totalAmount < 100) {
       return NextResponse.json(
         {
           success: false,
-          error: `Balance must be at least €100. Current balance: €${totalAmount.toFixed(2)}`,
+          error: `Balance must be at least $100. Current balance: $${totalAmount.toFixed(2)}`,
         },
         { status: 400 }
       );

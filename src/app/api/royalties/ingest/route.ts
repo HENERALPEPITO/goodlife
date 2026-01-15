@@ -44,7 +44,7 @@ function parseNumericPrecise(value: string): string {
   try {
     // Remove any currency symbols and thousands separators
     const cleaned = value
-      .replace(/[$€£¥₱,\s]/g, "")
+      .replace(/[$$£¥₱,\s]/g, "")
       .replace(/[()]/g, (match) => (match === "(" ? "-" : ""))
       .trim();
 

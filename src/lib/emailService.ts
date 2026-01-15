@@ -28,7 +28,7 @@ function getNewRequestEmailForAdmin(data: {
         <div style="background-color: #f3f4f6; padding: 20px; border-radius: 6px; margin: 20px 0;">
           <p style="margin: 0 0 10px 0;"><strong>Artist:</strong> ${data.artistName}</p>
           <p style="margin: 0 0 10px 0;"><strong>Email:</strong> ${data.artistEmail}</p>
-          <p style="margin: 0 0 10px 0;"><strong>Amount:</strong> €${data.amount.toFixed(2)}</p>
+          <p style="margin: 0 0 10px 0;"><strong>Amount:</strong> $${data.amount.toFixed(2)}</p>
           <p style="margin: 0 0 10px 0;"><strong>Invoice Number:</strong> ${data.invoiceNumber}</p>
           <p style="margin: 0;"><strong>Date:</strong> ${data.requestDate}</p>
         </div>
@@ -64,7 +64,7 @@ function getApprovedEmailForArtist(data: {
       </div>
       <div style="background-color: white; border: 1px solid #e5e7eb; border-top: none; padding: 30px; border-radius: 0 0 8px 8px;">
         <p style="color: #374151; margin-top: 0;">Hi ${data.artistName},</p>
-        <p style="color: #374151;">Great news! Your payment request of <strong>€${data.amount.toFixed(2)}</strong> has been approved.</p>
+        <p style="color: #374151;">Great news! Your payment request of <strong>$${data.amount.toFixed(2)}</strong> has been approved.</p>
         
         <div style="background-color: #f0fdf4; border-left: 4px solid #10b981; padding: 15px; margin: 20px 0; border-radius: 4px;">
           <p style="margin: 0 0 10px 0;"><strong>Invoice Number:</strong> ${data.invoiceNumber}</p>
@@ -99,7 +99,7 @@ function getRejectedEmailForArtist(data: {
       </div>
       <div style="background-color: white; border: 1px solid #e5e7eb; border-top: none; padding: 30px; border-radius: 0 0 8px 8px;">
         <p style="color: #374151; margin-top: 0;">Hi ${data.artistName},</p>
-        <p style="color: #374151;">Your payment request of <strong>€${data.amount.toFixed(2)}</strong> has been <strong style="color: #ef4444;">rejected</strong>.</p>
+        <p style="color: #374151;">Your payment request of <strong>$${data.amount.toFixed(2)}</strong> has been <strong style="color: #ef4444;">rejected</strong>.</p>
         
         <div style="background-color: #fef2f2; border-left: 4px solid #ef4444; padding: 15px; margin: 20px 0; border-radius: 4px;">
           <p style="margin: 0 0 10px 0;"><strong>Invoice Number:</strong> ${data.invoiceNumber}</p>

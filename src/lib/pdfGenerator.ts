@@ -261,7 +261,7 @@ export async function generatePaymentRequestInvoicePDF(
   doc.text("Total Amount:", margin, yPosition);
 
   const totalAmount = Number(invoice.total_net || 0).toFixed(2);
-  const totalText = `€${totalAmount}`;
+  const totalText = `$${totalAmount}`;
   const totalWidth = doc.getTextWidth(totalText);
   doc.text(totalText, pageWidth - margin - totalWidth, yPosition);
   yPosition += 15;
