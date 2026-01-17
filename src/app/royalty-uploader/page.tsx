@@ -367,23 +367,6 @@ export default function RoyaltyUploaderPage() {
         description: `Processed ${computation?.totalRows || 0} rows into ${computation?.summariesCreated || 0} summary records for Q${selectedQuarter} ${selectedYear}`,
       });
 
-      // Step 4: Optionally download failed rows CSV
-      if (result.failedRowsCsv) {
-        const blob = new Blob([result.failedRowsCsv], { type: "text/csv" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `failed-rows-Q${selectedQuarter}-${selectedYear}.csv`;
-        a.click();
-        URL.revokeObjectURL(url);
-        
-        toast({
-          title: "Failed Rows Downloaded",
-          description: "Some rows failed validation - check downloaded CSV",
-          variant: "destructive",
-        });
-      }
-
       // Reset form (keep artist and period for convenience)
       setSelectedFile(null);
       setColumnValidation(null);

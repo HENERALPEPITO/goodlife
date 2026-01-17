@@ -6,14 +6,26 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import { Loader2, DollarSign, AlertCircle } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+
+interface PaymentDetails {
+  name: string;
+  surname: string;
+  address: string;
+  taxId: string;
+  iban: string;
+  swiftBic: string;
+  bankName: string;
+  bankAddress: string;
+}
 
 export default function PaymentRequestPage() {
   const { user, loading: authLoading } = useAuth();
@@ -22,8 +34,20 @@ export default function PaymentRequestPage() {
   const [loading, setLoading] = useState(true);
   const [requesting, setRequesting] = useState(false);
   const [balance, setBalance] = useState(0);
+  const [bankDetailsOpen, setBankDetailsOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [hasPendingRequest, setHasPendingRequest] = useState(false);
+  const [paymentDetails, setPaymentDetails] = useState<PaymentDetails>({
+    name: "",
+    surname: "",
+    address: "",
+    taxId: "",
+    iban: "",
+    swiftBic: "",
+    bankName: "",
+    bankAddress: "",
+  });
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -87,7 +111,28 @@ export default function PaymentRequestPage() {
     }
   }, [user, fetchBalance, checkPendingRequest]);
 
-  const handleRequestPayment = async () => {
+  const handleRequestPaymentClick = () => {
+    // STEP 1: Open bank details modal (button is already disabled if conditions aren't met)
+    setBankDetailsOpen(true);
+  };
+
+  const handleBankDetailsSubmit = () => {
+    // Validate form before proceeding
+    if (!validatePaymentForm()) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in all required fields correctly.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // STEP 2: Bank details are valid, close bank details modal and open confirmation modal
+    setBankDetailsOpen(false);
+    setConfirmOpen(true);
+  };
+
+  const handleConfirmPayment = async () => {
     if (!user) return;
 
     try {
@@ -101,7 +146,7 @@ export default function PaymentRequestPage() {
         throw new Error("Artist record not found");
       }
 
-      // Call the API to create payment request
+      // Call the API to create payment request with payment details
       const response = await fetch("/api/payment/request", {
         method: "POST",
         headers: {
@@ -109,6 +154,7 @@ export default function PaymentRequestPage() {
         },
         body: JSON.stringify({
           artist_id: balanceJson.artistId,
+          paymentDetails: paymentDetails,
         }),
       });
 
@@ -128,13 +174,27 @@ export default function PaymentRequestPage() {
       await checkPendingRequest();
       setConfirmOpen(false);
 
+      // Reset form
+      setPaymentDetails({
+        name: "",
+        surname: "",
+        address: "",
+        taxId: "",
+        iban: "",
+        swiftBic: "",
+        bankName: "",
+        bankAddress: "",
+      });
+      setFormErrors({});
+
       // Redirect to payments page
       router.push("/artist/payments");
-    } catch (error: any) {
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to create payment request";
       console.error("Error creating payment request:", error);
       toast({
         title: "Error",
-        description: error?.message || "Failed to create payment request",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -144,6 +204,41 @@ export default function PaymentRequestPage() {
 
   const canRequest = balance >= 100 && !hasPendingRequest;
   const minBalance = 100;
+
+  const validatePaymentForm = (): boolean => {
+    const errors: Record<string, string> = {};
+
+    if (!paymentDetails.name.trim()) errors.name = "First name is required";
+    if (!paymentDetails.surname.trim()) errors.surname = "Surname is required";
+    if (!paymentDetails.address.trim()) errors.address = "Address is required";
+    if (!paymentDetails.taxId.trim()) errors.taxId = "Tax ID is required";
+    if (!paymentDetails.iban.trim()) errors.iban = "IBAN is required";
+    if (!paymentDetails.swiftBic.trim()) errors.swiftBic = "SWIFT/BIC code is required";
+    if (!paymentDetails.bankName.trim()) errors.bankName = "Bank name is required";
+    if (!paymentDetails.bankAddress.trim()) errors.bankAddress = "Bank address is required";
+
+    // Validate IBAN format (basic validation)
+    if (paymentDetails.iban.trim() && !/^[A-Z]{2}[0-9]{2}[A-Z0-9]+$/.test(paymentDetails.iban.toUpperCase())) {
+      errors.iban = "Invalid IBAN format";
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleInputChange = (field: keyof PaymentDetails, value: string) => {
+    setPaymentDetails(prev => ({
+      ...prev,
+      [field]: value
+    }));
+    // Clear error for this field when user starts typing
+    if (formErrors[field]) {
+      setFormErrors(prev => ({
+        ...prev,
+        [field]: ""
+      }));
+    }
+  };
 
   if (authLoading || loading) {
     return (
@@ -206,7 +301,7 @@ export default function PaymentRequestPage() {
         )}
 
         <Button
-          onClick={() => setConfirmOpen(true)}
+          onClick={handleRequestPaymentClick}
           disabled={!canRequest}
           className="w-full"
           size="lg"
@@ -217,43 +312,218 @@ export default function PaymentRequestPage() {
               Request Payment
             </>
           ) : (
-            "Request Payment"
+            <>
+              <DollarSign className="w-5 h-5 mr-2" />
+              Request Payment (Balance: ${balance.toFixed(2)})
+            </>
           )}
         </Button>
       </div>
 
-      {/* Confirmation Modal */}
-      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent>
+      {/* STEP 1: Bank Details Modal */}
+      <Dialog open={bankDetailsOpen} onOpenChange={setBankDetailsOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Confirm Payment Request</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to request payment?
-            </DialogDescription>
+            <DialogTitle>Payment Information</DialogTitle>
           </DialogHeader>
-          <div className="py-4">
-            <p className="text-sm text-slate-600 mb-4">
-              This will withdraw your entire balance and reset it to $0.
-            </p>
-            <div className="bg-slate-50 p-4 rounded-md">
-              <div className="flex justify-between items-center">
-                <span className="text-sm font-medium">Amount to withdraw:</span>
-                <span className="text-lg font-bold text-green-600">
-                  ${balance.toFixed(2)}
-                </span>
+          
+          <div className="py-4 space-y-6">
+            {/* Personal Information Section */}
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900 mb-4">Personal Information</h3>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="name" className="text-sm">Name *</Label>
+                    <Input
+                      id="name"
+                      placeholder="Enter your first name"
+                      value={paymentDetails.name}
+                      onChange={(e) => handleInputChange("name", e.target.value)}
+                      className={formErrors.name ? "border-red-500" : ""}
+                      disabled={requesting}
+                    />
+                    {formErrors.name && (
+                      <p className="text-xs text-red-500 mt-1">{formErrors.name}</p>
+                    )}
+                  </div>
+                  <div>
+                    <Label htmlFor="surname" className="text-sm">Surname *</Label>
+                    <Input
+                      id="surname"
+                      placeholder="Enter your surname"
+                      value={paymentDetails.surname}
+                      onChange={(e) => handleInputChange("surname", e.target.value)}
+                      className={formErrors.surname ? "border-red-500" : ""}
+                      disabled={requesting}
+                    />
+                    {formErrors.surname && (
+                      <p className="text-xs text-red-500 mt-1">{formErrors.surname}</p>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="address" className="text-sm">Address *</Label>
+                  <Input
+                    id="address"
+                    placeholder="Enter your full address"
+                    value={paymentDetails.address}
+                    onChange={(e) => handleInputChange("address", e.target.value)}
+                    className={formErrors.address ? "border-red-500" : ""}
+                    disabled={requesting}
+                  />
+                  {formErrors.address && (
+                    <p className="text-xs text-red-500 mt-1">{formErrors.address}</p>
+                  )}
+                </div>
+
+                <div>
+                  <Label htmlFor="taxId" className="text-sm">Tax ID *</Label>
+                  <Input
+                    id="taxId"
+                    placeholder="Enter your tax ID"
+                    value={paymentDetails.taxId}
+                    onChange={(e) => handleInputChange("taxId", e.target.value)}
+                    className={formErrors.taxId ? "border-red-500" : ""}
+                    disabled={requesting}
+                  />
+                  {formErrors.taxId && (
+                    <p className="text-xs text-red-500 mt-1">{formErrors.taxId}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Bank Details Section */}
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900 mb-4">Bank Details</h3>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="iban" className="text-sm">IBAN *</Label>
+                  <Input
+                    id="iban"
+                    placeholder="e.g., DE89370400440532013000"
+                    value={paymentDetails.iban}
+                    onChange={(e) => handleInputChange("iban", e.target.value.toUpperCase())}
+                    className={formErrors.iban ? "border-red-500" : ""}
+                    disabled={requesting}
+                  />
+                  {formErrors.iban && (
+                    <p className="text-xs text-red-500 mt-1">{formErrors.iban}</p>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="swiftBic" className="text-sm">SWIFT / BIC Code *</Label>
+                    <Input
+                      id="swiftBic"
+                      placeholder="e.g., DEUTDEDD"
+                      value={paymentDetails.swiftBic}
+                      onChange={(e) => handleInputChange("swiftBic", e.target.value.toUpperCase())}
+                      className={formErrors.swiftBic ? "border-red-500" : ""}
+                      disabled={requesting}
+                    />
+                    {formErrors.swiftBic && (
+                      <p className="text-xs text-red-500 mt-1">{formErrors.swiftBic}</p>
+                    )}
+                  </div>
+                  <div>
+                    <Label htmlFor="bankName" className="text-sm">Bank Name *</Label>
+                    <Input
+                      id="bankName"
+                      placeholder="Enter your bank name"
+                      value={paymentDetails.bankName}
+                      onChange={(e) => handleInputChange("bankName", e.target.value)}
+                      className={formErrors.bankName ? "border-red-500" : ""}
+                      disabled={requesting}
+                    />
+                    {formErrors.bankName && (
+                      <p className="text-xs text-red-500 mt-1">{formErrors.bankName}</p>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="bankAddress" className="text-sm">Bank Address *</Label>
+                  <Input
+                    id="bankAddress"
+                    placeholder="Enter your bank's address"
+                    value={paymentDetails.bankAddress}
+                    onChange={(e) => handleInputChange("bankAddress", e.target.value)}
+                    className={formErrors.bankAddress ? "border-red-500" : ""}
+                    disabled={requesting}
+                  />
+                  {formErrors.bankAddress && (
+                    <p className="text-xs text-red-500 mt-1">{formErrors.bankAddress}</p>
+                  )}
+                </div>
               </div>
             </div>
           </div>
-          <DialogFooter>
+
+          <DialogFooter className="gap-2">
             <Button
               variant="outline"
-              onClick={() => setConfirmOpen(false)}
+              onClick={() => setBankDetailsOpen(false)}
               disabled={requesting}
             >
               Cancel
             </Button>
             <Button
-              onClick={handleRequestPayment}
+              onClick={handleBankDetailsSubmit}
+              disabled={requesting}
+            >
+              {requesting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                "Continue"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* STEP 2: Confirmation Modal */}
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirm Payment Request</DialogTitle>
+          </DialogHeader>
+          
+          <div className="py-4 space-y-4">
+            <p className="text-sm text-slate-700">
+              Are you sure you want to request a payment?
+            </p>
+            
+            <p className="text-sm text-slate-700">
+              This will withdraw your entire balance and reset it to $0.
+            </p>
+
+            <div className="bg-green-50 border border-green-200 p-4 rounded-md">
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium text-slate-700">Amount to withdraw:</span>
+                <span className="text-2xl font-bold text-green-600">
+                  ${balance.toFixed(2)}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setConfirmOpen(false)}
+              disabled={requesting}
+            >
+              Back
+            </Button>
+            <Button
+              onClick={handleConfirmPayment}
               disabled={requesting}
               className="bg-green-600 hover:bg-green-700"
             >
@@ -263,7 +533,7 @@ export default function PaymentRequestPage() {
                   Processing...
                 </>
               ) : (
-                "Confirm"
+                "Confirm Payment"
               )}
             </Button>
           </DialogFooter>
@@ -272,4 +542,3 @@ export default function PaymentRequestPage() {
     </div>
   );
 }
-

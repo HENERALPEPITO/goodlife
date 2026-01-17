@@ -12,13 +12,23 @@ import { sendNewPaymentRequestEmailToAdmin } from "@/lib/emailService";
 
 interface PaymentRequestBody {
   artist_id: string;
+  paymentDetails?: {
+    name: string;
+    surname: string;
+    address: string;
+    taxId: string;
+    iban: string;
+    swiftBic: string;
+    bankName: string;
+    bankAddress: string;
+  };
 }
 
 export async function POST(request: NextRequest) {
   try {
     const adminClient = getSupabaseAdmin();
     const body: PaymentRequestBody = await request.json();
-    const { artist_id } = body;
+    const { artist_id, paymentDetails } = body;
 
     if (!artist_id) {
       return NextResponse.json(
@@ -135,6 +145,16 @@ export async function POST(request: NextRequest) {
         artist_id: artist_id,
         amount: totalAmount,
         status: "pending",
+        ...(paymentDetails && {
+          first_name: paymentDetails.name,
+          surname: paymentDetails.surname,
+          address: paymentDetails.address,
+          tax_id: paymentDetails.taxId,
+          iban: paymentDetails.iban,
+          swift_bic: paymentDetails.swiftBic,
+          bank_name: paymentDetails.bankName,
+          bank_address: paymentDetails.bankAddress,
+        }),
       })
       .select()
       .single();
@@ -170,6 +190,13 @@ export async function POST(request: NextRequest) {
       total_net: totalAmount,
       status: "pending" as const,
       payment_request_id: paymentRequest.id,
+      // Payment details from form
+      artist_first_name: paymentDetails?.name,
+      artist_surname: paymentDetails?.surname,
+      artist_iban: paymentDetails?.iban,
+      artist_swift_bic: paymentDetails?.swiftBic,
+      artist_bank_name: paymentDetails?.bankName,
+      artist_bank_address: paymentDetails?.bankAddress,
     };
 
     console.log("[Payment Request] Creating PDF with total_net:", totalAmount);

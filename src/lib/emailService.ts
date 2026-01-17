@@ -343,7 +343,7 @@ function getRoyaltyUploadEmailForArtist(artistName: string, quarter: number, yea
         </div>
         
         <div style="text-align: center; margin: 30px 0;">
-          <a href="https://goodlifemusic.com/artist/royalties" 
+          <a href="clientportal.goodlife-publishing.com" 
              style="background-color: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 500;">
             View Your Royalties
           </a>

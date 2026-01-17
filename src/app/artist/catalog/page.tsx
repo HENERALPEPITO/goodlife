@@ -82,6 +82,8 @@ export default function MyCatalogPage() {
       .from("tracks")
       .select("id,song_title,composer_name,isrc,artist_name,split,created_at,spotify_image_url")
       .eq("artist_id", aid)
+      .not('isrc', 'is', null)
+      .neq('isrc', '')
       .order("created_at", { ascending: false });
     
     if (error) {

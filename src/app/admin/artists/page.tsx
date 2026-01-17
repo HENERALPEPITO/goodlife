@@ -40,7 +40,7 @@ export default function AdminArtistsPage() {
     name: "",
     email: "",
     phone: "",
-    address: "Profesor Hermida 6, 3-3C, 36960 Sanxenxo, Spain",
+    address: "",
     tax_id: "",
     password: "",
   });

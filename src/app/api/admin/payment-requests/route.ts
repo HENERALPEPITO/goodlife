@@ -11,6 +11,7 @@ import {
   notifyPaymentRejected,
   notifyPaymentPaid,
 } from "@/lib/notificationService";
+import { generatePaymentRequestInvoicePDF } from "@/lib/pdfGenerator";
 
 interface PaymentRequestDetailed {
   id: string;
@@ -321,12 +322,39 @@ export async function POST(request: NextRequest): Promise<NextResponse<UpdatePay
 
       if (status === "approved") {
         try {
+          // Generate PDF for email attachment
+          let pdfBuffer: Buffer | undefined;
+          try {
+            const pdf = await generatePaymentRequestInvoicePDF({
+              invoice_number: invoiceNumber,
+              invoice_date: new Date().toISOString().split('T')[0],
+              artist_name: artist.name || "Artist",
+              artist_email: artistEmail,
+              artist_address: paymentRequest.artist_address,
+              artist_tax_id: paymentRequest.artist_tax_id,
+              total_net: amount,
+              status: "approved",
+              payment_request_id: id,
+              artist_first_name: paymentRequest.artist_first_name,
+              artist_surname: paymentRequest.artist_surname,
+              artist_iban: paymentRequest.artist_iban,
+              artist_swift_bic: paymentRequest.artist_swift_bic,
+              artist_bank_name: paymentRequest.artist_bank_name,
+              artist_bank_address: paymentRequest.artist_bank_address,
+            });
+            pdfBuffer = Buffer.from(pdf.output("arraybuffer"));
+          } catch (pdfErr) {
+            console.error("Error generating PDF for approval email:", pdfErr);
+            // Continue sending email without PDF if generation fails
+          }
+
           await sendPaymentApprovedEmailToArtist({
             artistName: artist.name || "Artist",
             artistEmail: artistEmail,
             amount: amount,
             invoiceNumber: invoiceNumber,
             approvalDate: new Date().toLocaleDateString(),
+            pdfBuffer: pdfBuffer,
           });
           console.log("Approval email sent to:", artistEmail);
         } catch (emailErr) {
@@ -340,11 +368,38 @@ export async function POST(request: NextRequest): Promise<NextResponse<UpdatePay
         }
       } else if (status === "rejected") {
         try {
+          // Generate PDF for email attachment
+          let pdfBuffer: Buffer | undefined;
+          try {
+            const pdf = await generatePaymentRequestInvoicePDF({
+              invoice_number: invoiceNumber,
+              invoice_date: new Date().toISOString().split('T')[0],
+              artist_name: artist.name || "Artist",
+              artist_email: artistEmail,
+              artist_address: paymentRequest.artist_address,
+              artist_tax_id: paymentRequest.artist_tax_id,
+              total_net: amount,
+              status: "rejected",
+              payment_request_id: id,
+              artist_first_name: paymentRequest.artist_first_name,
+              artist_surname: paymentRequest.artist_surname,
+              artist_iban: paymentRequest.artist_iban,
+              artist_swift_bic: paymentRequest.artist_swift_bic,
+              artist_bank_name: paymentRequest.artist_bank_name,
+              artist_bank_address: paymentRequest.artist_bank_address,
+            });
+            pdfBuffer = Buffer.from(pdf.output("arraybuffer"));
+          } catch (pdfErr) {
+            console.error("Error generating PDF for rejection email:", pdfErr);
+            // Continue sending email without PDF if generation fails
+          }
+
           await sendPaymentRejectedEmailToArtist({
             artistName: artist.name || "Artist",
             artistEmail: artistEmail,
             amount: amount,
             invoiceNumber: invoiceNumber,
+            pdfBuffer: pdfBuffer,
           });
           console.log("Rejection email sent to:", artistEmail);
         } catch (emailErr) {

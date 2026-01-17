@@ -11,7 +11,6 @@ import type { QuarterSummary, ArtistRoyaltiesSummaryResponse } from "@/types/roy
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -40,6 +39,17 @@ interface SelectedQuarterInfo {
   total_tracks: number;
   total_streams: number;
   storage_path?: string;
+}
+
+interface PaymentDetails {
+  name: string;
+  surname: string;
+  address: string;
+  taxId: string;
+  iban: string;
+  swiftBic: string;
+  bankName: string;
+  bankAddress: string;
 }
 
 type ViewMode = "quarters" | "detail";
@@ -109,9 +119,21 @@ export default function RoyaltiesPage() {
   
   // Payment Request State
   const [balance, setBalance] = useState(0);
+  const [bankDetailsOpen, setBankDetailsOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [requesting, setRequesting] = useState(false);
   const [hasPendingRequest, setHasPendingRequest] = useState(false);
+  const [paymentDetails, setPaymentDetails] = useState<PaymentDetails>({
+    name: "",
+    surname: "",
+    address: "",
+    taxId: "",
+    iban: "",
+    swiftBic: "",
+    bankName: "",
+    bankAddress: "",
+  });
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   
   // Filter State
   const [searchQuery, setSearchQuery] = useState("");
@@ -125,7 +147,7 @@ export default function RoyaltiesPage() {
   const perfTimer = useRef(createClientTimer("RoyaltiesPage"));
 
   // Fetch quarters from royalties_summary via hook
-  const { quarters: quartersData, loading: quartersLoading, error: quartersError } = useArtistQuarters();
+  const { quarters: quartersData, loading: quartersLoading } = useArtistQuarters();
 
   // Fetch quarter detail when a quarter is selected
   const { 
@@ -184,8 +206,85 @@ export default function RoyaltiesPage() {
     }
   }, [user]);
 
-  const handleRequestPayment = async () => {
+  const handleRequestPaymentClick = () => {
+    // Check minimum balance
+    if (balance < 100) {
+      toast({
+        title: "Insufficient Balance",
+        description: "Your balance must be at least $100 to request a payment.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Check for pending requests
+    if (hasPendingRequest) {
+      toast({
+        title: "Pending Request",
+        description: "You already have a pending payment request.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // STEP 1: Open bank details modal (NOT confirmation modal)
+    setBankDetailsOpen(true);
+  };
+
+  const validatePaymentForm = (): boolean => {
+    const errors: Record<string, string> = {};
+
+    if (!paymentDetails.name.trim()) errors.name = "First name is required";
+    if (!paymentDetails.surname.trim()) errors.surname = "Surname is required";
+    if (!paymentDetails.address.trim()) errors.address = "Address is required";
+    if (!paymentDetails.taxId.trim()) errors.taxId = "Tax ID is required";
+    if (!paymentDetails.iban.trim()) errors.iban = "IBAN is required";
+    if (!paymentDetails.swiftBic.trim()) errors.swiftBic = "SWIFT/BIC code is required";
+    if (!paymentDetails.bankName.trim()) errors.bankName = "Bank name is required";
+    if (!paymentDetails.bankAddress.trim()) errors.bankAddress = "Bank address is required";
+
+    // Validate IBAN format (basic validation)
+    if (paymentDetails.iban.trim() && !/^[A-Z]{2}[0-9]{2}[A-Z0-9]+$/.test(paymentDetails.iban.toUpperCase())) {
+      errors.iban = "Invalid IBAN format";
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleInputChange = (field: keyof PaymentDetails, value: string) => {
+    setPaymentDetails(prev => ({
+      ...prev,
+      [field]: value
+    }));
+    // Clear error for this field when user starts typing
+    if (formErrors[field]) {
+      setFormErrors(prev => ({
+        ...prev,
+        [field]: ""
+      }));
+    }
+  };
+
+  const handleBankDetailsSubmit = () => {
+    // Validate form before proceeding
+    if (!validatePaymentForm()) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in all required fields correctly.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // STEP 2: Bank details are valid, close bank details modal and open confirmation modal
+    setBankDetailsOpen(false);
+    setConfirmOpen(true);
+  };
+
+  const handleConfirmPayment = async () => {
     if (!user) return;
+
     try {
       setRequesting(true);
       const balanceRes = await fetch(`/api/data/balance?user_id=${user.id}`, { cache: "no-store" });
@@ -198,7 +297,10 @@ export default function RoyaltiesPage() {
       const response = await fetch("/api/payment/request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ artist_id: balanceJson.artistId }),
+        body: JSON.stringify({ 
+          artist_id: balanceJson.artistId,
+          paymentDetails: paymentDetails,
+        }),
       });
 
       const data = await response.json();
@@ -214,12 +316,27 @@ export default function RoyaltiesPage() {
       await fetchBalance();
       await checkPendingRequest();
       setConfirmOpen(false);
+
+      // Reset form
+      setPaymentDetails({
+        name: "",
+        surname: "",
+        address: "",
+        taxId: "",
+        iban: "",
+        swiftBic: "",
+        bankName: "",
+        bankAddress: "",
+      });
+      setFormErrors({});
+
       router.push("/artist/payments");
-    } catch (error: any) {
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to create payment request";
       console.error("Error creating payment request:", error);
       toast({
         title: "Error",
-        description: error?.message || "Failed to create payment request",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -312,10 +429,11 @@ export default function RoyaltiesPage() {
       if (json.url) {
         window.open(json.url, '_blank');
       }
-    } catch (error: any) {
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to download CSV file.";
       toast({
         title: "Download failed",
-        description: error?.message || "Failed to download CSV file.",
+        description: errorMessage,
         variant: "destructive",
       });
     }
@@ -382,7 +500,7 @@ export default function RoyaltiesPage() {
                   <p className="text-2xl font-bold text-emerald-600 mt-0.5 tabular-nums">${balance.toFixed(2)}</p>
                 </div>
                 <Button
-                  onClick={() => setConfirmOpen(true)}
+                  onClick={handleRequestPaymentClick}
                   disabled={!canRequest}
                   className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm font-medium px-5 py-2.5"
                 >
@@ -599,26 +717,219 @@ export default function RoyaltiesPage() {
           )}
         </div>
 
-        {/* Payment Request Dialog */}
-        <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-          <DialogContent>
+        {/* STEP 1: Bank Details Modal */}
+        <Dialog open={bankDetailsOpen} onOpenChange={setBankDetailsOpen}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Confirm Payment Request</DialogTitle>
-              <DialogDescription>Are you sure you want to request payment?</DialogDescription>
+              <DialogTitle>Payment Information</DialogTitle>
             </DialogHeader>
-            <div className="py-4">
-              <p className="text-sm text-gray-600 mb-4">This will withdraw your entire balance and reset it to $0.</p>
-              <div className="bg-gray-50 p-4 rounded-md">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium">Amount to withdraw:</span>
-                  <span className="text-lg font-bold text-emerald-600 tabular-nums">${balance.toFixed(2)}</span>
+            
+            <div className="py-4 space-y-6">
+              {/* Personal Information Section */}
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900 mb-4">Personal Information</h3>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium block mb-1.5">Name *</label>
+                      <input
+                        type="text"
+                        placeholder="Enter your first name"
+                        value={paymentDetails.name}
+                        onChange={(e) => handleInputChange("name", e.target.value)}
+                        className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 ${formErrors.name ? "border-red-500" : "border-gray-300"}`}
+                        disabled={requesting}
+                      />
+                      {formErrors.name && (
+                        <p className="text-xs text-red-500 mt-1">{formErrors.name}</p>
+                      )}
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium block mb-1.5">Surname *</label>
+                      <input
+                        type="text"
+                        placeholder="Enter your surname"
+                        value={paymentDetails.surname}
+                        onChange={(e) => handleInputChange("surname", e.target.value)}
+                        className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 ${formErrors.surname ? "border-red-500" : "border-gray-300"}`}
+                        disabled={requesting}
+                      />
+                      {formErrors.surname && (
+                        <p className="text-xs text-red-500 mt-1">{formErrors.surname}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium block mb-1.5">Address *</label>
+                    <input
+                      type="text"
+                      placeholder="Enter your full address"
+                      value={paymentDetails.address}
+                      onChange={(e) => handleInputChange("address", e.target.value)}
+                      className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 ${formErrors.address ? "border-red-500" : "border-gray-300"}`}
+                      disabled={requesting}
+                    />
+                    {formErrors.address && (
+                      <p className="text-xs text-red-500 mt-1">{formErrors.address}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium block mb-1.5">Tax ID *</label>
+                    <input
+                      type="text"
+                      placeholder="Enter your tax ID"
+                      value={paymentDetails.taxId}
+                      onChange={(e) => handleInputChange("taxId", e.target.value)}
+                      className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 ${formErrors.taxId ? "border-red-500" : "border-gray-300"}`}
+                      disabled={requesting}
+                    />
+                    {formErrors.taxId && (
+                      <p className="text-xs text-red-500 mt-1">{formErrors.taxId}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Bank Details Section */}
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900 mb-4">Bank Details</h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium block mb-1.5">IBAN *</label>
+                    <input
+                      type="text"
+                      placeholder="e.g., DE89370400440532013000"
+                      value={paymentDetails.iban}
+                      onChange={(e) => handleInputChange("iban", e.target.value.toUpperCase())}
+                      className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 ${formErrors.iban ? "border-red-500" : "border-gray-300"}`}
+                      disabled={requesting}
+                    />
+                    {formErrors.iban && (
+                      <p className="text-xs text-red-500 mt-1">{formErrors.iban}</p>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium block mb-1.5">SWIFT / BIC Code *</label>
+                      <input
+                        type="text"
+                        placeholder="e.g., DEUTDEDD"
+                        value={paymentDetails.swiftBic}
+                        onChange={(e) => handleInputChange("swiftBic", e.target.value.toUpperCase())}
+                        className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 ${formErrors.swiftBic ? "border-red-500" : "border-gray-300"}`}
+                        disabled={requesting}
+                      />
+                      {formErrors.swiftBic && (
+                        <p className="text-xs text-red-500 mt-1">{formErrors.swiftBic}</p>
+                      )}
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium block mb-1.5">Bank Name *</label>
+                      <input
+                        type="text"
+                        placeholder="Enter your bank name"
+                        value={paymentDetails.bankName}
+                        onChange={(e) => handleInputChange("bankName", e.target.value)}
+                        className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 ${formErrors.bankName ? "border-red-500" : "border-gray-300"}`}
+                        disabled={requesting}
+                      />
+                      {formErrors.bankName && (
+                        <p className="text-xs text-red-500 mt-1">{formErrors.bankName}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium block mb-1.5">Bank Address *</label>
+                    <input
+                      type="text"
+                      placeholder="Enter your bank's address"
+                      value={paymentDetails.bankAddress}
+                      onChange={(e) => handleInputChange("bankAddress", e.target.value)}
+                      className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 ${formErrors.bankAddress ? "border-red-500" : "border-gray-300"}`}
+                      disabled={requesting}
+                    />
+                    {formErrors.bankAddress && (
+                      <p className="text-xs text-red-500 mt-1">{formErrors.bankAddress}</p>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={requesting}>Cancel</Button>
-              <Button onClick={handleRequestPayment} disabled={requesting} className="bg-emerald-600 hover:bg-emerald-700">
-                {requesting ? (<><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processing...</>) : ("Confirm")}
+
+            <DialogFooter className="gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setBankDetailsOpen(false)}
+                disabled={requesting}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleBankDetailsSubmit}
+                disabled={requesting}
+              >
+                {requesting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  "Continue"
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* STEP 2: Confirmation Modal */}
+        <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Confirm Payment Request</DialogTitle>
+            </DialogHeader>
+            <div className="py-4 space-y-4">
+              <p className="text-sm text-gray-700">
+                Are you sure you want to request payment?
+              </p>
+              
+              <p className="text-sm text-gray-700">
+                This will withdraw your entire balance and reset it to $0.
+              </p>
+
+              <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-md">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-slate-700">Amount to withdraw:</span>
+                  <span className="text-2xl font-bold text-emerald-600 tabular-nums">
+                    ${balance.toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <DialogFooter className="gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setConfirmOpen(false)}
+                disabled={requesting}
+              >
+                Back
+              </Button>
+              <Button
+                onClick={handleConfirmPayment}
+                disabled={requesting}
+                className="bg-emerald-600 hover:bg-emerald-700"
+              >
+                {requesting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  "Confirm Payment"
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1034,26 +1345,219 @@ export default function RoyaltiesPage() {
         )}
       </div>
 
-      {/* Payment Request Confirmation Dialog */}
-      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent>
+      {/* STEP 1: Bank Details Modal */}
+      <Dialog open={bankDetailsOpen} onOpenChange={setBankDetailsOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Confirm Payment Request</DialogTitle>
-            <DialogDescription>Are you sure you want to request payment?</DialogDescription>
+            <DialogTitle>Payment Information</DialogTitle>
           </DialogHeader>
-          <div className="py-4">
-            <p className="text-sm text-gray-600 mb-4">This will withdraw your entire balance and reset it to $0.</p>
-            <div className="bg-gray-50 p-4 rounded-md">
-              <div className="flex justify-between items-center">
-                <span className="text-sm font-medium">Amount to withdraw:</span>
-                <span className="text-lg font-bold text-green-600">${balance.toFixed(2)}</span>
+          
+          <div className="py-4 space-y-6">
+            {/* Personal Information Section */}
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900 mb-4">Personal Information</h3>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium block mb-1.5">Name *</label>
+                    <input
+                      type="text"
+                      placeholder="Enter your first name"
+                      value={paymentDetails.name}
+                      onChange={(e) => handleInputChange("name", e.target.value)}
+                      className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 ${formErrors.name ? "border-red-500" : "border-gray-300"}`}
+                      disabled={requesting}
+                    />
+                    {formErrors.name && (
+                      <p className="text-xs text-red-500 mt-1">{formErrors.name}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium block mb-1.5">Surname *</label>
+                    <input
+                      type="text"
+                      placeholder="Enter your surname"
+                      value={paymentDetails.surname}
+                      onChange={(e) => handleInputChange("surname", e.target.value)}
+                      className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 ${formErrors.surname ? "border-red-500" : "border-gray-300"}`}
+                      disabled={requesting}
+                    />
+                    {formErrors.surname && (
+                      <p className="text-xs text-red-500 mt-1">{formErrors.surname}</p>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium block mb-1.5">Address *</label>
+                  <input
+                    type="text"
+                    placeholder="Enter your full address"
+                    value={paymentDetails.address}
+                    onChange={(e) => handleInputChange("address", e.target.value)}
+                    className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 ${formErrors.address ? "border-red-500" : "border-gray-300"}`}
+                    disabled={requesting}
+                  />
+                  {formErrors.address && (
+                    <p className="text-xs text-red-500 mt-1">{formErrors.address}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium block mb-1.5">Tax ID *</label>
+                  <input
+                    type="text"
+                    placeholder="Enter your tax ID"
+                    value={paymentDetails.taxId}
+                    onChange={(e) => handleInputChange("taxId", e.target.value)}
+                    className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 ${formErrors.taxId ? "border-red-500" : "border-gray-300"}`}
+                    disabled={requesting}
+                  />
+                  {formErrors.taxId && (
+                    <p className="text-xs text-red-500 mt-1">{formErrors.taxId}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Bank Details Section */}
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900 mb-4">Bank Details</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium block mb-1.5">IBAN *</label>
+                  <input
+                    type="text"
+                    placeholder="e.g., DE89370400440532013000"
+                    value={paymentDetails.iban}
+                    onChange={(e) => handleInputChange("iban", e.target.value.toUpperCase())}
+                    className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 ${formErrors.iban ? "border-red-500" : "border-gray-300"}`}
+                    disabled={requesting}
+                  />
+                  {formErrors.iban && (
+                    <p className="text-xs text-red-500 mt-1">{formErrors.iban}</p>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium block mb-1.5">SWIFT / BIC Code *</label>
+                    <input
+                      type="text"
+                      placeholder="e.g., DEUTDEDD"
+                      value={paymentDetails.swiftBic}
+                      onChange={(e) => handleInputChange("swiftBic", e.target.value.toUpperCase())}
+                      className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 ${formErrors.swiftBic ? "border-red-500" : "border-gray-300"}`}
+                      disabled={requesting}
+                    />
+                    {formErrors.swiftBic && (
+                      <p className="text-xs text-red-500 mt-1">{formErrors.swiftBic}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium block mb-1.5">Bank Name *</label>
+                    <input
+                      type="text"
+                      placeholder="Enter your bank name"
+                      value={paymentDetails.bankName}
+                      onChange={(e) => handleInputChange("bankName", e.target.value)}
+                      className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 ${formErrors.bankName ? "border-red-500" : "border-gray-300"}`}
+                      disabled={requesting}
+                    />
+                    {formErrors.bankName && (
+                      <p className="text-xs text-red-500 mt-1">{formErrors.bankName}</p>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium block mb-1.5">Bank Address *</label>
+                  <input
+                    type="text"
+                    placeholder="Enter your bank's address"
+                    value={paymentDetails.bankAddress}
+                    onChange={(e) => handleInputChange("bankAddress", e.target.value)}
+                    className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 ${formErrors.bankAddress ? "border-red-500" : "border-gray-300"}`}
+                    disabled={requesting}
+                  />
+                  {formErrors.bankAddress && (
+                    <p className="text-xs text-red-500 mt-1">{formErrors.bankAddress}</p>
+                  )}
+                </div>
               </div>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={requesting}>Cancel</Button>
-            <Button onClick={handleRequestPayment} disabled={requesting} className="bg-green-600 hover:bg-green-700">
-              {requesting ? (<><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processing...</>) : ("Confirm")}
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setBankDetailsOpen(false)}
+              disabled={requesting}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleBankDetailsSubmit}
+              disabled={requesting}
+            >
+              {requesting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                "Continue"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* STEP 2: Confirmation Modal */}
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirm Payment Request</DialogTitle>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <p className="text-sm text-gray-700">
+              Are you sure you want to request payment?
+            </p>
+            
+            <p className="text-sm text-gray-700">
+              This will withdraw your entire balance and reset it to $0.
+            </p>
+
+            <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-md">
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium text-slate-700">Amount to withdraw:</span>
+                <span className="text-2xl font-bold text-emerald-600 tabular-nums">
+                  ${balance.toFixed(2)}
+                </span>
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setConfirmOpen(false)}
+              disabled={requesting}
+            >
+              Back
+            </Button>
+            <Button
+              onClick={handleConfirmPayment}
+              disabled={requesting}
+              className="bg-emerald-600 hover:bg-emerald-700"
+            >
+              {requesting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                "Confirm Payment"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

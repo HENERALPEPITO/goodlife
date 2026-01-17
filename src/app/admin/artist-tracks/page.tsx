@@ -8,7 +8,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Upload, Search, Trash2, Edit, ArrowUpDown, AlertCircle, Download, AlertTriangle, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { Upload, Search, Trash2, Edit, ArrowUpDown, AlertCircle, Download, AlertTriangle, CheckCircle, XCircle, Loader2, Info } from "lucide-react";
 import { parseCatalogCsv, CatalogCsvRow } from "@/lib/catalogCsv";
 import { useTheme } from "next-themes";
 
@@ -70,6 +70,7 @@ export default function ArtistTrackManagerPage() {
   const [columnValidation, setColumnValidation] = useState<CatalogColumnValidationResult | null>(null);
   const [showValidationModal, setShowValidationModal] = useState(false);
   const [validatingFile, setValidatingFile] = useState(false);
+  const [showDuplicateWarningModal, setShowDuplicateWarningModal] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -320,29 +321,74 @@ export default function ArtistTrackManagerPage() {
   };
 
   const handleConfirmUpload = async () => {
-    if (!file || preview.length === 0 || !selectedArtistId) {
-      toast({ title: "Error", description: "Please upload a CSV file and select an artist", variant: "destructive" });
-      return;
-    }
+  if (!file || preview.length === 0 || !selectedArtistId) {
+    toast({ title: "Error", description: "Please upload a CSV file and select an artist", variant: "destructive" });
+    return;
+  }
+  
+  // Double-check validation before saving
+  const hasEmptyISRC = preview.some(r => !r.ISRC || r.ISRC.trim() === "");
+  if (hasEmptyISRC) {
+    toast({ title: "Validation Error", description: "Cannot save tracks with empty ISRC values", variant: "destructive" });
+    return;
+  }
+  
+  if (!user?.id) {
+    toast({ 
+      title: "Authentication Error", 
+      description: "You must be logged in to upload tracks", 
+      variant: "destructive" 
+    });
+    return;
+  }
+  
+  setLoading(true);
+  
+  try {
+    // Step 1: Check for existing ISRCs in the database
+    const isrcsToCheck = preview.map(r => r.ISRC.trim()).filter(Boolean);
     
-    // Double-check validation before saving
-    const hasEmptyISRC = preview.some(r => !r.ISRC || r.ISRC.trim() === "");
-    if (hasEmptyISRC) {
-      toast({ title: "Validation Error", description: "Cannot save tracks with empty ISRC values", variant: "destructive" });
-      return;
-    }
+    const { data: existingTracks, error: checkError } = await supabase
+      .from("tracks")
+      .select("isrc")
+      .eq("artist_id", selectedArtistId)
+      .in("isrc", isrcsToCheck);
     
-    if (!user?.id) {
+    if (checkError) {
+      console.error("Error checking for existing ISRCs:", checkError);
       toast({ 
-        title: "Authentication Error", 
-        description: "You must be logged in to upload tracks", 
+        title: "Check Failed", 
+        description: "Failed to check for duplicate ISRCs", 
         variant: "destructive" 
       });
+      setLoading(false);
       return;
     }
     
+    // Create a set of existing ISRCs for fast lookup
+    const existingISRCs = new Set(existingTracks?.map(t => t.isrc) || []);
+    
+    // Filter out rows with duplicate ISRCs
+    const duplicateCount = preview.filter(r => existingISRCs.has(r.ISRC.trim())).length;
+    const uniquePreview = preview.filter(r => !existingISRCs.has(r.ISRC.trim()));
+    
+    if (duplicateCount > 0) {
+      toast({ 
+        title: "Duplicates Found", 
+        description: `${duplicateCount} track(s) with existing ISRCs will be skipped. ${uniquePreview.length} new track(s) will be added.`,
+        variant: "default"
+      });
+    }
+    
+    if (uniquePreview.length === 0) {
+      setShowDuplicateWarningModal(true);
+      setLoading(false);
+      return;
+    }
+    
+    // Step 2: Prepare rows for insertion (only unique ones)
     const now = new Date().toISOString();
-    const rows = preview.map((r) => {
+    const rows = uniquePreview.map((r) => {
       const songTitle = r["Song Title"]?.trim() || "";
       
       // Validate required fields
@@ -352,8 +398,8 @@ export default function ArtistTrackManagerPage() {
       }
       
       const row: any = {
-        title: songTitle, // Required NOT NULL column - MUST have a value
-        song_title: songTitle, // Catalog schema column
+        title: songTitle,
+        song_title: songTitle,
         composer_name: r["Composer Name"]?.trim() || "",
         isrc: r["ISRC"]?.trim() || "",
         artist_name: r["Artist"]?.trim() || "",
@@ -361,22 +407,16 @@ export default function ArtistTrackManagerPage() {
         created_at: now,
       };
       
-      // Include artist_id - it's now nullable and doesn't have foreign key constraint
-      // We'll set it to the selected artist ID from the artists table
       if (selectedArtistId) {
         row.artist_id = selectedArtistId;
       }
       
-      // Only include uploaded_by if user.id exists (references user_profiles.id)
-      // Note: user.id should match user_profiles.id since user_profiles.id references auth.users(id)
       if (user?.id) {
-        row.uploaded_by = user.id; // This should match user_profiles.id
+        row.uploaded_by = user.id;
       } else {
-        // If no user, set uploaded_by to null (column is nullable)
         row.uploaded_by = null;
       }
       
-      // Ensure title is never empty or null
       if (!row.title || row.title.trim() === "") {
         row.title = songTitle || "Untitled";
       }
@@ -384,112 +424,111 @@ export default function ArtistTrackManagerPage() {
       return row;
     });
     
-    setLoading(true);
-    try {
-      // Validate rows before insert
-      const rowsWithIssues = rows.filter(r => !r.title || r.title.trim() === "");
-      if (rowsWithIssues.length > 0) {
-        console.error("Rows with empty title:", rowsWithIssues);
-        toast({ 
-          title: "Validation Error", 
-          description: `${rowsWithIssues.length} row(s) have empty song titles`, 
-          variant: "destructive" 
-        });
-        setLoading(false);
-        return;
-      }
-      
-      console.log("Inserting tracks:", { 
-        rowCount: rows.length, 
-        firstRow: { 
-          ...rows[0], 
-          hasTitle: !!rows[0].title,
-          titleValue: rows[0].title,
-          titleLength: rows[0].title?.length
-        }, 
-        artistId: selectedArtistId, 
-        userId: user?.id,
-        userRole: user?.role
+    // Validate rows before insert
+    const rowsWithIssues = rows.filter(r => !r.title || r.title.trim() === "");
+    if (rowsWithIssues.length > 0) {
+      console.error("Rows with empty title:", rowsWithIssues);
+      toast({ 
+        title: "Validation Error", 
+        description: `${rowsWithIssues.length} row(s) have empty song titles`, 
+        variant: "destructive" 
       });
-      
-      // Try inserting just one row first to test
-      const { data, error } = await supabase
-        .from("tracks")
-        .insert(rows)
-        .select();
-      
-      if (error) {
-        // Log error in multiple ways to ensure we capture it
-        console.error("=== UPLOAD ERROR ===");
-        console.error("Error object:", error);
-        console.error("Error type:", typeof error);
-        console.error("Error constructor:", error?.constructor?.name);
-        console.error("Error keys:", Object.keys(error || {}));
-        console.error("Error message:", error?.message);
-        console.error("Error code:", error?.code);
-        console.error("Error details:", error?.details);
-        console.error("Error hint:", error?.hint);
-        
-        // Try to stringify
-        try {
-          console.error("Error JSON:", JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
-        } catch (e) {
-          console.error("Could not stringify error:", e);
-        }
-        
-        // Try accessing properties directly
-        const errorMessage = 
-          (error as any)?.message || 
-          (error as any)?.details || 
-          (error as any)?.hint || 
-          String(error) ||
-          "Failed to upload tracks. Check console for full error details.";
-          
-        toast({ 
-          title: "Upload failed", 
-          description: errorMessage,
-          variant: "destructive" 
-        });
-        setLoading(false);
-        return;
-      }
-      
-      console.log("Insert successful, data:", data);
-      
-      toast({ title: "Success", description: `${rows.length} tracks successfully saved to database`, variant: "default" });
-      
-      // Send email and notification to the artist
-      if (selectedArtistId) {
-        try {
-          const response = await fetch("/api/notifications", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              action: "catalog_upload",
-              artistIds: [selectedArtistId],
-            }),
-          });
-          const result = await response.json();
-          if (result.success) {
-            console.log("Catalog upload notifications sent:", result);
-          } else {
-            console.error("Failed to send catalog notifications:", result.error);
-          }
-        } catch (notifyErr) {
-          console.error("Error sending catalog notifications:", notifyErr);
-        }
-      }
-      
-      setFile(null);
-      setPreview([]);
-      await fetchTracks();
-    } catch (err) {
-      console.error("Unexpected error during upload:", err);
-      toast({ title: "Upload failed", description: err instanceof Error ? err.message : "An unexpected error occurred", variant: "destructive" });
-    } finally {
       setLoading(false);
+      return;
     }
-  };
+    
+    console.log("Inserting tracks:", { 
+      rowCount: rows.length, 
+      firstRow: { 
+        ...rows[0], 
+        hasTitle: !!rows[0].title,
+        titleValue: rows[0].title,
+        titleLength: rows[0].title?.length
+      }, 
+      artistId: selectedArtistId, 
+      userId: user?.id,
+      userRole: user?.role,
+      duplicatesSkipped: duplicateCount
+    });
+    
+    const { data, error } = await supabase
+      .from("tracks")
+      .insert(rows)
+      .select();
+    
+    if (error) {
+      console.error("=== UPLOAD ERROR ===");
+      console.error("Error object:", error);
+      console.error("Error type:", typeof error);
+      console.error("Error constructor:", error?.constructor?.name);
+      console.error("Error keys:", Object.keys(error || {}));
+      console.error("Error message:", error?.message);
+      console.error("Error code:", error?.code);
+      console.error("Error details:", error?.details);
+      console.error("Error hint:", error?.hint);
+      
+      try {
+        console.error("Error JSON:", JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+      } catch (e) {
+        console.error("Could not stringify error:", e);
+      }
+      
+      const errorMessage = 
+        (error as any)?.message || 
+        (error as any)?.details || 
+        (error as any)?.hint || 
+        String(error) ||
+        "Failed to upload tracks. Check console for full error details.";
+        
+      toast({ 
+        title: "Upload failed", 
+        description: errorMessage,
+        variant: "destructive" 
+      });
+      setLoading(false);
+      return;
+    }
+    
+    console.log("Insert successful, data:", data);
+    
+    const successMessage = duplicateCount > 0
+      ? `${rows.length} new tracks saved. ${duplicateCount} duplicate(s) skipped.`
+      : `${rows.length} tracks successfully saved to database`;
+    
+    toast({ title: "Success", description: successMessage, variant: "default" });
+    
+    // Send email and notification to the artist
+    if (selectedArtistId) {
+      try {
+        const response = await fetch("/api/notifications", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "catalog_upload",
+            artistIds: [selectedArtistId],
+          }),
+        });
+        const result = await response.json();
+        if (result.success) {
+          console.log("Catalog upload notifications sent:", result);
+        } else {
+          console.error("Failed to send catalog notifications:", result.error);
+        }
+      } catch (notifyErr) {
+        console.error("Error sending catalog notifications:", notifyErr);
+      }
+    }
+    
+    setFile(null);
+    setPreview([]);
+    await fetchTracks();
+  } catch (err) {
+    console.error("Unexpected error during upload:", err);
+    toast({ title: "Upload failed", description: err instanceof Error ? err.message : "An unexpected error occurred", variant: "destructive" });
+  } finally {
+    setLoading(false);
+  }
+};
 
   const toggleAll = (checked: boolean) => {
     const next: Record<string, boolean> = {};
@@ -1642,7 +1681,168 @@ export default function ArtistTrackManagerPage() {
           </div>
         </div>
       )}
+{/* Duplicate Warning Modal */}
+      {showDuplicateWarningModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 backdrop-blur-sm"
+            style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+            onClick={() => setShowDuplicateWarningModal(false)}
+          />
+          
+          {/* Modal Container */}
+          <div 
+            className="relative z-10 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden transform transition-all"
+            style={{
+              backgroundColor: '#FFFFFF',
+              border: '2px solid #FCA5A5',
+            }}
+          >
+            {/* Header - Red Warning Color */}
+            <div 
+              className="relative px-6 py-5 border-b"
+              style={{
+                background: 'linear-gradient(135deg, #FEE2E2 0%, #FECACA 100%)',
+                borderColor: '#FCA5A5',
+              }}
+            >
+              <div className="flex items-start gap-3">
+                {/* Animated Warning Icon */}
+                <div 
+                  className="flex-shrink-0 p-2 rounded-full"
+                  style={{
+                    backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                  }}
+                >
+                  <AlertTriangle 
+                    className="h-6 w-6" 
+                    style={{ 
+                      color: '#DC2626',
+                      filter: 'drop-shadow(0 2px 4px rgba(239, 68, 68, 0.3))',
+                    }} 
+                  />
+                </div>
+                
+                <div className="flex-1">
+                  <h2 
+                    className="text-lg font-bold mb-1"
+                    style={{ color: '#991B1B' }}
+                  >
+                    Duplicate Tracks Detected
+                  </h2>
+                  <p 
+                    className="text-sm"
+                    style={{ color: '#B91C1C' }}
+                  >
+                    {file?.name}
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            {/* Content */}
+            <div className="p-6">
+              {/* Main Warning Message */}
+              <div 
+                className="p-4 rounded-xl mb-4"
+                style={{
+                  backgroundColor: '#FEE2E2',
+                  border: '2px solid #FCA5A5',
+                }}
+              >
+                <div className="flex items-start gap-3">
+                  <XCircle 
+                    className="h-5 w-5 flex-shrink-0 mt-0.5" 
+                    style={{ color: '#DC2626' }}
+                  />
+                  <div>
+                    <p 
+                      className="font-semibold mb-1"
+                      style={{ color: '#991B1B' }}
+                    >
+                      All {preview.length} tracks already exist
+                    </p>
+                    <p 
+                      className="text-sm"
+                      style={{ color: '#991B1B' }}
+                    >
+                      All tracks in this CSV already exist in the database. Each track was matched by ISRC code, so no duplicates were found to add.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Info Box - White Background */}
+              <div 
+                className="p-4 rounded-xl mb-5"
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  border: '1px solid #E5E7EB',
+                }}
+              >
+                <div className="flex items-start gap-3">
+                  <Info 
+                    className="h-5 w-5 flex-shrink-0 mt-0.5" 
+                    style={{ color: '#DC2626' }}
+                  />
+                  <div>
+                    <p 
+                      className="text-sm font-semibold mb-2"
+                      style={{ color: '#991B1B' }}
+                    >
+                      What does this mean?
+                    </p>
+                    <ul className="space-y-1.5 text-sm" style={{ color: '#6B7280' }}>
+                      <li className="flex items-start gap-2">
+                        <span style={{ color: '#DC2626' }}>✓</span>
+                        <span>All CSV tracks matched existing ISRCs in your catalog</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span style={{ color: '#DC2626' }}>✓</span>
+                        <span>No new tracks were added</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span style={{ color: '#DC2626' }}>✓</span>
+                        <span>Your catalog remains unchanged</span>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Footer */}
+            <div 
+              className="px-6 py-4 border-t flex items-center justify-end gap-3"
+              style={{ 
+                backgroundColor: '#FFFFFF',
+                borderColor: '#FCA5A5',
+              }}
+            >
+              <button
+                onClick={() => setShowDuplicateWarningModal(false)}
+                className="px-5 py-2.5 rounded-lg font-semibold text-sm transition-all hover:scale-105 active:scale-95"
+                style={{
+                  backgroundColor: '#DC2626',
+                  color: '#FFFFFF',
+                  boxShadow: '0 2px 8px rgba(220, 38, 38, 0.3)',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#B91C1C';
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(220, 38, 38, 0.4)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = '#DC2626';
+                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(220, 38, 38, 0.3)';
+                }}
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-

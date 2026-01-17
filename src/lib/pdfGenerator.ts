@@ -17,6 +17,13 @@ interface PaymentRequestInvoice {
   total_net: number;
   status: "pending" | "approved" | "rejected";
   payment_request_id?: string;
+  // Payment details
+  artist_first_name?: string;
+  artist_surname?: string;
+  artist_iban?: string;
+  artist_swift_bic?: string;
+  artist_bank_name?: string;
+  artist_bank_address?: string;
 }
 
 interface PaymentRequestInvoicePDFOptions {
@@ -198,6 +205,46 @@ export async function generatePaymentRequestInvoicePDF(
     yPosition += 5;
   }
   yPosition += 8;
+
+  // ============================================
+  // BANK DETAILS (if available)
+  // ============================================
+  if (invoice.artist_iban || invoice.artist_bank_name) {
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...colors.text);
+    doc.text("Bank Details:", margin, yPosition);
+    yPosition += 6;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(...colors.secondary);
+
+    if (invoice.artist_iban) {
+      doc.text(`IBAN: ${invoice.artist_iban}`, margin, yPosition);
+      yPosition += 5;
+    }
+    if (invoice.artist_swift_bic) {
+      doc.text(`SWIFT/BIC: ${invoice.artist_swift_bic}`, margin, yPosition);
+      yPosition += 5;
+    }
+    if (invoice.artist_bank_name) {
+      doc.text(`Bank: ${invoice.artist_bank_name}`, margin, yPosition);
+      yPosition += 5;
+    }
+    if (invoice.artist_bank_address) {
+      const bankAddressLines = invoice.artist_bank_address.includes("\n")
+        ? invoice.artist_bank_address.split("\n").map((s) => s.trim())
+        : invoice.artist_bank_address.split(",").map((s) => s.trim());
+      bankAddressLines.forEach((line) => {
+        if (line) {
+          doc.text(line, margin, yPosition);
+          yPosition += 5;
+        }
+      });
+    }
+    yPosition += 8;
+  }
 
   // ============================================
   // SEPARATOR LINE

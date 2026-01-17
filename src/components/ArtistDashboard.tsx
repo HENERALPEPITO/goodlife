@@ -107,13 +107,21 @@ export default function ArtistDashboard() {
           }
         }
         
+        // Fetch total tracks count from tracks table
+        const { count: tracksCount } = await supabase
+          .from('tracks')
+          .select('*', { count: 'exact', head: true })
+          .eq('artist_id', artist.id)
+          .not('isrc', 'is', null)
+          .neq('isrc', '');
+        
         setStats({
           totalRevenue: parseFloat(String(s.total_earnings || s.total_net || 0)),
-          totalTracks: parseInt(String(s.total_tracks || 0), 10),
+          totalTracks: tracksCount || 0,
           totalStreams: totalStreams,
         });
         usingSummary = true;
-        console.log('[Artist Dashboard] Using royalties_summary table, streams:', totalStreams);
+        console.log('[Artist Dashboard] Using royalties_summary table, streams:', totalStreams, 'tracks:', tracksCount);
 
         // Fetch top tracks from summary table
         const topTracksResult = await supabase.rpc('get_artist_top_tracks', {
@@ -237,7 +245,7 @@ export default function ArtistDashboard() {
       color: "#A78BFA",
     },
     {
-      label: "Active Tracks",
+      label: "Total Tracks",
       value: stats.totalTracks.toString(),
       sub: "In catalog",
       icon: Music,

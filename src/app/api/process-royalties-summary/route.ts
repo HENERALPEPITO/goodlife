@@ -316,7 +316,6 @@ export async function POST(request: NextRequest): Promise<NextResponse<ProcessSu
           errors: result.errors,
           duration_ms: result.duration_ms,
         },
-        failedRowsCsv,
       },
       { status: result.success ? 200 : 500 }
     );
