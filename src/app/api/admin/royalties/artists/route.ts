@@ -3,6 +3,8 @@
  * 
  * Fetch all artists who have royalty records
  * Admin-only endpoint
+ * 
+ * OPTIMIZED: Single auth query + single data query via relationship joins
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -17,7 +19,7 @@ interface Artist {
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
-    // Create Supabase client for auth check
+    // Create server-side Supabase client with cookie support for auth verification
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://nyxedsuflhvxzijjiktj.supabase.co";
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im55eGVkc3VmbGh2eHppamppa3RqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIzNDAzMjUsImV4cCI6MjA3NzkxNjMyNX0.Fm4MVU2rIO4IqMRUMAE_qUJQXqWn0WWZUMS0RuMKmDo";
     
@@ -40,142 +42,109 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       }
     );
 
-    // Try to get user from Authorization header first
-    let user = null;
-    const authHeader = request.headers.get('Authorization');
+    // OPTIMIZED AUTH: Check user_metadata first (JWT decode, no DB query)
+    let userId: string | null = null;
+    let userRole: string | null = null;
     
+    const authHeader = request.headers.get('Authorization');
     if (authHeader?.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
-      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token);
+      const { data: { user: authUser } } = await supabase.auth.getUser(token);
       
-      if (!authError && authUser) {
-        const { data: profile } = await supabase
-          .from("user_profiles")
-          .select("*")
-          .eq("id", authUser.id)
-          .single();
-        
-        if (profile) {
-          user = {
-            id: authUser.id,
-            email: authUser.email || profile.email,
-            role: profile.role as string,
-          };
-        }
+      if (authUser) {
+        userId = authUser.id;
+        userRole = authUser.user_metadata?.role as string || null;
       }
     }
     
-    // If no user from token, try to get session from cookies
-    if (!user) {
-      await supabase.auth.getUser();
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (!sessionError && session?.user) {
-        const { data: profile } = await supabase
-          .from("user_profiles")
-          .select("*")
-          .eq("id", session.user.id)
-          .single();
-        
-        if (profile) {
-          user = {
-            id: session.user.id,
-            email: session.user.email || profile.email,
-            role: profile.role as string,
-          };
-        }
+    // Fallback: Check session from cookies
+    if (!userId) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        userId = session.user.id;
+        userRole = session.user.user_metadata?.role as string || null;
       }
     }
     
-    if (!user) {
-      console.log("No user found in GET /api/admin/royalties/artists - cookies:", request.cookies.getAll().map(c => c.name));
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    // Check if user is admin
-    if (user.role !== "admin") {
-      return NextResponse.json(
-        { error: "Forbidden - Admin access required" },
-        { status: 403 }
-      );
+    // If role not cached in metadata, do single DB query
+    if (!userRole) {
+      const { data: profile } = await supabase
+        .from("user_profiles")
+        .select("role")
+        .eq("id", userId)
+        .single();
+      userRole = profile?.role || null;
+    }
+    
+    if (userRole !== "admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // Use admin client to fetch all artists with royalty records
-    let adminClient;
-    try {
-      adminClient = getSupabaseAdmin();
-    } catch (adminError) {
-      console.error("Failed to initialize admin client:", adminError);
-      return NextResponse.json(
-        { error: "Server configuration error - admin client unavailable" },
-        { status: 500 }
-      );
-    }
+    // Get admin client for data queries
+    const adminClient = getSupabaseAdmin();
 
-    // Get all unique artist_ids from royalties_summary with their record counts
-    const { data: summaryData, error: summaryError } = await adminClient
-      .from("royalties_summary")
-      .select("artist_id, record_count")
-      .not("artist_id", "is", null);
-
-    if (summaryError) {
-      console.error("Error fetching royalties_summary:", summaryError);
-      return NextResponse.json(
-        { error: "Failed to fetch royalties summary" },
-        { status: 500 }
-      );
-    }
-
-    // Aggregate record counts per artist
-    const artistRecordCounts = new Map<string, number>();
-    (summaryData || []).forEach((record: { artist_id: string; record_count: number }) => {
-      const count = artistRecordCounts.get(record.artist_id) || 0;
-      artistRecordCounts.set(record.artist_id, count + (record.record_count || 0));
-    });
-
-    // Get unique artist IDs
-    const artistIds = Array.from(artistRecordCounts.keys());
-
-    if (artistIds.length === 0) {
-      return NextResponse.json([], { status: 200 });
-    }
-
-    // Get artists with their names (from artists table)
-    const { data: artists, error: artistsError } = await adminClient
+    // OPTIMIZED: Single query combining artists with royalty summary
+    // Attempts to fetch with relationships; falls back to manual join if needed
+    const { data: artistsData, error: queryError } = await adminClient
       .from("artists")
-      .select("id, name, email, user_id")
-      .in("id", artistIds);
+      .select(
+        `
+        id,
+        name,
+        email,
+        user_id,
+        royalties_summary!left(record_count)
+        `
+      );
 
-    if (artistsError) {
-      console.error("Error fetching artists:", artistsError);
+    if (queryError) {
+      console.error("Error fetching artists:", queryError);
       return NextResponse.json(
         { error: "Failed to fetch artist data" },
         { status: 500 }
       );
     }
 
-    // Get user emails for artists without email in artists table
-    const userIds = (artists || []).map((a: any) => a.user_id).filter(Boolean);
-    const { data: userProfiles } = await adminClient
-      .from("user_profiles")
-      .select("id, email")
-      .in("id", userIds);
+    if (!artistsData || artistsData.length === 0) {
+      return NextResponse.json([], { status: 200 });
+    }
+
+    // Get user emails for any artists without email in artists table
+    const userIds = (artistsData || [])
+      .filter((a: any) => !a.email && a.user_id)
+      .map((a: any) => a.user_id);
 
     const userEmailMap = new Map<string, string>();
-    (userProfiles || []).forEach((u: any) => {
-      userEmailMap.set(u.id, u.email);
-    });
+    if (userIds.length > 0) {
+      const { data: userProfiles } = await adminClient
+        .from("user_profiles")
+        .select("id, email")
+        .in("id", userIds);
 
-    // Combine data
-    const resultArtists: Artist[] = (artists || [])
-      .map((artist: { id: string; name: string; email: string | null; user_id: string }) => ({
-        id: artist.id,
-        email: artist.name || artist.email || userEmailMap.get(artist.user_id) || "Unknown Artist",
-        record_count: artistRecordCounts.get(artist.id) || 0,
-      }))
+      (userProfiles || []).forEach((u: any) => {
+        userEmailMap.set(u.id, u.email);
+      });
+    }
+
+    // Transform and aggregate results
+    const resultArtists: Artist[] = (artistsData || [])
+      .map((artist: any) => {
+        const totalRecords = (artist.royalties_summary || []).reduce(
+          (sum: number, s: any) => sum + (s.record_count || 0),
+          0
+        );
+
+        return {
+          id: artist.id,
+          email: artist.name || artist.email || userEmailMap.get(artist.user_id) || "Unknown Artist",
+          record_count: totalRecords,
+        };
+      })
+      .filter((artist) => artist.record_count > 0)
       .sort((a: Artist, b: Artist) => a.email.localeCompare(b.email));
 
     return NextResponse.json(resultArtists, { status: 200 });

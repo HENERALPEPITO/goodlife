@@ -39,17 +39,26 @@ export async function requireAdmin(headers: Headers): Promise<AdminUser | null> 
     const authHeader = headers.get("authorization");
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       console.error("[requireAdmin] No authorization header or invalid format");
+      console.error("[requireAdmin] Headers available:", Array.from(headers.keys()));
       return null;
     }
 
     const token = authHeader.replace("Bearer ", "");
+    console.log("[requireAdmin] Token provided, length:", token.length);
     
     // Use admin client to verify the token
-    const adminClient = getSupabaseAdmin();
+    let adminClient;
+    try {
+      adminClient = getSupabaseAdmin();
+    } catch (adminError) {
+      console.error("[requireAdmin] Failed to initialize admin client:", adminError);
+      return null;
+    }
+
     const { data: { user }, error } = await adminClient.auth.getUser(token);
 
     if (error || !user) {
-      console.error("[requireAdmin] Invalid token or user not found:", error);
+      console.error("[requireAdmin] Invalid token or user not found:", error?.message);
       return null;
     }
 
@@ -73,10 +82,10 @@ export async function requireAdmin(headers: Headers): Promise<AdminUser | null> 
       .eq("id", user.id)
       .single();
 
-    console.log("[requireAdmin] Profile from DB:", profile?.email, "| role:", profile?.role);
+    console.log("[requireAdmin] Profile from DB:", profile?.email, "| role:", profile?.role, "| error:", profileError?.message);
 
     if (profileError || !profile) {
-      console.error("[requireAdmin] Profile not found:", profileError);
+      console.error("[requireAdmin] Profile not found:", profileError?.message);
       return null;
     }
 
