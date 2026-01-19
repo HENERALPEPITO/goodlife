@@ -13,8 +13,8 @@ export default function Topbar() {
   };
 
   return (
-    <header 
-      className="sticky top-0 z-10 bg-white transition-colors"
+    <header
+      className="hidden md:block sticky top-0 z-10 bg-white transition-colors"
       style={{
         // borderBottom: '1px solid #E5E7EB',
       }}

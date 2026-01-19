@@ -5,9 +5,9 @@ import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { 
-  Plus, 
-  FileDown, 
+import {
+  Plus,
+  FileDown,
   Search,
   Check,
   X,
@@ -55,7 +55,7 @@ export default function InvoiceManagement({ user }: InvoiceManagementProps) {
   const [showForm, setShowForm] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const [artists, setArtists] = useState<Array<{ id: string; name: string; email: string }>>([]);
-  
+
   // Search and filter state
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -91,7 +91,7 @@ export default function InvoiceManagement({ user }: InvoiceManagementProps) {
   const fetchInvoices = async () => {
     try {
       setLoading(true);
-      
+
       // Get artist ID if user is artist
       let artistId: string | null = null;
       if (!isAdmin) {
@@ -207,7 +207,7 @@ export default function InvoiceManagement({ user }: InvoiceManagementProps) {
       });
       return;
     }
-    
+
     if (invoice.status !== "pending" && !isAdmin) {
       toast({
         title: "Cannot Edit",
@@ -299,7 +299,7 @@ export default function InvoiceManagement({ user }: InvoiceManagementProps) {
     try {
       // Get invoice settings for PDF generation
       const settings = await getInvoiceSettings();
-      
+
       // Check if this is a payment request invoice (has payment_request_id)
       if (invoice.payment_request_id) {
         await PaymentRequestInvoicePDF.downloadInvoice(
@@ -347,8 +347,8 @@ export default function InvoiceManagement({ user }: InvoiceManagementProps) {
             {isAdmin ? "Invoice Management" : "My Invoices"}
           </h1>
           <p className="text-sm mt-1 text-gray-600">
-            {isAdmin 
-              ? "View and manage all invoices. Invoices are automatically generated when artists request payment." 
+            {isAdmin
+              ? "View and manage all invoices. Invoices are automatically generated when artists request payment."
               : "View your invoices. Invoices are automatically generated when you request payment."}
           </p>
         </div>
@@ -366,7 +366,7 @@ export default function InvoiceManagement({ user }: InvoiceManagementProps) {
             className="pl-9"
           />
         </div>
-        
+
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
@@ -395,7 +395,7 @@ export default function InvoiceManagement({ user }: InvoiceManagementProps) {
       </div>
 
       {/* Invoices Table */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50">
             <tr>

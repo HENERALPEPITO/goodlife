@@ -2,16 +2,22 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
-import { LayoutDashboard, BarChart3, DollarSign, Music, FileUp, Users, Settings, Upload, User, Loader2, Menu, X } from "lucide-react";
+import { LayoutDashboard, BarChart3, DollarSign, Music, FileUp, Users, Settings, Upload, User, Loader2, Menu, X, LogOut } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { user, loading, isInitialized } = useAuth();
+  const router = useRouter();
+  const { user, loading, isInitialized, signOut } = useAuth();
   const [mounted, setMounted] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const handleSignOut = async () => {
+    await signOut();
+    router.push("/login");
+  };
 
   useEffect(() => setMounted(true), []);
 
@@ -84,9 +90,8 @@ export default function Sidebar() {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ease-in-out ${
-                  active ? "font-semibold" : "font-normal"
-                }`}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ease-in-out ${active ? "font-semibold" : "font-normal"
+                  }`}
                 style={{
                   backgroundColor: active ? "#1A1A1A" : "transparent",
                   color: active ? "#ffffff" : "#cccccc",
@@ -131,6 +136,13 @@ export default function Sidebar() {
             <p className="capitalize" style={{ color: "#aaaaaa" }}>
               {user.role}
             </p>
+            <button
+              onClick={handleSignOut}
+              className="md:hidden mt-4 flex items-center gap-2 text-sm font-medium text-red-400 hover:text-red-300 transition-colors w-full p-2 rounded hover:bg-white/5"
+            >
+              <LogOut className="h-4 w-4" />
+              <span>Sign out</span>
+            </button>
           </div>
         ) : null}
       </div>
@@ -175,16 +187,15 @@ export default function Sidebar() {
 
       {/* Mobile Sidebar */}
       <aside
-        className={`md:hidden fixed top-0 left-0 h-screen w-64 z-50 transform transition-transform duration-300 ease-in-out shadow-lg ${
-          mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
+        className={`md:hidden fixed top-0 left-0 h-screen w-64 z-[60] transform transition-transform duration-300 ease-in-out shadow-lg ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
         style={{
           backgroundColor: "#000000",
           fontFamily:
             "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', sans-serif",
         }}
       >
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col h-full overflow-y-auto pb-20">
           <SidebarContent />
         </div>
       </aside>

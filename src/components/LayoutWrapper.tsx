@@ -8,10 +8,10 @@ import LegalFooter from "@/components/LegalFooter";
 
 export default function LayoutWrapper({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  
+
   // Pages that should not show navigation
   const isAuthPage = pathname === "/login" || pathname === "/signup" || pathname === "/forgot-password" || pathname === "/reset-password";
-  
+
   // Legal pages with simplified layout
   const isLegalPage = pathname === "/privacy-policy" || pathname === "/terms-and-conditions";
 
@@ -38,11 +38,11 @@ export default function LayoutWrapper({ children }: { children: ReactNode }) {
   return (
     <main className="flex h-screen bg-background text-foreground transition-colors">
       <Sidebar />
-      <div className="flex-1 flex flex-col ml-64 overflow-hidden bg-background">
+      <div className="flex-1 flex flex-col md:ml-64 transition-all duration-300 overflow-hidden bg-background pt-20 md:pt-0">
         <Topbar />
         <div className="flex-1 overflow-auto bg-background">
           <div className="flex flex-col min-h-full">
-            <section className="flex-1 p-8 bg-background">
+            <section className="flex-1 p-4 md:p-8 bg-background">
               {children}
             </section>
             <Footer />
