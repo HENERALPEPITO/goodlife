@@ -38,7 +38,7 @@ export default function LayoutWrapper({ children }: { children: ReactNode }) {
   return (
     <main className="flex h-screen bg-background text-foreground transition-colors">
       <Sidebar />
-      <div className="flex-1 flex flex-col md:ml-64 transition-all duration-300 overflow-hidden bg-background pt-20 md:pt-0">
+      <div className="flex-1 flex flex-col md:ml-64 transition-all duration-300 overflow-hidden bg-background pt-16 md:pt-0">
         <Topbar />
         <div className="flex-1 overflow-auto bg-background">
           <div className="flex flex-col min-h-full">
