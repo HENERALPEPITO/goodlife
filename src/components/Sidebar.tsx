@@ -66,7 +66,7 @@ export default function Sidebar() {
       <div className="p-6 flex-shrink-0">
         <Link
           href="/"
-          className="flex items-center justify-center hover:opacity-80 transition-opacity mb-8"
+          className="hidden md:flex items-center justify-center hover:opacity-80 transition-opacity mb-8"
           onClick={() => setMobileMenuOpen(false)}
         >
           <Image
