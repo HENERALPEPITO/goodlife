@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
           continue;
         }
       }
-      
+
       if (!track.isrc) continue;
 
       // Check cache first
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
       } else {
         // Fetch from Spotify
         spotifyData = await searchTrackByISRC(track.isrc);
-        
+
         if (spotifyData) {
           // Update cache
           await supabase
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
 
       if (spotifyData) {
         updates.push({ id: track.id, ...spotifyData });
-        
+
         // Update track in database
         await supabase
           .from('tracks')
@@ -103,15 +103,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       updated: updates.length,
-      results: updates 
+      results: updates
     });
   } catch (error) {
     console.error('Error in fetch-images API:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }
     );
   }
