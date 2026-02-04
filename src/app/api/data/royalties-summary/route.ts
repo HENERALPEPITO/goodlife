@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
 
   // Get artist ID for non-admin users
   let targetArtistId: string | null = null;
-  
+
   const { data: userData } = await supabaseAdmin
     .from('user_profiles')
     .select('role')
@@ -49,8 +49,14 @@ export async function GET(request: NextRequest) {
       .select('id')
       .eq('user_id', user.id)
       .single();
-    
+
     targetArtistId = artistData?.id || null;
+  } else if (userData?.role === 'admin') {
+    // If admin, check if artist_id is provided in params
+    const paramArtistId = searchParams.get('artist_id');
+    if (paramArtistId) {
+      targetArtistId = paramArtistId;
+    }
   }
 
   // Handle different actions
@@ -71,19 +77,28 @@ export async function GET(request: NextRequest) {
       // Get CSV uploads for storage paths
       const { data: csvUploads } = await supabaseAdmin
         .from('csv_uploads')
-        .select('id, year, quarter, storage_path')
+        .select('id, year, quarter, storage_path, filename')
         .eq('artist_id', targetArtistId)
         .eq('processing_status', 'completed');
 
       const quartersWithPaths = (quartersData || []).map((q: any) => {
-        const csvUpload = csvUploads?.find(
+        // Find ALL matching CSVs for this quarter
+        const matchingUploads = (csvUploads || []).filter(
           (c: any) => c.year === q.year && c.quarter === q.quarter
         );
+
         return {
           ...q,
           label: `${q.year} Quarter ${q.quarter}`,
-          storage_path: csvUpload?.storage_path || null,
-          csv_upload_id: csvUpload?.id || null,
+          // Support multiple files
+          file_paths: matchingUploads.map((u: any) => ({
+            path: u.storage_path,
+            filename: u.filename || 'download.csv',
+            id: u.id
+          })),
+          // Keep backward compatibility for now (use first file)
+          storage_path: matchingUploads[0]?.storage_path || null,
+          csv_upload_id: matchingUploads[0]?.id || null,
         };
       });
 
@@ -126,7 +141,7 @@ export async function GET(request: NextRequest) {
 
     case 'download': {
       const storagePath = searchParams.get('path');
-      
+
       if (!storagePath) {
         return NextResponse.json({ error: 'Storage path is required' }, { status: 400 });
       }

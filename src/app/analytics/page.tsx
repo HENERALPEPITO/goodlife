@@ -72,7 +72,7 @@ const GREEN_GRADIENT = [
 export default function AnalyticsPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
-  
+
   const [analytics, setAnalytics] = useState<SummaryAnalytics>({
     stats: { totalRevenue: 0, totalStreams: 0, averagePerStream: 0, topTerritory: "N/A" },
     topTracks: [],
@@ -107,7 +107,7 @@ export default function AnalyticsPage() {
 
       // Try fetching from royalties_summary first (new system)
       const summaryResult = await fetchFromSummaryTable(artistId);
-      
+
       if (summaryResult) {
         setAnalytics(summaryResult);
         console.log('[Analytics] Using royalties_summary table');
@@ -149,7 +149,7 @@ export default function AnalyticsPage() {
         if (artistSummaries && artistSummaries.length > 0) {
           const platformTotals = new Map<string, number>();
           const territoryTotals = new Map<string, number>();
-          
+
           for (const summary of artistSummaries) {
             const net = parseFloat(String(summary.total_net || 0));
             totalRevenue += net;
@@ -161,7 +161,7 @@ export default function AnalyticsPage() {
             const platformValues = Object.values(platforms) as number[];
             const platformSum = platformValues.reduce((a, b) => a + b, 0);
             const platformIsPercentage = platformSum > 0 && platformSum <= 1.1;
-            
+
             for (const [platform, val] of Object.entries(platforms)) {
               const amt = platformIsPercentage ? net * (val as number) : (val as number);
               platformTotals.set(platform, (platformTotals.get(platform) || 0) + amt);
@@ -171,7 +171,7 @@ export default function AnalyticsPage() {
             // This is more reliable than the distribution JSON which may have inconsistent formats
             if (summary.top_territory) {
               territoryTotals.set(
-                summary.top_territory, 
+                summary.top_territory,
                 (territoryTotals.get(summary.top_territory) || 0) + net
               );
             }
@@ -196,7 +196,7 @@ export default function AnalyticsPage() {
       } else {
         // Admin: aggregate from all summary records
         const { data: adminTotals, error: adminError } = await supabase.rpc('get_admin_royalties_totals');
-        
+
         if (adminError) {
           console.warn('Admin totals RPC failed:', adminError.message);
           return null;
@@ -225,7 +225,7 @@ export default function AnalyticsPage() {
           const platformTotals = new Map<string, number>();
           const territoryTotals = new Map<string, number>();
           const topTerritoryCount = new Map<string, number>();
-          
+
           // If RPC returned 0 streams, sum directly from records
           if (totalStreams === 0) {
             let directStreamsSum = 0;
@@ -240,14 +240,14 @@ export default function AnalyticsPage() {
 
           for (const summary of allSummaries) {
             const net = parseFloat(summary.total_net || 0);
-            
+
             // Aggregate platform distributions
             // Check if values are percentages (sum ~1.0) or absolute amounts
             const platforms = summary.platform_distribution || {};
             const platformValues = Object.values(platforms) as number[];
             const platformSum = platformValues.reduce((a, b) => a + b, 0);
             const platformIsPercentage = platformSum > 0 && platformSum <= 1.1;
-            
+
             for (const [platform, val] of Object.entries(platforms)) {
               const amt = platformIsPercentage ? net * (val as number) : (val as number);
               platformTotals.set(platform, (platformTotals.get(platform) || 0) + amt);
@@ -257,7 +257,7 @@ export default function AnalyticsPage() {
             // This is more reliable than the distribution JSON which may have inconsistent formats
             if (summary.top_territory) {
               territoryTotals.set(
-                summary.top_territory, 
+                summary.top_territory,
                 (territoryTotals.get(summary.top_territory) || 0) + net
               );
             }
@@ -283,9 +283,9 @@ export default function AnalyticsPage() {
       const { data: topTracksData, error: topTracksError } = artistId
         ? await supabase.rpc('get_artist_top_tracks', { _artist_id: artistId, _year: null, _quarter: null, _limit: 5 })
         : await supabase.from('royalties_summary')
-            .select('track_id, total_net, total_streams, tracks(title)')
-            .order('total_net', { ascending: false })
-            .limit(5);
+          .select('track_id, total_net, total_streams, tracks(title)')
+          .order('total_net', { ascending: false })
+          .limit(5);
 
       console.log('[Analytics Debug] Top tracks query:', {
         count: topTracksData?.length || 0,
@@ -297,10 +297,22 @@ export default function AnalyticsPage() {
       let quarterlyRevenue: QuarterlyData[] = [];
       if (artistId) {
         const { data: trendsData } = await supabase.rpc('get_artist_quarterly_trends', { _artist_id: artistId, _limit: 8 });
-        quarterlyRevenue = (trendsData || []).map((t: any) => ({
-          quarter: t.quarter_label || `Q${t.quarter} ${t.year}`,
-          revenue: parseFloat(t.total_net || 0)
-        })).slice(-8);
+
+        quarterlyRevenue = (trendsData || [])
+          .map((t: any) => ({
+            quarter: t.quarter_label || `Q${t.quarter} ${t.year}`,
+            revenue: parseFloat(t.total_net || 0),
+            year: t.year,
+            qValue: t.quarter
+          }))
+          .sort((a: any, b: any) => {
+            if (a.year !== b.year) return a.year - b.year;
+            return a.qValue - b.qValue;
+          })
+          .map((t: any) => ({
+            quarter: t.quarter,
+            revenue: t.revenue
+          }));
       } else {
         // Admin: aggregate quarterly data
         const { data: allQuarterly } = await supabase
@@ -384,7 +396,7 @@ export default function AnalyticsPage() {
       if (error) throw error;
 
       const royalties = data || [];
-      
+
       if (!royalties.length) {
         return {
           stats: { totalRevenue: 0, totalStreams: 0, averagePerStream: 0, topTerritory: "N/A" },
@@ -530,9 +542,9 @@ export default function AnalyticsPage() {
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={analytics.topTracks} margin={{ left: 20, right: 20, top: 20, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={GREEN_PALETTE.grid} opacity={0.3} />
-                <XAxis 
-                  dataKey="title" 
-                  tick={{ fill: '#6B7280', fontSize: 11 }} 
+                <XAxis
+                  dataKey="title"
+                  tick={{ fill: '#6B7280', fontSize: 11 }}
                   axisLine={{ stroke: GREEN_PALETTE.grid }}
                   tickFormatter={(value) => value.length > 12 ? value.substring(0, 10) + '...' : value}
                 />
@@ -579,8 +591,8 @@ export default function AnalyticsPage() {
                   </ResponsiveContainer>
                 </div>
 
-                <SourceLegend 
-                  sources={analytics.sourceBreakdown.slice(0, 5)} 
+                <SourceLegend
+                  sources={analytics.sourceBreakdown.slice(0, 5)}
                   colors={GREEN_GRADIENT}
                   totalRevenue={analytics.sourceBreakdown.reduce((sum, s) => sum + s.revenue, 0)}
                 />
@@ -611,10 +623,10 @@ export default function AnalyticsPage() {
               <BarChart data={analytics.territoryBreakdown} layout="vertical" margin={{ left: 20, right: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={GREEN_PALETTE.grid} opacity={0.3} />
                 <XAxis type="number" tick={{ fill: '#6B7280', fontSize: 12 }} axisLine={{ stroke: GREEN_PALETTE.grid }} tickFormatter={(value) => `$${value.toFixed(2)}`} />
-                <YAxis 
-                  dataKey="territory" 
-                  type="category" 
-                  tick={{ fill: '#6B7280', fontSize: 11 }} 
+                <YAxis
+                  dataKey="territory"
+                  type="category"
+                  tick={{ fill: '#6B7280', fontSize: 11 }}
                   axisLine={{ stroke: GREEN_PALETTE.grid }}
                   width={100}
                   tickFormatter={(value) => value.length > 15 ? value.substring(0, 13) + '...' : value}
@@ -718,11 +730,11 @@ const SourceLegend = React.memo(({ sources, colors, totalRevenue }: any) => (
 ));
 
 const SourceModal = React.memo(({ sources, colors, onClose }: any) => {
-  const totalRevenue = useMemo(() => 
-    sources.reduce((sum: number, s: SourceData) => sum + s.revenue, 0), 
+  const totalRevenue = useMemo(() =>
+    sources.reduce((sum: number, s: SourceData) => sum + s.revenue, 0),
     [sources]
   );
-  
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
@@ -735,7 +747,7 @@ const SourceModal = React.memo(({ sources, colors, onClose }: any) => {
             <X className="h-6 w-6 text-gray-600" />
           </button>
         </div>
-        
+
         <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
           <div className="space-y-3">
             {sources.map((item: SourceData, index: number) => {

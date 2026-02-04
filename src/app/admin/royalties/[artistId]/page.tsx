@@ -12,6 +12,8 @@ import { ArrowLeft, Loader, AlertCircle, Trash2, ChevronDown, ChevronRight, Down
 import type { Royalty } from "@/types";
 import { supabase } from "@/lib/supabaseClient";
 import Big from "big.js";
+import { useArtistQuarters } from "@/hooks/useRoyaltiesSummary";
+import type { QuarterSummary } from "@/types/royalty-summary";
 
 // Helper to safely create a Big value from string or number
 function toBig(value: string | number | null | undefined): Big {
@@ -26,6 +28,12 @@ function toBig(value: string | number | null | undefined): Big {
   }
 }
 
+interface FilePath {
+  path: string;
+  filename: string;
+  id: string;
+}
+
 interface QuarterGroup {
   quarter: string;
   year: number;
@@ -33,6 +41,7 @@ interface QuarterGroup {
   totalNet: string;
   totalGross: string;
   displayedRoyalties?: Royalty[];
+  filePaths?: FilePath[];
 }
 
 export default function ArtistRoyaltiesPage() {
@@ -40,7 +49,7 @@ export default function ArtistRoyaltiesPage() {
   const router = useRouter();
   const params = useParams();
   const { toast } = useToast();
-  
+
   const artistId = params.artistId as string;
   const [royalties, setRoyalties] = useState<Royalty[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -48,8 +57,11 @@ export default function ArtistRoyaltiesPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
   const [expandedQuarters, setExpandedQuarters] = useState<Set<string>>(new Set());
+  const [fullyExpandedTables, setFullyExpandedTables] = useState<Set<string>>(new Set());
   const [deleteQuarterConfirm, setDeleteQuarterConfirm] = useState<string | null>(null);
-  const [displayLimit, setDisplayLimit] = useState(10);
+
+  // Fetch quarter summaries (for original CSV paths)
+  const { quarters: summaryQuarters } = useArtistQuarters(artistId);
 
   // Group royalties by quarter using Big.js for precision
   const groupByQuarter = (royalties: Royalty[]): QuarterGroup[] => {
@@ -99,24 +111,27 @@ export default function ArtistRoyaltiesPage() {
   };
 
   // Group ALL royalties by quarter (for correct totals)
-  const allQuarterGroups = groupByQuarter(royalties);
-  
-  // Limit which royalties to display (first N records globally)
-  let displayedCount = 0;
-  const quarterGroups = allQuarterGroups.map(group => {
-    const remainingToDisplay = displayLimit - displayedCount;
-    const royaltiesToShow = group.royalties.slice(0, remainingToDisplay);
-    displayedCount += royaltiesToShow.length;
-    
+  const quarterGroups = groupByQuarter(royalties).map(group => {
+    // Find matching summary for storage_path
+    const summary = summaryQuarters.find(sq => sq.year === group.year && sq.quarter === parseInt(group.quarter.substring(1)));
     return {
       ...group,
-      // Keep original totals (from all records in quarter)
-      // But limit displayed royalties
-      displayedRoyalties: royaltiesToShow
+      // Use file_paths if available (new API), fallback to single storagePath (old API/compat)
+      filePaths: (summary as any)?.file_paths || ((summary as any)?.storage_path ? [{ path: (summary as any).storage_path, filename: 'download.csv' }] : [])
     };
-  }).filter(group => group.displayedRoyalties.length > 0);
-  
-  const hasMore = royalties.length > displayLimit;
+  });
+
+  const toggleTableExpansion = (key: string) => {
+    setFullyExpandedTables((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
 
   const toggleQuarter = (key: string) => {
     setExpandedQuarters((prev) => {
@@ -147,10 +162,10 @@ export default function ArtistRoyaltiesPage() {
 
     // Convert royalties to CSV rows
     const rows = royalties.map((royalty) => {
-      const date = royalty.broadcast_date 
+      const date = royalty.broadcast_date
         ? new Date(royalty.broadcast_date).toLocaleDateString("en-US")
         : "";
-      
+
       return [
         royalty.track_title || "",
         royalty.isrc || "",
@@ -168,7 +183,7 @@ export default function ArtistRoyaltiesPage() {
     // Combine headers and rows
     const csvContent = [
       headers.join(","),
-      ...rows.map((row) => 
+      ...rows.map((row) =>
         row.map((cell) => {
           // Escape cells that contain commas, quotes, or newlines
           if (cell.includes(",") || cell.includes('"') || cell.includes("\n")) {
@@ -183,7 +198,7 @@ export default function ArtistRoyaltiesPage() {
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
-    
+
     link.setAttribute("href", url);
     link.setAttribute("download", `royalties-${quarterKey}.csv`);
     link.style.visibility = "hidden";
@@ -195,6 +210,43 @@ export default function ArtistRoyaltiesPage() {
       title: "Success",
       description: `Exported ${royalties.length} record(s) from ${quarterKey}`,
     });
+  };
+
+  const downloadOriginalCSV = async (storagePath: string, filename?: string) => {
+    try {
+      console.log('[Download] Starting download for:', storagePath, 'filename:', filename);
+      const res = await fetch(`/api/data/royalties-summary?action=download&path=${encodeURIComponent(storagePath)}`);
+      const json = await res.json();
+
+      if (json.error) {
+        console.error('[Download] API error:', json.error);
+        throw new Error(json.error);
+      }
+
+      if (json.url) {
+        console.log('[Download] Got signed URL, triggering download');
+        // Create a temporary anchor element to trigger download
+        const link = document.createElement('a');
+        link.href = json.url;
+        link.download = filename || storagePath.split('/').pop() || 'download.csv';
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        console.log('[Download] Download triggered for:', filename);
+      } else {
+        console.error('[Download] No URL returned from API');
+      }
+    } catch (error) {
+      console.error('[Download] Error downloading:', error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to download CSV file.";
+      toast({
+        title: "Download failed",
+        description: errorMessage,
+        variant: "destructive",
+      });
+      throw error; // Re-throw so the calling code knows it failed
+    }
   };
 
   // Check authorization and fetch royalties
@@ -225,23 +277,23 @@ export default function ArtistRoyaltiesPage() {
     try {
       setIsLoading(true);
       setError(null);
-      
+
       // Get the session token to send in Authorization header
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       const headers: HeadersInit = {
         "Content-Type": "application/json",
       };
-      
+
       if (session?.access_token) {
         headers["Authorization"] = `Bearer ${session.access_token}`;
       }
-      
+
       const response = await fetch(`/api/admin/royalties/${artistId}`, {
         headers,
         credentials: "include",
       });
-      
+
       if (!response.ok) {
         if (response.status === 401) {
           console.warn("Received 401 from API, checking session...");
@@ -256,10 +308,10 @@ export default function ArtistRoyaltiesPage() {
       }
 
       const responseData = await response.json();
-      
+
       // Handle both old format (array) and paginated format (object with data array)
       const data = Array.isArray(responseData) ? responseData : (responseData.data || []);
-      
+
       // Debug: Log first royalty to verify data structure
       if (data && data.length > 0) {
         console.log("📊 Frontend received royalty data. Sample record:", {
@@ -273,7 +325,7 @@ export default function ArtistRoyaltiesPage() {
           territory: data[0].territory,
         });
       }
-      
+
       setRoyalties(data);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to fetch royalties";
@@ -291,18 +343,18 @@ export default function ArtistRoyaltiesPage() {
   const handleUpdateRoyalty = async (id: string, updates: Partial<Royalty>) => {
     try {
       setIsSaving(true);
-      
+
       // Get the session token to send in Authorization header
-      const { data: { session } } = await supabase.auth.getSession();
-      
+      const { data: { session } = {} } = await supabase.auth.getSession();
+
       const headers: HeadersInit = {
         "Content-Type": "application/json",
       };
-      
+
       if (session?.access_token) {
         headers["Authorization"] = `Bearer ${session.access_token}`;
       }
-      
+
       const response = await fetch(`/api/admin/royalties/record/${id}`, {
         method: "PUT",
         headers,
@@ -315,7 +367,7 @@ export default function ArtistRoyaltiesPage() {
       }
 
       const updated = await response.json();
-      
+
       // Update local state
       setRoyalties((prev) =>
         prev.map((r) => (r.id === id ? { ...r, ...updated } : r))
@@ -344,16 +396,16 @@ export default function ArtistRoyaltiesPage() {
 
     try {
       setIsSaving(true);
-      
+
       // Get the session token to send in Authorization header
-      const { data: { session } } = await supabase.auth.getSession();
-      
+      const { data: { session } = {} } = await supabase.auth.getSession();
+
       const headers: HeadersInit = {};
-      
+
       if (session?.access_token) {
         headers["Authorization"] = `Bearer ${session.access_token}`;
       }
-      
+
       const response = await fetch(`/api/admin/royalties/record/${id}`, {
         method: "DELETE",
         headers,
@@ -386,12 +438,12 @@ export default function ArtistRoyaltiesPage() {
   const handleDeleteQuarter = async (quarterKey: string, royaltyIds: string[]) => {
     try {
       setIsSaving(true);
-      
+
       // Get the session token to send in Authorization header
-      const { data: { session } } = await supabase.auth.getSession();
-      
+      const { data: { session } = {} } = await supabase.auth.getSession();
+
       const headers: HeadersInit = {};
-      
+
       if (session?.access_token) {
         headers["Authorization"] = `Bearer ${session.access_token}`;
       }
@@ -406,7 +458,7 @@ export default function ArtistRoyaltiesPage() {
       );
 
       const results = await Promise.all(deletePromises);
-      
+
       // Check if all deletes were successful
       const failedDeletes = results.filter((r) => !r.ok);
       if (failedDeletes.length > 0) {
@@ -443,16 +495,16 @@ export default function ArtistRoyaltiesPage() {
 
     try {
       setIsSaving(true);
-      
+
       // Get the session token to send in Authorization header
-      const { data: { session } } = await supabase.auth.getSession();
-      
+      const { data: { session } = {} } = await supabase.auth.getSession();
+
       const headers: HeadersInit = {};
-      
+
       if (session?.access_token) {
         headers["Authorization"] = `Bearer ${session.access_token}`;
       }
-      
+
       const response = await fetch(
         `/api/admin/royalties/delete-all/${artistId}`,
         {
@@ -548,9 +600,9 @@ export default function ArtistRoyaltiesPage() {
             <div className="mb-6 flex items-center justify-between gap-4">
               <div className="flex-1 bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <p className="text-sm text-blue-900">
-                  Showing first <strong>{Math.min(displayLimit, royalties.length)}</strong> of <strong>{royalties.length}</strong> royalty {royalties.length === 1 ? "record" : "records"} organized into{" "}
-                  <strong>{allQuarterGroups.length}</strong> {allQuarterGroups.length === 1 ? "quarter" : "quarters"}.
-                  <strong>Quarter totals show all records</strong>, but only displaying first {displayLimit}. Click any quarter to expand.
+                  Showing all <strong>{royalties.length}</strong> royalty records organized into{" "}
+                  <strong>{quarterGroups.length}</strong> {quarterGroups.length === 1 ? "quarter" : "quarters"}.
+                  Click any quarter to expand details.
                 </p>
               </div>
               <div className="flex gap-2">
@@ -580,6 +632,7 @@ export default function ArtistRoyaltiesPage() {
                   {quarterGroups.map((group) => {
                     const key = `${group.year}-${group.quarter}`;
                     const isExpanded = expandedQuarters.has(key);
+                    const isTableExpanded = fullyExpandedTables.has(key);
 
                     return (
                       <div
@@ -603,9 +656,6 @@ export default function ArtistRoyaltiesPage() {
                               </h3>
                               <p className="text-sm text-slate-600">
                                 {group.royalties.length} {group.royalties.length === 1 ? "record" : "records"}
-                                {group.displayedRoyalties && group.displayedRoyalties.length < group.royalties.length && (
-                                  <span className="text-blue-600"> (showing {group.displayedRoyalties.length})</span>
-                                )}
                               </p>
                             </div>
                           </button>
@@ -622,22 +672,113 @@ export default function ArtistRoyaltiesPage() {
                                 ${parseFloat(group.totalNet).toFixed(2)}
                               </p>
                             </div>
-                            <Button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                // Export ALL royalties in this quarter, not just displayed ones
-                                const fullGroup = allQuarterGroups.find(g => `${g.year}-${g.quarter}` === key);
-                                if (fullGroup) {
-                                  exportQuarterToCSV(key, fullGroup.royalties);
-                                }
-                              }}
-                              variant="ghost"
-                              size="sm"
-                              className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                              title="Export to CSV"
-                            >
-                              <Download className="w-4 h-4" />
-                            </Button>
+                            {group.filePaths && group.filePaths.length > 0 ? (
+                              <div className="relative inline-block">
+                                {group.filePaths.length === 1 ? (
+                                  // Single file - direct download button
+                                  <Button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      downloadOriginalCSV(group.filePaths[0].path, group.filePaths[0].filename);
+                                    }}
+                                    variant="outline"
+                                    size="sm"
+                                    className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border-emerald-200"
+                                    title="Download Original CSV from storage"
+                                  >
+                                    <Download className="w-4 h-4" />
+                                    <span className="ml-2 hidden sm:inline">Original CSV</span>
+                                  </Button>
+                                ) : (
+                                  // Multiple files - show dropdown
+                                  <div className="flex gap-2">
+                                    <Button
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        const files = group.filePaths || [];
+
+                                        if (files.length > 0) {
+                                          let downloadedCount = 0;
+                                          let failedCount = 0;
+
+                                          for (let i = 0; i < files.length; i++) {
+                                            const file = files[i];
+
+                                            if (file.path) {
+                                              try {
+                                                await downloadOriginalCSV(file.path, file.filename);
+                                                downloadedCount++;
+                                              } catch (error) {
+                                                console.error(`Failed to download file ${i + 1}:`, error);
+                                                failedCount++;
+                                              }
+
+                                              if (i < files.length - 1) {
+                                                await new Promise(resolve => setTimeout(resolve, 300));
+                                              }
+                                            }
+                                          }
+
+                                          if (downloadedCount > 0) {
+                                            toast({
+                                              title: "Downloads Complete",
+                                              description: failedCount > 0
+                                                ? `Downloaded ${downloadedCount} file(s). ${failedCount} failed.`
+                                                : `Downloaded all ${downloadedCount} file(s).`,
+                                              variant: failedCount > 0 ? "destructive" : "default",
+                                            });
+                                          }
+                                        }
+                                      }}
+                                      variant="outline"
+                                      size="sm"
+                                      className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border-emerald-200"
+                                      title="Download all CSV files"
+                                    >
+                                      <Download className="w-4 h-4" />
+                                      <span className="ml-2 hidden sm:inline">Download All ({group.filePaths.length})</span>
+                                    </Button>
+
+                                    <details className="relative">
+                                      <summary className="cursor-pointer inline-flex items-center px-3 py-2 border border-emerald-200 rounded-md text-sm text-emerald-600 hover:bg-emerald-50">
+                                        <ChevronDown className="w-4 h-4" />
+                                      </summary>
+                                      <div className="absolute right-0 mt-2 w-80 bg-white border border-slate-200 rounded-lg shadow-lg z-50 overflow-hidden">
+                                        <div className="p-3 bg-slate-50 border-b border-slate-200">
+                                          <p className="text-sm font-semibold text-slate-900">Available CSV Files</p>
+                                        </div>
+                                        <div className="max-h-60 overflow-y-auto">
+                                          {group.filePaths.map((file: FilePath, idx: number) => (
+                                            <div
+                                              key={file.id}
+                                              className="flex items-center justify-between p-3 hover:bg-slate-50 border-b border-slate-100 last:border-b-0"
+                                            >
+                                              <div className="flex-1 min-w-0 mr-2">
+                                                <p className="text-sm text-slate-900 truncate" title={file.filename}>
+                                                  {file.filename}
+                                                </p>
+                                              </div>
+                                              <Button
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  downloadOriginalCSV(file.path, file.filename);
+                                                }}
+                                                size="sm"
+                                                variant="ghost"
+                                                className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 flex-shrink-0"
+                                              >
+                                                <Download className="w-3 h-3" />
+                                              </Button>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    </details>
+                                  </div>
+                                )}
+                              </div>
+                            ) : null}
+
                             <Button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -664,7 +805,7 @@ export default function ArtistRoyaltiesPage() {
                               <button
                                 onClick={() => {
                                   // Delete ALL royalties in this quarter
-                                  const fullGroup = allQuarterGroups.find(g => `${g.year}-${g.quarter}` === key);
+                                  const fullGroup = quarterGroups.find(g => `${g.year}-${g.quarter}` === key);
                                   if (fullGroup) {
                                     handleDeleteQuarter(key, fullGroup.royalties.map(r => r.id));
                                   }
@@ -689,11 +830,24 @@ export default function ArtistRoyaltiesPage() {
                         {isExpanded && (
                           <div className="border-t border-slate-200">
                             <EditableRoyaltyTable
-                              royalties={group.displayedRoyalties || group.royalties}
+                              royalties={isTableExpanded ? group.royalties : group.royalties.slice(0, 5)}
                               onUpdate={handleUpdateRoyalty}
                               onDelete={handleDeleteRoyalty}
                               isLoading={isSaving}
                             />
+
+                            {group.royalties.length > 5 && (
+                              <div className="bg-slate-50 p-3 border-t border-slate-200 flex justify-center">
+                                <Button
+                                  onClick={() => toggleTableExpansion(key)}
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-slate-600"
+                                >
+                                  {isTableExpanded ? "Show Less" : `Show All (${group.royalties.length} records)`}
+                                </Button>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -701,18 +855,7 @@ export default function ArtistRoyaltiesPage() {
                   })}
                 </div>
 
-                {/* Load More Button */}
-                {hasMore && (
-                  <div className="mt-6 flex justify-center">
-                    <Button
-                      onClick={() => setDisplayLimit(prev => prev + 10)}
-                      variant="outline"
-                      className="px-6"
-                    >
-                      Load 10 More ({royalties.length - displayLimit} remaining)
-                    </Button>
-                  </div>
-                )}
+
 
                 {/* Delete All Button */}
                 <div className="mt-8 flex justify-end">
