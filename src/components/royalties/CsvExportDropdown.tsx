@@ -123,7 +123,7 @@ export function CsvExportDropdown({ artistId }: CsvExportDropdownProps) {
         className="flex items-center gap-2"
       >
         <FileDown className="w-4 h-4" />
-        Export Original CSV
+        Export All CSV
         <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? "rotate-180" : ""}`} />
       </Button>
 
