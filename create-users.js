@@ -10,7 +10,7 @@ import dotenv from 'dotenv';
 
 dotenv.config({ path: '.env.local' });
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://nyxedsuflhvxzijjiktj.supabase.co';
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!supabaseServiceRoleKey) {
@@ -175,7 +175,7 @@ async function createUsers() {
       console.log('');
     });
 
-    const missing = usersToCreate.filter(u => 
+    const missing = usersToCreate.filter(u =>
       !allProfiles.some(p => p.email === u.email)
     );
 

@@ -10,7 +10,7 @@
 const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config({ path: '.env.local' });
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://nyxedsuflhvxzijjiktj.supabase.co';
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!supabaseServiceRoleKey) {
@@ -101,7 +101,7 @@ async function setupUserProfiles() {
     if (error) {
       // If RPC doesn't exist, try running via REST API using raw SQL
       console.log('⚠️  RPC method not available, trying alternative approach...\n');
-      
+
       // We'll need to use the REST API directly or run SQL via Supabase client
       // For now, let's verify the table exists and check current policies
       const { data: tableCheck, error: tableError } = await supabase
@@ -117,7 +117,7 @@ async function setupUserProfiles() {
       }
 
       console.log('✅ user_profiles table exists');
-      
+
       // Check if we can query it
       const { data: profiles, error: queryError } = await supabase
         .from('user_profiles')
@@ -150,7 +150,7 @@ async function setupUserProfiles() {
 
   // Verify the setup
   console.log('\n🔍 Verifying setup...\n');
-  
+
   const { data: profiles, error: verifyError } = await supabase
     .from('user_profiles')
     .select('id, email, role')
