@@ -22,11 +22,11 @@ interface RoyaltiesResponse {
 export async function GET(request: NextRequest): Promise<NextResponse<RoyaltiesResponse>> {
   try {
     // Create Supabase client using request cookies
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://nyxedsuflhvxzijjiktj.supabase.co";
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im55eGVkc3VmbGh2eHppamppa3RqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIzNDAzMjUsImV4cCI6MjA3NzkxNjMyNX0.Fm4MVU2rIO4IqMRUMAE_qUJQXqWn0WWZUMS0RuMKmDo";
+    
     const response = NextResponse.next();
-
+    
     const supabase = createServerClient(
       supabaseUrl,
       supabaseAnonKey,
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<RoyaltiesR
     // Try to get user from session - use getSession() which works better with cookies
     await supabase.auth.getUser(); // Refresh session first
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-
+    
     if (sessionError || !session?.user) {
       console.log("No session found in royalties API - cookies:", request.cookies.getAll().map(c => c.name));
       return NextResponse.json(
@@ -158,7 +158,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<RoyaltiesR
       }
 
       // Determine status
-      const royaltyStatus: "paid" | "pending" =
+      const royaltyStatus: "paid" | "pending" = 
         royalty.paid_status === "paid" ? "paid" : "pending";
 
       return {
