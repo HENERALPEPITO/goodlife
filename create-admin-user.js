@@ -8,7 +8,7 @@
 const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config({ path: '.env.local' });
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://nyxedsuflhvxzijjiktj.supabase.co';
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!supabaseServiceRoleKey) {
@@ -36,7 +36,7 @@ async function createAdminUser() {
   try {
     // Check if auth user exists
     const { data: allUsers, error: listError } = await supabase.auth.admin.listUsers();
-    
+
     if (listError) {
       console.error('❌ Error listing users:', listError.message);
       return;
