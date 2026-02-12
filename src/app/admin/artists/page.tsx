@@ -8,6 +8,8 @@ import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { Users, Plus, Edit, Trash2, Phone, Mail, MapPin } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -43,6 +45,8 @@ export default function AdminArtistsPage() {
     address: "",
     tax_id: "",
     password: "",
+    advance_payment: "0",
+    is_advance_enabled: false,
   });
 
   useEffect(() => {
@@ -62,11 +66,11 @@ export default function AdminArtistsPage() {
   const fetchArtists = async () => {
     try {
       setLoading(true);
-      
+
       // Get access token from Supabase session
       const { data: { session } } = await supabase.auth.getSession();
       const accessToken = session?.access_token;
-      
+
       const response = await fetch("/api/artists", {
         credentials: "include",
         headers: {
@@ -74,18 +78,18 @@ export default function AdminArtistsPage() {
           ...(accessToken && { Authorization: `Bearer ${accessToken}` }),
         },
       });
-      
+
       if (!response.ok) {
         let errorMessage = `Failed to fetch artists (${response.status})`;
         let errorDetails = "";
-        
+
         try {
           const errorData = await response.json();
-          
+
           // Check if errorData is actually an empty object
-          const hasMeaningfulContent = errorData && typeof errorData === "object" && 
+          const hasMeaningfulContent = errorData && typeof errorData === "object" &&
             (errorData.error || errorData.details || Object.keys(errorData).length > 0);
-          
+
           if (hasMeaningfulContent) {
             errorMessage = errorData.error || errorData.details || errorMessage;
             errorDetails = errorData.details || errorData.error || "";
@@ -112,11 +116,11 @@ export default function AdminArtistsPage() {
             errorMessage = `Server error (${response.status}). Please check your server logs.`;
           }
         }
-        
+
         const fullError = errorDetails ? `${errorMessage}: ${errorDetails}` : errorMessage;
         throw new Error(fullError);
       }
-      
+
       const { artists: data } = await response.json();
       setArtists(data || []);
     } catch (error: any) {
@@ -134,7 +138,7 @@ export default function AdminArtistsPage() {
   const handleAddArtist = async () => {
     try {
       console.log("Creating artist with data:", formData);
-      
+
       if (!formData.name || !formData.email) {
         toast({
           title: "Validation Error",
@@ -171,11 +175,11 @@ export default function AdminArtistsPage() {
 
       console.log("Sending POST request to /api/artists...");
       console.log("Request body:", JSON.stringify(formData));
-      
+
       // Add timeout to prevent hanging requests
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
-      
+
       let response;
       try {
         response = await fetch("/api/artists", {
@@ -198,7 +202,7 @@ export default function AdminArtistsPage() {
         console.error("Fetch error:", fetchError);
         throw new Error(`Network error: ${fetchError.message || "Failed to connect to server"}`);
       }
-      
+
       console.log("Response received - status:", response.status);
       console.log("Response ok:", response.ok);
       console.log("Response headers:", Object.fromEntries(response.headers.entries()));
@@ -206,20 +210,20 @@ export default function AdminArtistsPage() {
       if (!response.ok) {
         let errorMessage = `Failed to create artist (${response.status})`;
         let errorDetails = "";
-        
+
         // Check content type to determine how to parse
         const contentType = response.headers.get("content-type") || "";
         const isJSON = contentType.includes("application/json");
-        
+
         try {
           if (isJSON) {
             const errorData = await response.json();
-            
+
             // Check if errorData has meaningful content
             const hasError = errorData?.error && typeof errorData.error === "string" && errorData.error.length > 0;
             const hasDetails = errorData?.details && typeof errorData.details === "string" && errorData.details.length > 0;
             const hasMeaningfulContent = hasError || hasDetails || (errorData && Object.keys(errorData).length > 0 && Object.values(errorData).some(v => v !== null && v !== undefined && v !== ""));
-            
+
             if (hasMeaningfulContent) {
               errorMessage = errorData.error || errorData.details || errorMessage;
               errorDetails = errorData.details || errorData.error || "";
@@ -241,7 +245,7 @@ export default function AdminArtistsPage() {
               console.error("Error object stringified:", JSON.stringify(errorData));
               console.error("Response status:", response.status);
               console.error("Response headers:", Object.fromEntries(response.headers.entries()));
-              
+
               errorMessage = `Server configuration error (${response.status}). SUPABASE_SERVICE_ROLE_KEY is likely missing or incorrect.`;
               errorDetails = `Please check your .env.local file and ensure SUPABASE_SERVICE_ROLE_KEY is set correctly. The server returned an empty error object, which usually indicates a missing environment variable.`;
             }
@@ -269,7 +273,7 @@ export default function AdminArtistsPage() {
             errorMessage = `Server error (${response.status}). Please check your server logs.`;
           }
         }
-        
+
         // Show detailed error message
         const fullError = errorDetails ? `${errorMessage}${errorDetails ? ': ' + errorDetails : ''}` : errorMessage;
         throw new Error(fullError);
@@ -277,7 +281,7 @@ export default function AdminArtistsPage() {
 
       const responseData = await response.json();
       console.log("Artist created successfully:", responseData);
-      
+
       toast({
         title: "Success",
         description: responseData.message || "Artist successfully created",
@@ -291,6 +295,8 @@ export default function AdminArtistsPage() {
         address: "Profesor Hermida 6, 3-3C, 36960 Sanxenxo, Spain",
         tax_id: "",
         password: "",
+        advance_payment: "0",
+        is_advance_enabled: false,
       });
       await fetchArtists();
     } catch (error: any) {
@@ -319,7 +325,7 @@ export default function AdminArtistsPage() {
     try {
       console.log("handleEditArtist - Selected artist:", selectedArtist);
       console.log("handleEditArtist - Form data:", formData);
-      
+
       // Validate password if provided (must be at least 6 characters)
       if (formData.password && formData.password.length < 6) {
         toast({
@@ -329,14 +335,14 @@ export default function AdminArtistsPage() {
         });
         return;
       }
-      
+
       // Get access token from Supabase session
       const { data: { session } } = await supabase.auth.getSession();
       const accessToken = session?.access_token;
 
       const url = `/api/artists/${selectedArtist.id}`;
       console.log("handleEditArtist - Making PUT request to:", url);
-      
+
       const response = await fetch(url, {
         method: "PUT",
         credentials: "include",
@@ -346,13 +352,13 @@ export default function AdminArtistsPage() {
         },
         body: JSON.stringify(formData),
       });
-      
+
       console.log("handleEditArtist - Response status:", response.status, response.statusText);
 
       if (!response.ok) {
         let errorData: any = {};
         let errorMessage = `Failed to update artist (${response.status})`;
-        
+
         try {
           const contentType = response.headers.get("content-type");
           if (contentType?.includes("application/json")) {
@@ -365,9 +371,9 @@ export default function AdminArtistsPage() {
           console.error("Error parsing error response:", parseError);
           errorData = { error: errorMessage };
         }
-        
+
         errorMessage = errorData.error || errorData.details || errorMessage;
-        
+
         console.error("API Error:", {
           status: response.status,
           statusText: response.statusText,
@@ -376,7 +382,7 @@ export default function AdminArtistsPage() {
           code: errorData.code,
           fullError: errorData
         });
-        
+
         throw new Error(errorMessage);
       }
 
@@ -445,6 +451,8 @@ export default function AdminArtistsPage() {
       address: artist.address || "Profesor Hermida 6, 3-3C, 36960 Sanxenxo, Spain",
       tax_id: artist.tax_id || "",
       password: "", // Don't pre-fill password for security
+      advance_payment: "0",
+      is_advance_enabled: false, // Don't show advance payment UI for editing unless we fetch it (which we don't currently)
     });
     setEditOpen(true);
   };
@@ -469,7 +477,7 @@ export default function AdminArtistsPage() {
   }
 
   return (
-    <div 
+    <div
       className="space-y-6"
       style={{
         backgroundColor: isDark ? "transparent" : "#F9FAFB",
@@ -480,14 +488,14 @@ export default function AdminArtistsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 
-            className="text-2xl font-semibold" 
+          <h1
+            className="text-2xl font-semibold"
             style={{ color: isDark ? "#FFFFFF" : "#1F2937" }}
           >
             Artist Management
           </h1>
-          <p 
-            className="text-sm mt-1" 
+          <p
+            className="text-sm mt-1"
             style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}
           >
             Manage all registered artists
@@ -528,8 +536,8 @@ export default function AdminArtistsPage() {
             backgroundColor: isDark ? "rgba(31, 41, 55, 0.5)" : "#F7F8FA",
           }}
         >
-          <h2 
-            className="text-lg font-semibold" 
+          <h2
+            className="text-lg font-semibold"
             style={{ color: isDark ? "#FFFFFF" : "#1F2937" }}
           >
             All Artists
@@ -537,8 +545,8 @@ export default function AdminArtistsPage() {
         </div>
 
         {artists.length === 0 ? (
-          <div 
-            className="p-8 text-center" 
+          <div
+            className="p-8 text-center"
             style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}
           >
             No artists registered yet. Click "Add Artist" to create one.
@@ -552,32 +560,32 @@ export default function AdminArtistsPage() {
                 }}
               >
                 <tr>
-                  <th 
-                    className="p-4 text-left font-medium" 
+                  <th
+                    className="p-4 text-left font-medium"
                     style={{ color: isDark ? "#9CA3AF" : "#1A1A1A" }}
                   >
                     Artist Name
                   </th>
-                  <th 
-                    className="p-4 text-left font-medium" 
+                  <th
+                    className="p-4 text-left font-medium"
                     style={{ color: isDark ? "#9CA3AF" : "#1A1A1A" }}
                   >
                     Email
                   </th>
-                  <th 
-                    className="p-4 text-left font-medium" 
+                  <th
+                    className="p-4 text-left font-medium"
                     style={{ color: isDark ? "#9CA3AF" : "#1A1A1A" }}
                   >
                     Phone
                   </th>
-                  <th 
-                    className="p-4 text-left font-medium" 
+                  <th
+                    className="p-4 text-left font-medium"
                     style={{ color: isDark ? "#9CA3AF" : "#1A1A1A" }}
                   >
                     Address
                   </th>
-                  <th 
-                    className="p-4 text-left font-medium" 
+                  <th
+                    className="p-4 text-left font-medium"
                     style={{ color: isDark ? "#9CA3AF" : "#1A1A1A" }}
                   >
                     Actions
@@ -593,34 +601,34 @@ export default function AdminArtistsPage() {
                       borderColor: isDark ? "rgba(255, 255, 255, 0.1)" : "#E5E7EB",
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = isDark 
-                        ? "rgba(31, 41, 55, 0.5)" 
+                      e.currentTarget.style.backgroundColor = isDark
+                        ? "rgba(31, 41, 55, 0.5)"
                         : "#F9FAFB";
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.backgroundColor = "transparent";
                     }}
                   >
-                    <td 
-                      className="p-4 font-medium" 
+                    <td
+                      className="p-4 font-medium"
                       style={{ color: isDark ? "#FFFFFF" : "#1F2937" }}
                     >
                       {artist.name}
                     </td>
-                    <td 
-                      className="p-4" 
+                    <td
+                      className="p-4"
                       style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}
                     >
                       {artist.email}
                     </td>
-                    <td 
-                      className="p-4" 
+                    <td
+                      className="p-4"
                       style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}
                     >
                       {artist.phone || "—"}
                     </td>
-                    <td 
-                      className="p-4" 
+                    <td
+                      className="p-4"
                       style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}
                     >
                       {artist.address || "—"}
@@ -685,8 +693,8 @@ export default function AdminArtistsPage() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <label 
-                className="block text-sm font-medium mb-2" 
+              <label
+                className="block text-sm font-medium mb-2"
                 style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}
               >
                 Artist Name <span style={{ color: "#DC2626" }}>*</span>
@@ -703,8 +711,8 @@ export default function AdminArtistsPage() {
               />
             </div>
             <div>
-              <label 
-                className="block text-sm font-medium mb-2" 
+              <label
+                className="block text-sm font-medium mb-2"
                 style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}
               >
                 Contact Email <span style={{ color: "#DC2626" }}>*</span>
@@ -722,8 +730,8 @@ export default function AdminArtistsPage() {
               />
             </div>
             <div>
-              <label 
-                className="block text-sm font-medium mb-2" 
+              <label
+                className="block text-sm font-medium mb-2"
                 style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}
               >
                 Password <span style={{ color: "#DC2626" }}>*</span>
@@ -744,8 +752,8 @@ export default function AdminArtistsPage() {
               </p>
             </div>
             <div>
-              <label 
-                className="block text-sm font-medium mb-2" 
+              <label
+                className="block text-sm font-medium mb-2"
                 style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}
               >
                 Phone Number
@@ -763,8 +771,8 @@ export default function AdminArtistsPage() {
               />
             </div>
             <div>
-              <label 
-                className="block text-sm font-medium mb-2" 
+              <label
+                className="block text-sm font-medium mb-2"
                 style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}
               >
                 Address
@@ -781,8 +789,8 @@ export default function AdminArtistsPage() {
               />
             </div>
             <div>
-              <label 
-                className="block text-sm font-medium mb-2" 
+              <label
+                className="block text-sm font-medium mb-2"
                 style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}
               >
                 Tax ID
@@ -798,6 +806,63 @@ export default function AdminArtistsPage() {
                 }}
               />
             </div>
+
+            {/* Advance Payment Section - Only for creating new artists */}
+            {!selectedArtist && (
+              <div className="border-t pt-4 mt-4" style={{ borderColor: isDark ? "rgba(255, 255, 255, 0.1)" : "#E5E7EB" }}>
+                <div className="flex items-center space-x-2 mb-4">
+                  <Checkbox
+                    id="advance_payment_toggle"
+                    checked={formData.is_advance_enabled}
+                    onCheckedChange={(checked) =>
+                      setFormData({
+                        ...formData,
+                        is_advance_enabled: checked === true,
+                        advance_payment: checked === true ? formData.advance_payment : "0"
+                      })
+                    }
+                  />
+                  <Label
+                    htmlFor="advance_payment_toggle"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                    style={{ color: isDark ? "#FFFFFF" : "#1F2937" }}
+                  >
+                    Enable Advance Payment
+                  </Label>
+                </div>
+
+                {formData.is_advance_enabled && (
+                  <div>
+                    <label
+                      className="block text-sm font-medium mb-2"
+                      style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}
+                    >
+                      Advance Amount (USD) <span style={{ color: "#DC2626" }}>*</span>
+                    </label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={formData.advance_payment}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (parseFloat(val) < 0) return; // Prevent negative input
+                        setFormData({ ...formData, advance_payment: val });
+                      }}
+                      placeholder="0.00"
+                      style={{
+                        backgroundColor: isDark ? "#374151" : "#F9FAFB",
+                        borderColor: isDark ? "rgba(255, 255, 255, 0.1)" : "#D1D5DB",
+                        color: isDark ? "#FFFFFF" : "#1F2937",
+                      }}
+                    />
+                    <p className="text-xs mt-1" style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}>
+                      This amount will be deducted from future royalties.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button
@@ -811,6 +876,8 @@ export default function AdminArtistsPage() {
                   address: "Profesor Hermida 6, 3-3C, 36960 Sanxenxo, Spain",
                   tax_id: "",
                   password: "",
+                  advance_payment: "0",
+                  is_advance_enabled: false,
                 });
               }}
               style={{
@@ -854,8 +921,8 @@ export default function AdminArtistsPage() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <label 
-                className="block text-sm font-medium mb-2" 
+              <label
+                className="block text-sm font-medium mb-2"
                 style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}
               >
                 Artist Name <span style={{ color: "#DC2626" }}>*</span>
@@ -872,8 +939,8 @@ export default function AdminArtistsPage() {
               />
             </div>
             <div>
-              <label 
-                className="block text-sm font-medium mb-2" 
+              <label
+                className="block text-sm font-medium mb-2"
                 style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}
               >
                 Contact Email <span style={{ color: "#DC2626" }}>*</span>
@@ -891,8 +958,8 @@ export default function AdminArtistsPage() {
               />
             </div>
             <div>
-              <label 
-                className="block text-sm font-medium mb-2" 
+              <label
+                className="block text-sm font-medium mb-2"
                 style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}
               >
                 New Password (optional)
@@ -913,8 +980,8 @@ export default function AdminArtistsPage() {
               </p>
             </div>
             <div>
-              <label 
-                className="block text-sm font-medium mb-2" 
+              <label
+                className="block text-sm font-medium mb-2"
                 style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}
               >
                 Phone Number
@@ -932,8 +999,8 @@ export default function AdminArtistsPage() {
               />
             </div>
             <div>
-              <label 
-                className="block text-sm font-medium mb-2" 
+              <label
+                className="block text-sm font-medium mb-2"
                 style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}
               >
                 Address
@@ -950,8 +1017,8 @@ export default function AdminArtistsPage() {
               />
             </div>
             <div>
-              <label 
-                className="block text-sm font-medium mb-2" 
+              <label
+                className="block text-sm font-medium mb-2"
                 style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}
               >
                 Tax ID
@@ -1011,8 +1078,8 @@ export default function AdminArtistsPage() {
               Confirm Delete
             </DialogTitle>
           </DialogHeader>
-          <p 
-            className="py-4" 
+          <p
+            className="py-4"
             style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}
           >
             Are you sure you want to delete artist "{selectedArtist?.name}"? This action cannot be undone.
@@ -1063,7 +1130,7 @@ export default function AdminArtistsPage() {
               Are you sure you want to create a new artist with the following details?
             </DialogDescription>
           </DialogHeader>
-          <div 
+          <div
             className="space-y-2 py-2"
             style={{
               backgroundColor: isDark ? "#374151" : "#F9FAFB",

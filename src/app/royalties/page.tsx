@@ -112,11 +112,11 @@ export default function RoyaltiesPage() {
   const { user } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
-  
+
   // View state
   const [viewMode, setViewMode] = useState<ViewMode>("quarters");
   const [selectedQuarter, setSelectedQuarter] = useState<SelectedQuarterInfo | null>(null);
-  
+
   // Payment Request State
   const [balance, setBalance] = useState(0);
   const [bankDetailsOpen, setBankDetailsOpen] = useState(false);
@@ -134,12 +134,12 @@ export default function RoyaltiesPage() {
     bankAddress: "",
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
-  
+
   // Filter State
   const [searchQuery, setSearchQuery] = useState("");
   const [yearFilter, setYearFilter] = useState<string>("all");
   const [displayLimit, setDisplayLimit] = useState(10);
-  
+
   // Analytics Modal State
   const [showAllSourcesModal, setShowAllSourcesModal] = useState(false);
 
@@ -150,10 +150,10 @@ export default function RoyaltiesPage() {
   const { quarters: quartersData, loading: quartersLoading } = useArtistQuarters();
 
   // Fetch quarter detail when a quarter is selected
-  const { 
-    summary: quarterSummary, 
-    analytics, 
-    loading: summaryLoading 
+  const {
+    summary: quarterSummary,
+    analytics,
+    loading: summaryLoading
   } = useQuarterSummary(
     undefined, // artistId is resolved in the hook
     selectedQuarter?.year,
@@ -175,7 +175,7 @@ export default function RoyaltiesPage() {
       const res = await fetch(`/api/data/balance?user_id=${user.id}`, { cache: "no-store" });
       const json = await res.json();
       perfTimer.current.endApiRequest("/api/data/balance");
-      
+
       if (json.error) {
         console.error("Error fetching balance:", json.error);
         setBalance(0);
@@ -195,7 +195,7 @@ export default function RoyaltiesPage() {
       const res = await fetch(`/api/data/pending-request?user_id=${user.id}`, { cache: "no-store" });
       const json = await res.json();
       perfTimer.current.endApiRequest("/api/data/pending-request");
-      
+
       if (json.error) {
         console.error("Error checking pending request:", json.error);
         return;
@@ -289,7 +289,7 @@ export default function RoyaltiesPage() {
       setRequesting(true);
       const balanceRes = await fetch(`/api/data/balance?user_id=${user.id}`, { cache: "no-store" });
       const balanceJson = await balanceRes.json();
-      
+
       if (!balanceJson.artistId) {
         throw new Error("Artist record not found");
       }
@@ -297,7 +297,7 @@ export default function RoyaltiesPage() {
       const response = await fetch("/api/payment/request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           artist_id: balanceJson.artistId,
           paymentDetails: paymentDetails,
         }),
@@ -385,7 +385,7 @@ export default function RoyaltiesPage() {
   const filteredQuarters = useMemo(() => {
     return quarters.filter((quarter: SelectedQuarterInfo) => {
       const matchesYear = yearFilter === "all" || quarter.year.toString() === yearFilter;
-      const matchesSearch = searchQuery === "" || 
+      const matchesSearch = searchQuery === "" ||
         quarter.label.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesYear && matchesSearch;
     });
@@ -421,11 +421,11 @@ export default function RoyaltiesPage() {
     try {
       const res = await fetch(`/api/data/royalties-summary?action=download&path=${encodeURIComponent(storagePath)}`);
       const json = await res.json();
-      
+
       if (json.error) {
         throw new Error(json.error);
       }
-      
+
       if (json.url) {
         window.open(json.url, '_blank');
       }
@@ -493,11 +493,13 @@ export default function RoyaltiesPage() {
                 <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">Royalty Statements</h1>
                 <p className="text-sm text-gray-600 mt-1">Manage and review your quarterly royalty statements</p>
               </div>
-              
+
               <div className="flex items-center gap-4 flex-shrink-0">
                 <div className="text-right">
                   <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Available Balance</p>
-                  <p className="text-2xl font-bold text-emerald-600 mt-0.5 tabular-nums">${balance.toFixed(2)}</p>
+                  <p className={`text-2xl font-bold mt-0.5 tabular-nums ${balance < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                    {balance < 0 ? '-' : ''}${Math.abs(balance).toFixed(2)}
+                  </p>
                 </div>
                 <Button
                   onClick={handleRequestPaymentClick}
@@ -519,7 +521,18 @@ export default function RoyaltiesPage() {
                 </div>
               </div>
             )}
-            {!canRequest && !hasPendingRequest && balance < minBalance && (
+            {balance < 0 && (
+              <div className="mt-4">
+                <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="text-sm text-red-900 font-medium">Advance Payment Balance</p>
+                    <p className="text-xs text-red-700 mt-1">You have received an advance payment. Future royalties will offset this amount until your balance reaches $0.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+            {!canRequest && !hasPendingRequest && balance >= 0 && balance < minBalance && (
               <div className="mt-4">
                 <div className="px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl flex items-start gap-3">
                   <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
@@ -545,7 +558,7 @@ export default function RoyaltiesPage() {
                   className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-shadow"
                 />
               </div>
-              
+
               <div className="relative sm:w-48">
                 <Filter className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                 <select
@@ -604,9 +617,8 @@ export default function RoyaltiesPage() {
                     return (
                       <div
                         key={`${quarter.year}-Q${quarter.quarter}`}
-                        className={`grid grid-cols-12 gap-6 px-6 py-5 border-b border-gray-100 hover:bg-emerald-50/30 transition-all cursor-pointer ${
-                          index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
-                        }`}
+                        className={`grid grid-cols-12 gap-6 px-6 py-5 border-b border-gray-100 hover:bg-emerald-50/30 transition-all cursor-pointer ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
+                          }`}
                         onClick={() => handleQuarterClick(quarter)}
                       >
                         <div className="col-span-2 flex items-center">
@@ -723,7 +735,7 @@ export default function RoyaltiesPage() {
             <DialogHeader>
               <DialogTitle>Payment Information</DialogTitle>
             </DialogHeader>
-            
+
             <div className="py-4 space-y-6">
               {/* Personal Information Section */}
               <div>
@@ -895,7 +907,7 @@ export default function RoyaltiesPage() {
               <p className="text-sm text-gray-700">
                 Are you sure you want to request payment?
               </p>
-              
+
               <p className="text-sm text-gray-700">
                 This will withdraw your entire balance and reset it to $0.
               </p>
@@ -940,8 +952,8 @@ export default function RoyaltiesPage() {
 
   // Quarter Detail View
   return (
-    <div 
-      className="min-h-screen bg-white transition-opacity duration-300" 
+    <div
+      className="min-h-screen bg-white transition-opacity duration-300"
       style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
     >
       <div className="max-w-7xl mx-auto p-4 md:p-6">
@@ -1021,9 +1033,8 @@ export default function RoyaltiesPage() {
                       quarterRecords.map((r: ArtistRoyaltiesSummaryResponse, index: number) => (
                         <tr
                           key={r.track_id}
-                          className={`transition-colors duration-150 ${
-                            index % 2 === 0 ? "bg-white" : "bg-[#F9FAFB]"
-                          } hover:bg-gray-50`}
+                          className={`transition-colors duration-150 ${index % 2 === 0 ? "bg-white" : "bg-[#F9FAFB]"
+                            } hover:bg-gray-50`}
                         >
                           <td className="px-3 md:px-4 py-3 text-[#222] whitespace-nowrap font-medium">{r.track_title}</td>
                           <td className="px-3 md:px-4 py-3 text-right text-[#222] whitespace-nowrap tabular-nums">
@@ -1046,7 +1057,7 @@ export default function RoyaltiesPage() {
                   </tbody>
                 </table>
               </div>
-              
+
               {/* Info and Load More */}
               {allQuarterRecords.length > 0 && (
                 <div className="px-4 py-3 bg-gray-50 border-t border-gray-200">
@@ -1075,7 +1086,7 @@ export default function RoyaltiesPage() {
                   <h2 className="text-2xl font-bold text-gray-900 mb-2">Analytics Dashboard</h2>
                   <div className="h-1 w-24 bg-gradient-to-r from-emerald-500 to-emerald-300 rounded-full"></div>
                 </div>
-                
+
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* Top Performing Tracks */}
                   <div className="bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow duration-300 p-6 border border-gray-200">
@@ -1092,8 +1103,8 @@ export default function RoyaltiesPage() {
                             margin={{ top: 5, right: 30, left: 0, bottom: 5 }}
                           >
                             <CartesianGrid strokeDasharray="3 3" stroke={GREEN_PALETTE.grid} opacity={0.5} />
-                            <XAxis 
-                              type="number" 
+                            <XAxis
+                              type="number"
                               tick={{ fill: "#374151", fontSize: 12, fontWeight: 500 }}
                               tickFormatter={(value) => `$${value.toFixed(0)}`}
                             />
@@ -1104,7 +1115,7 @@ export default function RoyaltiesPage() {
                               tick={{ fill: "#374151", fontSize: 11 }}
                               interval={0}
                             />
-                            <Tooltip 
+                            <Tooltip
                               content={({ active, payload }) => {
                                 if (active && payload && payload.length) {
                                   const data = payload[0].payload;
@@ -1122,9 +1133,9 @@ export default function RoyaltiesPage() {
                             />
                             <Bar dataKey="revenue" radius={[0, 8, 8, 0]}>
                               {analytics.topTracks.map((entry, index) => (
-                                <Cell 
-                                  key={`cell-${index}`} 
-                                  fill={index % 2 === 0 ? GREEN_PALETTE.primary : GREEN_PALETTE.secondary} 
+                                <Cell
+                                  key={`cell-${index}`}
+                                  fill={index % 2 === 0 ? GREEN_PALETTE.primary : GREEN_PALETTE.secondary}
                                 />
                               ))}
                             </Bar>
@@ -1212,7 +1223,7 @@ export default function RoyaltiesPage() {
                               </div>
                             ))}
                           </div>
-                          
+
                           {analytics.revenueBySource.length > 5 && (
                             <div className="flex justify-center mt-4">
                               <button
@@ -1243,15 +1254,15 @@ export default function RoyaltiesPage() {
                       <ResponsiveContainer width="100%" height={320}>
                         <BarChart data={analytics.revenueByTerritory} margin={{ top: 5, right: 30, left: 20, bottom: 60 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke={GREEN_PALETTE.grid} opacity={0.5} />
-                          <XAxis 
-                            dataKey="territory" 
+                          <XAxis
+                            dataKey="territory"
                             tick={{ fill: "#374151", fontSize: 11, fontWeight: 500 }}
                             angle={-45}
                             textAnchor="end"
                             height={80}
                           />
                           <YAxis tick={{ fill: "#374151", fontSize: 12, fontWeight: 500 }} />
-                          <Tooltip 
+                          <Tooltip
                             content={({ active, payload }) => {
                               if (active && payload && payload.length) {
                                 const data = payload[0].payload;
@@ -1292,15 +1303,15 @@ export default function RoyaltiesPage() {
                       <ResponsiveContainer width="100%" height={320}>
                         <BarChart data={analytics.monthlyRevenue} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke={GREEN_PALETTE.grid} opacity={0.5} />
-                          <XAxis 
-                            dataKey="quarter" 
-                            tick={{ fill: "#374151", fontSize: 12, fontWeight: 500 }} 
+                          <XAxis
+                            dataKey="quarter"
+                            tick={{ fill: "#374151", fontSize: 12, fontWeight: 500 }}
                           />
-                          <YAxis 
+                          <YAxis
                             tick={{ fill: "#374151", fontSize: 12, fontWeight: 500 }}
                             tickFormatter={(value) => `$${value.toFixed(0)}`}
                           />
-                          <Tooltip 
+                          <Tooltip
                             content={({ active, payload }) => {
                               if (active && payload && payload.length) {
                                 const data = payload[0].payload;
@@ -1318,9 +1329,9 @@ export default function RoyaltiesPage() {
                           />
                           <Bar dataKey="revenue" radius={[8, 8, 0, 0]}>
                             {analytics.monthlyRevenue.map((entry, index) => (
-                              <Cell 
-                                key={`cell-${index}`} 
-                                fill={GREEN_PALETTE.primary} 
+                              <Cell
+                                key={`cell-${index}`}
+                                fill={GREEN_PALETTE.primary}
                               />
                             ))}
                           </Bar>
@@ -1351,7 +1362,7 @@ export default function RoyaltiesPage() {
           <DialogHeader>
             <DialogTitle>Payment Information</DialogTitle>
           </DialogHeader>
-          
+
           <div className="py-4 space-y-6">
             {/* Personal Information Section */}
             <div>
@@ -1523,7 +1534,7 @@ export default function RoyaltiesPage() {
             <p className="text-sm text-gray-700">
               Are you sure you want to request payment?
             </p>
-            
+
             <p className="text-sm text-gray-700">
               This will withdraw your entire balance and reset it to $0.
             </p>
@@ -1565,11 +1576,11 @@ export default function RoyaltiesPage() {
 
       {/* All Sources Modal */}
       {showAllSourcesModal && (
-        <div 
+        <div
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-fadeIn"
           onClick={() => setShowAllSourcesModal(false)}
         >
-          <div 
+          <div
             className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden animate-slideUp"
             onClick={(e) => e.stopPropagation()}
           >
@@ -1585,11 +1596,11 @@ export default function RoyaltiesPage() {
                 <X className="h-6 w-6 text-gray-600" />
               </button>
             </div>
-            
+
             <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
               <div className="space-y-3">
                 {analytics.revenueBySource.map((item, index) => (
-                  <div 
+                  <div
                     key={item.source}
                     className="flex items-center justify-between p-4 rounded-xl border border-gray-200 hover:border-emerald-300 hover:shadow-md transition-all duration-200 bg-gradient-to-r from-white to-gray-50"
                   >
@@ -1597,7 +1608,7 @@ export default function RoyaltiesPage() {
                       <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-emerald-100 to-teal-100 text-emerald-700 font-bold text-sm">
                         {index + 1}
                       </div>
-                      <div 
+                      <div
                         className="w-4 h-4 rounded-full flex-shrink-0 shadow-sm"
                         style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }}
                       />
@@ -1616,7 +1627,7 @@ export default function RoyaltiesPage() {
                       </div>
                       <div className="w-16">
                         <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                          <div 
+                          <div
                             className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full transition-all duration-500"
                             style={{ width: `${item.percentage}%` }}
                           />

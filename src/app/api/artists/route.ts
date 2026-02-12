@@ -8,9 +8,9 @@ export async function GET(request: NextRequest) {
     // Create Supabase client using request cookies (more reliable for API routes)
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-    
+
     const response = NextResponse.next();
-    
+
     const supabase = createServerClient(
       supabaseUrl,
       supabaseAnonKey,
@@ -31,19 +31,19 @@ export async function GET(request: NextRequest) {
     // Try to get user from Authorization header first
     let user = null;
     const authHeader = request.headers.get('Authorization');
-    
+
     if (authHeader?.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
       // Verify token using regular client
       const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token);
-      
+
       if (!authError && authUser) {
         const { data: profile } = await supabase
           .from("user_profiles")
           .select("*")
           .eq("id", authUser.id)
           .single();
-        
+
         if (profile) {
           user = {
             id: authUser.id,
@@ -53,20 +53,20 @@ export async function GET(request: NextRequest) {
         }
       }
     }
-    
+
     // If no user from token, try to get session from cookies
     if (!user) {
       // Refresh session first
       await supabase.auth.getUser();
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
+
       if (!sessionError && session?.user) {
         const { data: profile } = await supabase
           .from("user_profiles")
           .select("*")
           .eq("id", session.user.id)
           .single();
-        
+
         if (profile) {
           user = {
             id: session.user.id,
@@ -76,17 +76,17 @@ export async function GET(request: NextRequest) {
         }
       }
     }
-    
+
     // If still no user, try getCurrentUser as last resort
     if (!user) {
       user = await getCurrentUser();
     }
-    
+
     if (!user) {
       console.log("No user found in /api/artists GET - cookies:", request.cookies.getAll().map(c => c.name));
       console.log("Authorization header:", authHeader ? "Present" : "Missing");
       return NextResponse.json(
-        { 
+        {
           error: "Unauthorized",
           details: "Authentication required. Please ensure you are logged in and refresh the page.",
           code: "AUTH_REQUIRED"
@@ -174,7 +174,7 @@ export async function GET(request: NextRequest) {
     // Try admin client first, fallback to regular client if it fails
     let artists = null;
     let artistsError = null;
-    
+
     if (useAdminClient && supabaseAdmin) {
       const result = await supabaseAdmin
         .from("artists")
@@ -190,17 +190,17 @@ export async function GET(request: NextRequest) {
           user_id
         `)
         .order("created_at", { ascending: false });
-      
+
       artists = result.data;
       artistsError = result.error;
-      
+
       // If admin client fails with API key error, try regular client
       if (artistsError && (artistsError.message?.includes("Invalid API key") || artistsError.message?.includes("JWT"))) {
         console.warn("Admin client failed with API key error. Falling back to regular client...");
         useAdminClient = false;
       }
     }
-    
+
     // If admin client failed or wasn't available, use regular client
     if (!useAdminClient || artistsError) {
       console.log("Using regular client with admin session for RLS");
@@ -218,13 +218,13 @@ export async function GET(request: NextRequest) {
           user_id
         `)
         .order("created_at", { ascending: false });
-      
+
       artists = result.data;
       artistsError = result.error;
     }
 
-    console.log("Artists query result:", { 
-      count: artists?.length || 0, 
+    console.log("Artists query result:", {
+      count: artists?.length || 0,
       hasError: !!artistsError,
       error: artistsError?.message,
       errorCode: artistsError?.code,
@@ -233,12 +233,12 @@ export async function GET(request: NextRequest) {
 
     if (artistsError) {
       console.error("Error fetching artists:", artistsError);
-      
+
       // Handle "Invalid API key" error from Supabase
       if (artistsError.message?.includes("Invalid API key") || artistsError.message?.includes("JWT")) {
         console.error("Invalid API key detected. SUPABASE_SERVICE_ROLE_KEY is likely incorrect or missing.");
         return NextResponse.json(
-          { 
+          {
             error: "Server configuration error",
             details: "Invalid API key. Please check that SUPABASE_SERVICE_ROLE_KEY is set correctly in your .env.local file. Falling back to regular client also failed.",
             code: "INVALID_API_KEY"
@@ -246,15 +246,15 @@ export async function GET(request: NextRequest) {
           { status: 500 }
         );
       }
-      
+
       // If table doesn't exist or column doesn't exist, return empty array
       if (artistsError.code === "42P01" || artistsError.code === "42703") {
         console.warn("Artists table or columns may not exist yet. Run the migration first.");
         return NextResponse.json({ artists: [] });
       }
-      
+
       return NextResponse.json(
-        { 
+        {
           error: artistsError.message || "Failed to fetch artists",
           details: artistsError.details || artistsError.message,
           code: artistsError.code || "UNKNOWN_ERROR"
@@ -278,9 +278,9 @@ export async function POST(request: NextRequest) {
     // Create Supabase client using request cookies
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-    
+
     const response = NextResponse.next();
-    
+
     const supabase = createServerClient(
       supabaseUrl,
       supabaseAnonKey,
@@ -301,19 +301,19 @@ export async function POST(request: NextRequest) {
     // Try to get user from Authorization header first
     let user = null;
     const authHeader = request.headers.get('Authorization');
-    
+
     if (authHeader?.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
       // Verify token using regular client
       const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token);
-      
+
       if (!authError && authUser) {
         const { data: profile } = await supabase
           .from("user_profiles")
           .select("*")
           .eq("id", authUser.id)
           .single();
-        
+
         if (profile) {
           user = {
             id: authUser.id,
@@ -323,20 +323,20 @@ export async function POST(request: NextRequest) {
         }
       }
     }
-    
+
     // If no user from token, try to get session from cookies
     if (!user) {
       // Refresh session first
       await supabase.auth.getUser();
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
+
       if (!sessionError && session?.user) {
         const { data: profile } = await supabase
           .from("user_profiles")
           .select("*")
           .eq("id", session.user.id)
           .single();
-        
+
         if (profile) {
           user = {
             id: session.user.id,
@@ -346,17 +346,17 @@ export async function POST(request: NextRequest) {
         }
       }
     }
-    
+
     // If still no user, try getCurrentUser as last resort
     if (!user) {
       user = await getCurrentUser();
     }
-    
+
     if (!user) {
       console.log("No user found in /api/artists POST - cookies:", request.cookies.getAll().map(c => c.name));
       console.log("Authorization header:", authHeader ? "Present" : "Missing");
       return NextResponse.json(
-        { 
+        {
           error: "Unauthorized",
           details: "Authentication required. Please ensure you are logged in.",
           code: "AUTH_REQUIRED"
@@ -369,10 +369,10 @@ export async function POST(request: NextRequest) {
     if (user.role !== "admin") {
       console.log("User role check failed:", { userId: user.id, role: user.role });
       return NextResponse.json(
-        { 
+        {
           error: "Forbidden",
           details: "Only administrators can create artists. Your role: " + user.role
-        }, 
+        },
         { status: 403 }
       );
     }
@@ -384,7 +384,7 @@ export async function POST(request: NextRequest) {
     } catch (parseError: any) {
       console.error("Error parsing request body:", parseError);
       return NextResponse.json(
-        { 
+        {
           error: "Invalid request body",
           details: "The request body could not be parsed as JSON: " + (parseError?.message || "Unknown error")
         },
@@ -392,7 +392,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { name, email, phone, address, tax_id, password } = body;
+    const { name, email, phone, address, tax_id, password, advance_payment } = body;
 
     // Validate required fields
     if (!name || !email) {
@@ -418,6 +418,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Parse advance payment
+    let advanceAmount = 0;
+    if (advance_payment) {
+      advanceAmount = parseFloat(advance_payment);
+      if (isNaN(advanceAmount) || advanceAmount < 0) {
+        return NextResponse.json(
+          { error: "Advance payment must be a valid non-negative number" },
+          { status: 400 }
+        );
+      }
+    }
+
     // Get admin client
     let supabaseAdmin;
     try {
@@ -425,7 +437,7 @@ export async function POST(request: NextRequest) {
     } catch (adminError: any) {
       console.error("Error getting admin client:", adminError);
       return NextResponse.json(
-        { 
+        {
           error: "Server configuration error",
           details: adminError?.message || "SUPABASE_SERVICE_ROLE_KEY is required for admin operations. Please check your environment variables."
         },
@@ -444,7 +456,7 @@ export async function POST(request: NextRequest) {
     if (checkError) {
       console.error("Error checking existing profile:", checkError);
       return NextResponse.json(
-        { 
+        {
           error: "Failed to check existing user",
           details: checkError.message
         },
@@ -460,7 +472,7 @@ export async function POST(request: NextRequest) {
       // Use existing user - but ensure role is set to artist
       console.log("Using existing user:", existingProfile.id);
       userId = existingProfile.id;
-      
+
       // Update role to artist if it's not already set
       if (existingProfile.role !== "artist") {
         console.log("Updating user role to artist:", userId);
@@ -468,11 +480,11 @@ export async function POST(request: NextRequest) {
           .from("user_profiles")
           .update({ role: "artist" })
           .eq("id", userId);
-        
+
         if (updateRoleError) {
           console.error("Error updating user role:", updateRoleError);
           return NextResponse.json(
-            { 
+            {
               error: "Failed to update user role",
               details: updateRoleError.message
             },
@@ -521,7 +533,7 @@ export async function POST(request: NextRequest) {
         // Rollback: delete the auth user if profile creation failed
         await supabaseAdmin.auth.admin.deleteUser(userId);
         return NextResponse.json(
-          { 
+          {
             error: "Failed to create user profile",
             details: profileError.message || "Unknown error creating user profile",
             code: profileError.code
@@ -529,13 +541,15 @@ export async function POST(request: NextRequest) {
           { status: 500 }
         );
       }
-      
+
       console.log("User profile created successfully with role 'artist'");
     }
 
     // Create artist record using admin client
     const defaultAddress = address || "Profesor Hermida 6, 3-3C, 36960 Sanxenxo, Spain";
-    
+
+    console.log("Creating artist record with advance:", advanceAmount);
+
     const { data: artist, error: artistError } = await supabaseAdmin
       .from("artists")
       .insert({
@@ -546,6 +560,7 @@ export async function POST(request: NextRequest) {
         address: defaultAddress,
         tax_id: tax_id || null,
         address_locked: false,
+        advance_payment: advanceAmount
       })
       .select()
       .single();
@@ -553,12 +568,113 @@ export async function POST(request: NextRequest) {
     if (artistError) {
       console.error("Error creating artist:", artistError);
       return NextResponse.json(
-        { 
+        {
           error: "Failed to create artist",
           details: artistError.message || "Unknown error occurred while creating artist record"
         },
         { status: 500 }
       );
+    }
+
+    // Handle Advance Payment logic
+    if (artist && advanceAmount > 0) {
+      console.log("Processing advance payment for artist:", artist.id);
+      try {
+        // 1. Create a special "Advance Payment" track
+        // Check if it already exists first (unlikely for new artist but good practice)
+        const { data: existingTrack } = await supabaseAdmin
+          .from("tracks")
+          .select("id")
+          .eq("artist_id", artist.id)
+          .eq("title", "Advance Payment")
+          .maybeSingle();
+
+        let trackId = existingTrack?.id;
+
+        if (!trackId) {
+          const { data: newTrack, error: trackError } = await supabaseAdmin
+            .from("tracks")
+            .insert({
+              artist_id: artist.id,
+              title: "Advance Payment",
+              song_title: "Advance Payment", // Required field
+              isrc: "ADVANCE",
+              artist_name: name,
+              split: "100%"
+            })
+            .select("id")
+            .single();
+
+          if (trackError) {
+            console.error("Error creating advance payment track:", trackError);
+            // Verify if we should hard fail? The artist is created.
+            // We'll log it and continue, but header needs to know.
+            console.warn("Advance payment track creation failed. Balance might be incorrect.");
+          } else {
+            trackId = newTrack.id;
+          }
+        }
+
+        // 2. Insert negative royalty record
+        if (trackId) {
+          const { error: royaltyError } = await supabaseAdmin
+            .from("royalties")
+            .insert({
+              track_id: trackId,
+              artist_id: artist.id,
+              usage_count: 0,
+              gross_amount: 0,
+              admin_percent: 0,
+              net_amount: -advanceAmount, // Negative amount
+              exploitation_source_name: "Advance Payment",
+              broadcast_date: new Date().toISOString(), // Today
+              territory: "Global"
+            });
+
+          if (royaltyError) {
+            console.error("Error creating advance payment royalty record:", royaltyError);
+          } else {
+            console.log("Successfully created advance payment royalty record");
+
+            // 3. Update royalties_summary so it appears in dashboard immediately
+            try {
+              const now = new Date();
+              const year = now.getFullYear();
+              const quarter = Math.floor(now.getMonth() / 3) + 1;
+
+              const { error: summaryError } = await supabaseAdmin.rpc('upsert_royalty_summary', {
+                _artist_id: artist.id,
+                _track_id: trackId,
+                _year: year,
+                _quarter: quarter,
+                _total_streams: 0,
+                _total_revenue: 0,
+                _total_net: -advanceAmount,
+                _total_gross: 0,
+                _top_territory: "Global",
+                _top_platform: "Advance Payment",
+                _highest_revenue: 0,
+                _platform_distribution: { "Advance Payment": 100 },
+                _territory_distribution: { "Global": 100 },
+                _monthly_breakdown: {},
+                _record_count: 1
+              });
+
+              if (summaryError) {
+                console.error("Error updating royalties summary:", summaryError);
+              } else {
+                console.log("Successfully updated royalties summary");
+              }
+            } catch (summaryErr) {
+              console.error("Exception updating royalties summary:", summaryErr);
+            }
+          }
+        }
+
+      } catch (advanceError) {
+        console.error("Unexpected error processing advance payment:", advanceError);
+        // Don't fail the request, as artist is already created
+      }
     }
 
     return NextResponse.json(
@@ -573,23 +689,23 @@ export async function POST(request: NextRequest) {
     console.error("Error stack:", error?.stack);
     console.error("Full error object:", JSON.stringify(error, Object.getOwnPropertyNames(error)));
     console.error("==================================");
-    
+
     // Handle JSON parsing errors
     if (error instanceof SyntaxError) {
       return NextResponse.json(
-        { 
+        {
           error: "Invalid request body",
           details: "The request body could not be parsed as JSON"
         },
         { status: 400 }
       );
     }
-    
+
     // Handle other errors - ensure we always return a proper error object
     const errorMessage = error?.message || error?.toString() || "Internal server error";
     const errorDetails = error?.details || errorMessage;
     const errorType = error?.constructor?.name || error?.name || "UnknownError";
-    
+
     // Ensure we never return an empty object
     const errorResponse = {
       error: errorMessage,
@@ -597,9 +713,9 @@ export async function POST(request: NextRequest) {
       type: errorType,
       timestamp: new Date().toISOString()
     };
-    
+
     console.error("Returning error response:", errorResponse);
-    
+
     return NextResponse.json(
       errorResponse,
       { status: 500 }

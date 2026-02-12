@@ -9,7 +9,7 @@ const supabase = createClient(
 
 export async function GET(req: NextRequest) {
   const { start, requestId } = logRouteStart("/api/data/balance");
-  
+
   try {
     const { searchParams } = new URL(req.url);
     const userId = searchParams.get("user_id");
@@ -74,13 +74,13 @@ export async function GET(req: NextRequest) {
     const availableBalance = totals.total_net - paidAmount;
 
     logRouteEnd("/api/data/balance", start, requestId);
-    return NextResponse.json({ 
-      balance: availableBalance > 0 ? availableBalance : 0,
+    return NextResponse.json({
+      balance: availableBalance, // Allow negative balances for advance payments
       totalGross: totals.total_gross,
       totalNet: totals.total_net,
       paidAmount: paidAmount,
-      artistId: artist.id, 
-      _perf: { requestId } 
+      artistId: artist.id,
+      _perf: { requestId }
     });
   } catch (error: any) {
     console.error("API Error:", error);
