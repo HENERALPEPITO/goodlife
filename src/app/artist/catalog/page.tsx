@@ -88,6 +88,7 @@ export default function MyCatalogPage() {
       .eq("artist_id", aid)
       .not('isrc', 'is', null)
       .neq('isrc', '')
+      .neq('isrc', 'ADVANCE')
       .order("created_at", { ascending: false });
 
     if (error) {

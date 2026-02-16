@@ -19,14 +19,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "user_id is required" }, { status: 400 });
     }
 
-    // First, get the artist ID from the artists table
+    // First, get the artist ID and advance_payment from the artists table
     const q1 = performance.now();
     const { data: artist, error: artistError } = await supabase
       .from("artists")
-      .select("id")
+      .select("id, advance_payment")
       .eq("user_id", userId)
       .maybeSingle();
-    logSupabaseQuery("artists", "SELECT id", q1, requestId);
+    logSupabaseQuery("artists", "SELECT id, advance_payment", q1, requestId);
 
     if (artistError || !artist) {
       logRouteEnd("/api/data/balance", start, requestId);
@@ -80,6 +80,7 @@ export async function GET(req: NextRequest) {
       totalNet: totals.total_net,
       paidAmount: paidAmount,
       artistId: artist.id,
+      advancePayment: artist.advance_payment || 0,
       _perf: { requestId }
     });
   } catch (error: any) {

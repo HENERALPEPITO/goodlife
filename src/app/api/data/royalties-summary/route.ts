@@ -124,6 +124,9 @@ export async function GET(request: NextRequest) {
       if (year) query = query.eq('year', parseInt(year));
       if (quarter) query = query.eq('quarter', parseInt(quarter));
 
+      // Exclude advance payments
+      query = query.neq('top_platform', 'Advance Payment');
+
       const { data, error } = await query;
 
       if (error) {

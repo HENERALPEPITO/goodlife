@@ -59,6 +59,7 @@ export default function ArtistRoyaltiesPage() {
   const [expandedQuarters, setExpandedQuarters] = useState<Set<string>>(new Set());
   const [fullyExpandedTables, setFullyExpandedTables] = useState<Set<string>>(new Set());
   const [deleteQuarterConfirm, setDeleteQuarterConfirm] = useState<string | null>(null);
+  const [advancePayment, setAdvancePayment] = useState<number>(0);
 
   // Fetch quarter summaries (for original CSV paths)
   const { quarters: summaryQuarters } = useArtistQuarters(artistId);
@@ -69,6 +70,11 @@ export default function ArtistRoyaltiesPage() {
 
     royalties.forEach((royalty) => {
       if (!royalty.broadcast_date) return;
+
+      // Skip advance payment records
+      if (royalty.isrc === "ADVANCE" || royalty.exploitation_source_name === "Advance Payment") {
+        return;
+      }
 
       const date = new Date(royalty.broadcast_date);
       const year = date.getFullYear();
@@ -311,6 +317,10 @@ export default function ArtistRoyaltiesPage() {
 
       // Handle both old format (array) and paginated format (object with data array)
       const data = Array.isArray(responseData) ? responseData : (responseData.data || []);
+
+      // Extract advance payment if available
+      const advance = responseData.advancePayment ? parseFloat(responseData.advancePayment) : 0;
+      setAdvancePayment(advance);
 
       // Debug: Log first royalty to verify data structure
       if (data && data.length > 0) {
@@ -596,11 +606,20 @@ export default function ArtistRoyaltiesPage() {
         {/* Content */}
         {!isLoading && (
           <>
+            {/* Advance Payment Label - Only show if advance exists */}
+            {advancePayment > 0 && (
+              <div className="mb-4 bg-amber-50 border border-amber-200 rounded-lg p-4">
+                <p className="text-sm font-semibold text-amber-900">
+                  ADVANCE: ${parseFloat(String(advancePayment)).toFixed(2)}
+                </p>
+              </div>
+            )}
+
             {/* Info Bar */}
             <div className="mb-6 flex items-center justify-between gap-4">
               <div className="flex-1 bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <p className="text-sm text-blue-900">
-                  Showing all <strong>{royalties.length}</strong> royalty records organized into{" "}
+                  Showing all <strong>{royalties.filter(r => r.isrc !== "ADVANCE" && r.exploitation_source_name !== "Advance Payment").length}</strong> royalty records organized into{" "}
                   <strong>{quarterGroups.length}</strong> {quarterGroups.length === 1 ? "quarter" : "quarters"}.
                   Click any quarter to expand details.
                 </p>
@@ -626,7 +645,7 @@ export default function ArtistRoyaltiesPage() {
             </div>
 
             {/* Quarterly Groups or Empty State */}
-            {royalties.length > 0 ? (
+            {quarterGroups.length > 0 ? (
               <>
                 <div className="space-y-6">
                   {quarterGroups.map((group) => {

@@ -1,9 +1,9 @@
-  /**
-   * GET /api/admin/royalties/:artistId
-   * 
-   * Fetch all royalty records for a specific artist
-   * Admin-only endpoint
-   */
+/**
+ * GET /api/admin/royalties/:artistId
+ * 
+ * Fetch all royalty records for a specific artist
+ * Admin-only endpoint
+ */
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
@@ -20,7 +20,7 @@ export async function GET(
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
     const response = NextResponse.next();
-    
+
     const supabase = createServerClient(
       supabaseUrl,
       supabaseAnonKey,
@@ -41,18 +41,18 @@ export async function GET(
     // Get user session and check role
     let user = null;
     const authHeader = request.headers.get('Authorization');
-    
+
     if (authHeader?.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
       const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token);
-      
+
       if (!authError && authUser) {
         const { data: profile } = await supabase
           .from("user_profiles")
           .select("*")
           .eq("id", authUser.id)
           .single();
-        
+
         if (profile) {
           user = {
             id: authUser.id,
@@ -62,19 +62,19 @@ export async function GET(
         }
       }
     }
-    
+
     // If no user from token, try to get session from cookies
     if (!user) {
       await supabase.auth.getUser();
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
+
       if (!sessionError && session?.user) {
         const { data: profile } = await supabase
           .from("user_profiles")
           .select("*")
           .eq("id", session.user.id)
           .single();
-        
+
         if (profile) {
           user = {
             id: session.user.id,
@@ -84,7 +84,7 @@ export async function GET(
         }
       }
     }
-    
+
     if (!user) {
       console.log("No user found in GET /api/admin/royalties/:artistId - cookies:", request.cookies.getAll().map(c => c.name));
       return NextResponse.json(
@@ -112,6 +112,19 @@ export async function GET(
         { status: 500 }
       );
     }
+
+    // Fetch artist's advance_payment
+    const { data: artistData, error: artistError } = await adminClient
+      .from("artists")
+      .select("advance_payment")
+      .eq("id", artistId)
+      .single();
+
+    if (artistError) {
+      console.error("Error fetching artist data:", artistError);
+    }
+
+    const advancePayment = artistData?.advance_payment || 0;
 
     // Fetch from royalties_summary with track info
     const { data: summaries, error, count } = await adminClient
@@ -142,7 +155,7 @@ export async function GET(
     let totalGross = 0;
     let totalNet = 0;
     let totalRecords = 0;
-    
+
     (summaries || []).forEach((s: any) => {
       totalGross += parseFloat(s.total_gross || 0);
       totalNet += parseFloat(s.total_net || 0);
@@ -189,7 +202,8 @@ export async function GET(
         totalGross: String(totalGross.toFixed(2)),
         totalNet: String(totalNet.toFixed(2)),
         recordCount: totalRecords
-      }
+      },
+      advancePayment: String(advancePayment)
     }, { status: 200 });
   } catch (error) {
     console.error("Error in admin royalties artist endpoint:", error);

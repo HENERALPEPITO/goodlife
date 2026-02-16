@@ -133,6 +133,16 @@ async function fetchDashboardDataFallback(userId: string): Promise<ArtistDashboa
     };
   }
 
+  // Fetch available balance (which uses total_net - paid_amount, matching royalties page)
+  let totalRevenue = 0;
+  try {
+    const balanceRes = await fetch(`/api/data/balance?user_id=${userId}`, { cache: 'no-store' });
+    const balanceData = await balanceRes.json();
+    totalRevenue = balanceData.balance || 0;
+  } catch (error) {
+    console.warn('Failed to fetch balance, using fallback calculation:', error);
+  }
+
   // Parallel queries for performance
   const [trackCountResult, totalsResult, topTracksResult, recentResult] = await Promise.all([
     // Track count (head-only, no data transfer)
@@ -172,20 +182,16 @@ async function fetchDashboardDataFallback(userId: string): Promise<ArtistDashboa
   ]);
 
   // Process totals
-  let totalRevenue = 0;
   let totalStreams = 0;
 
   if (totalsResult.data) {
     if (Array.isArray(totalsResult.data) && totalsResult.data.length > 0) {
       // From fallback query
-      totalRevenue = totalsResult.data.reduce((sum: number, r: { net_amount?: number }) => 
-        sum + Number(r.net_amount || 0), 0);
       totalStreams = totalsResult.data.reduce((sum: number, r: { usage_count?: number }) => 
         sum + Number(r.usage_count || 0), 0);
-    } else if (totalsResult.data.total_net !== undefined) {
+    } else if (totalsResult.data.total_streams !== undefined) {
       // From RPC
-      totalRevenue = parseFloat(String(totalsResult.data.total_net || 0));
-      totalStreams = parseInt(String(totalsResult.data.total_usage || 0), 10);
+      totalStreams = parseInt(String(totalsResult.data.total_streams || 0), 10);
     }
   }
 
@@ -205,6 +211,7 @@ async function fetchDashboardDataFallback(userId: string): Promise<ArtistDashboa
   });
 
   const topTracks: TopTrack[] = Array.from(trackMap.entries())
+    .filter(([title]) => title !== 'Advance Payment') // Exclude advance payment
     .map(([title, data], index) => ({
       id: `track-${index}`,
       title,

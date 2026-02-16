@@ -309,6 +309,7 @@ function computeAnalytics(summaries: ArtistRoyaltiesSummaryResponse[]): Computed
 
   // Top tracks by revenue
   const topTracks = summaries
+    .filter(s => s.track_title !== 'Advance Payment') // Exclude advance payment
     .map(s => ({
       title: s.track_title,
       revenue: s.total_net,

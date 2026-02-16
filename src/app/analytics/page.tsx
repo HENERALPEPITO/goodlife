@@ -139,7 +139,8 @@ export default function AnalyticsPage() {
         const { data: artistSummaries, error: summaryError } = await supabase
           .from('royalties_summary')
           .select('total_net, total_streams, platform_distribution, territory_distribution, top_territory')
-          .eq('artist_id', artistId);
+          .eq('artist_id', artistId)
+          .neq('top_platform', 'Advance Payment');
 
         if (summaryError) {
           console.warn('Artist summary query failed:', summaryError.message);
@@ -209,7 +210,8 @@ export default function AnalyticsPage() {
         // For admin, fetch all summary records and aggregate distributions
         const { data: allSummaries, error: summaryError } = await supabase
           .from('royalties_summary')
-          .select('total_net, total_streams, platform_distribution, territory_distribution, top_territory');
+          .select('total_net, total_streams, platform_distribution, territory_distribution, top_territory')
+          .neq('top_platform', 'Advance Payment');
 
         console.log('[Analytics Debug] Fetched summaries:', {
           count: allSummaries?.length || 0,
@@ -284,6 +286,7 @@ export default function AnalyticsPage() {
         ? await supabase.rpc('get_artist_top_tracks', { _artist_id: artistId, _year: null, _quarter: null, _limit: 5 })
         : await supabase.from('royalties_summary')
           .select('track_id, total_net, total_streams, tracks(title)')
+          .neq('top_platform', 'Advance Payment')
           .order('total_net', { ascending: false })
           .limit(5);
 
@@ -317,7 +320,8 @@ export default function AnalyticsPage() {
         // Admin: aggregate quarterly data
         const { data: allQuarterly } = await supabase
           .from('royalties_summary')
-          .select('year, quarter, total_net');
+          .select('year, quarter, total_net')
+          .neq('top_platform', 'Advance Payment');
 
         if (allQuarterly) {
           const quarterMap = new Map<string, number>();

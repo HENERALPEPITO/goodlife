@@ -82,6 +82,11 @@ export default function ArtistDashboard() {
       // Store the artist ID for notifications
       setArtistId(artist.id);
 
+      // Fetch available balance (which uses total_net - paid_amount, matching royalties page)
+      const balanceRes = await fetch(`/api/data/balance?user_id=${user.id}`, { cache: 'no-store' });
+      const balanceData = await balanceRes.json();
+      const availableBalance = balanceData.balance || 0;
+
       // Try new summary-based RPC first (from royalties_summary table)
       const summaryResult = await supabase.rpc('get_artist_dashboard_overview', { 
         _artist_id: artist.id 
@@ -99,7 +104,8 @@ export default function ArtistDashboard() {
           const { data: directSummary, error: directError } = await supabase
             .from('royalties_summary')
             .select('total_streams, total_net, track_id')
-            .eq('artist_id', artist.id);
+            .eq('artist_id', artist.id)
+            .neq('top_platform', 'Advance Payment');
           
           if (!directError && directSummary && directSummary.length > 0) {
             totalStreams = directSummary.reduce((sum, row) => sum + Number(row.total_streams || 0), 0);
@@ -116,7 +122,7 @@ export default function ArtistDashboard() {
           .neq('isrc', '');
         
         setStats({
-          totalRevenue: parseFloat(String(s.total_earnings || s.total_net || 0)),
+          totalRevenue: availableBalance,
           totalTracks: tracksCount || 0,
           totalStreams: totalStreams,
         });
@@ -132,14 +138,16 @@ export default function ArtistDashboard() {
         });
 
         if (topTracksResult.data && topTracksResult.data.length > 0) {
-          const topTracksData: TopTrack[] = topTracksResult.data.map((t: any, index: number) => ({
-            id: `track-${index}`,
-            title: t.track_title || 'Unknown Track',
-            platform: t.top_platform || 'Various',
-            streams: parseInt(String(t.total_streams || 0), 10),
-            revenue: parseFloat(String(t.total_net || 0)),
-            trend: 0, // Trend calculation would need historical data
-          }));
+          const topTracksData: TopTrack[] = topTracksResult.data
+            .filter((t: any) => t.track_title !== 'Advance Payment') // Exclude advance payment
+            .map((t: any, index: number) => ({
+              id: `track-${index}`,
+              title: t.track_title || 'Unknown Track',
+              platform: t.top_platform || 'Various',
+              streams: parseInt(String(t.total_streams || 0), 10),
+              revenue: parseFloat(String(t.total_net || 0)),
+              trend: 0, // Trend calculation would need historical data
+            }));
           setTopTracks(topTracksData);
         }
       }
@@ -159,14 +167,14 @@ export default function ArtistDashboard() {
         if (statsResult.data && statsResult.data[0]) {
           const s = statsResult.data[0];
           setStats({
-            totalRevenue: parseFloat(String(s.total_revenue || 0)),
+            totalRevenue: availableBalance,
             totalTracks: parseInt(String(s.total_tracks || 0), 10),
             totalStreams: parseInt(String(s.total_streams || 0), 10),
           });
         } else {
           const royalties = royaltiesResult.data || [];
           setStats({
-            totalRevenue: royalties.reduce((sum, r) => sum + Number(r.net_amount || 0), 0),
+            totalRevenue: availableBalance,
             totalTracks: 0,
             totalStreams: royalties.reduce((sum, r) => sum + Number(r.usage_count || 0), 0),
           });
@@ -187,6 +195,7 @@ export default function ArtistDashboard() {
           });
 
           const topTracksData: TopTrack[] = Array.from(trackMap.entries())
+            .filter(([title]) => title !== 'Advance Payment') // Exclude advance payment
             .map(([title, data], index) => ({
               id: `track-${index}`,
               title,
