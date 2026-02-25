@@ -420,9 +420,19 @@ export default function AdminArtistsPage() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const errorMessage = errorData.error || errorData.details || `Failed to delete artist (${response.status})`;
-        console.error("API Error:", errorData);
+        let errorMessage = `Failed to delete artist (${response.status})`;
+        try {
+          const errorData = await response.json();
+          console.error("API Error (JSON):", errorData);
+          errorMessage = errorData.error || errorData.details || errorMessage;
+        } catch {
+          // Response body is not JSON, try to read as text
+          const errorText = await response.text();
+          console.error("API Error (Text):", errorText);
+          if (errorText) {
+            errorMessage = errorText;
+          }
+        }
         throw new Error(errorMessage);
       }
 

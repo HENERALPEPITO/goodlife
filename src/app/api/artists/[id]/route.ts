@@ -373,7 +373,13 @@ export async function DELETE(
 
     // Check if user is admin
     if (user.role !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      return NextResponse.json(
+        { 
+          error: "Forbidden",
+          details: "Only administrators can delete artists"
+        },
+        { status: 403 }
+      );
     }
 
     // Use admin client for admin operations to bypass RLS
@@ -381,29 +387,79 @@ export async function DELETE(
     try {
       supabaseClient = getSupabaseAdmin();
     } catch (adminError: any) {
-      console.warn("Admin client not available, using regular client:", adminError);
+      console.warn("DELETE /api/artists/[id] - Admin client not available, using regular client:", adminError?.message);
       const response = NextResponse.next();
       supabaseClient = createRequestSupabaseClient(request, response);
     }
 
+    // Delete dependent records in order of foreign key dependencies
+    const dependentTables = [
+      "csv_uploads",
+      "invoices",
+      "notifications",
+      "payment_requests",
+      "royalties",
+      "royalties_summary",
+      "tracks"
+    ];
+
+    console.log("DELETE /api/artists/[id] - Deleting dependent records for artist:", artistId);
+
+    for (const table of dependentTables) {
+      const { error: deleteError } = await supabaseClient
+        .from(table)
+        .delete()
+        .eq("artist_id", artistId);
+
+      if (deleteError) {
+        console.error(`DELETE /api/artists/[id] - Error deleting from ${table}:`, {
+          error: deleteError.message,
+          code: deleteError.code,
+          details: deleteError.details,
+          artistId,
+          table
+        });
+        // Continue deleting other tables but log the error
+      } else {
+        console.log(`DELETE /api/artists/[id] - Successfully deleted records from ${table}`);
+      }
+    }
+
+    // Now delete the artist
     const { error } = await supabaseClient
       .from("artists")
       .delete()
       .eq("id", artistId);
 
     if (error) {
-      console.error("Error deleting artist:", error);
+      console.error("DELETE /api/artists/[id] - Error deleting artist:", {
+        error: error.message,
+        code: error.code,
+        details: error.details,
+        artistId
+      });
       return NextResponse.json(
-        { error: "Failed to delete artist" },
+        { 
+          error: "Failed to delete artist",
+          details: error.message || "An error occurred while deleting the artist",
+          code: error.code
+        },
         { status: 500 }
       );
     }
 
+    console.log("DELETE /api/artists/[id] - Artist successfully deleted:", artistId);
     return NextResponse.json({ message: "Artist successfully deleted" });
   } catch (error: any) {
-    console.error("Error in DELETE /api/artists/[id]:", error);
+    console.error("DELETE /api/artists/[id] - Unexpected error:", {
+      error: error?.message || String(error),
+      stack: error?.stack
+    });
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { 
+        error: "Internal server error",
+        details: error?.message || "An unexpected error occurred while deleting the artist"
+      },
       { status: 500 }
     );
   }
