@@ -35,7 +35,6 @@ export default function MyCatalogPage() {
 
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 100;
-  const [totalTracksCount, setTotalTracksCount] = useState<number | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -76,7 +75,6 @@ export default function MyCatalogPage() {
       console.log('✅ Found artist:', artist.id);
       setArtistId(artist.id);
       await fetchTracks(artist.id);
-      await fetchTotalTracksCount(artist.id);
     };
     void init();
   }, [user]);
@@ -104,49 +102,6 @@ export default function MyCatalogPage() {
     setTracks((data as any) || []);
     setLastUpdated(data && data.length > 0 ? data[0].created_at : null);
     setFetching(false);
-  };
-
-  const fetchTotalTracksCount = async (aid: string) => {
-    try {
-      // Try the summary RPC first (same as ArtistDashboard)
-      const summaryResult = await supabase.rpc('get_artist_dashboard_overview', { _artist_id: aid });
-
-      if (summaryResult.data && summaryResult.data[0]) {
-        // When summary exists, ArtistDashboard still uses a direct tracks count
-        const { count: tracksCount } = await supabase
-          .from('tracks')
-          .select('*', { count: 'exact', head: true })
-          .eq('artist_id', aid)
-          .not('isrc', 'is', null)
-          .neq('isrc', '');
-
-        setTotalTracksCount(tracksCount ?? 0);
-        return;
-      }
-
-      // Fallback: use the dashboard RPC (same as ArtistDashboard fallback)
-      if (user) {
-        const statsResult = await supabase.rpc('get_artist_dashboard_stats', { p_user_id: user.id });
-        if (statsResult.data && statsResult.data[0]) {
-          const s = statsResult.data[0];
-          setTotalTracksCount(parseInt(String(s.total_tracks || 0), 10));
-          return;
-        }
-      }
-
-      // Last-resort: direct count from tracks table
-      const { count } = await supabase
-        .from("tracks")
-        .select("*", { count: "exact", head: true })
-        .eq("artist_id", aid)
-        .not("isrc", "is", null)
-        .neq("isrc", "");
-
-      setTotalTracksCount(count ?? 0);
-    } catch (err) {
-      console.error('❌ Error fetching total tracks count:', err);
-      setTotalTracksCount(null);
-    }
   };
 
   const fetchMissingImages = async (trackIds: string[]) => {
@@ -601,7 +556,7 @@ export default function MyCatalogPage() {
                     Total Tracks
                   </p>
                   <p className="text-2xl font-semibold" style={{ color: isDark ? '#f5f5f5' : '#111827' }}>
-                    {totalTracksCount ?? filtered.length}
+                    {filtered.length}
                   </p>
                 </div>
               </div>
@@ -614,7 +569,7 @@ export default function MyCatalogPage() {
                   )}
                   {search && (
                     <div className="text-sm" style={{ color: isDark ? '#a1a1aa' : '#6B7280' }}>
-                      Showing {filtered.length} of {totalTracksCount ?? tracks.length} tracks
+                      Showing {filtered.length} of {tracks.length} tracks
                     </div>
                   )}
                 </div>
