@@ -82,6 +82,15 @@ export default function ArtistDashboard() {
       // Store the artist ID for notifications
       setArtistId(artist.id);
 
+      // Canonical track count (match My Catalog logic) — exclude advances
+      const { count: tracksCountExact } = await supabase
+        .from('tracks')
+        .select('*', { count: 'exact', head: true })
+        .eq('artist_id', artist.id)
+        .not('isrc', 'is', null)
+        .neq('isrc', '')
+        .neq('isrc', 'ADVANCE');
+
       // Fetch available balance (which uses total_net - paid_amount, matching royalties page)
       const balanceRes = await fetch(`/api/data/balance?user_id=${user.id}`, { cache: 'no-store' });
       const balanceData = await balanceRes.json();
@@ -113,21 +122,14 @@ export default function ArtistDashboard() {
           }
         }
         
-        // Fetch total tracks count from tracks table
-        const { count: tracksCount } = await supabase
-          .from('tracks')
-          .select('*', { count: 'exact', head: true })
-          .eq('artist_id', artist.id)
-          .not('isrc', 'is', null)
-          .neq('isrc', '');
-        
+        // Use canonical tracks count from above so dashboard matches Catalog
         setStats({
           totalRevenue: availableBalance,
-          totalTracks: tracksCount || 0,
+          totalTracks: tracksCountExact ?? 0,
           totalStreams: totalStreams,
         });
         usingSummary = true;
-        console.log('[Artist Dashboard] Using royalties_summary table, streams:', totalStreams, 'tracks:', tracksCount);
+        console.log('[Artist Dashboard] Using royalties_summary table, streams:', totalStreams, 'tracks:', tracksCountExact);
 
         // Fetch top tracks from summary table
         const topTracksResult = await supabase.rpc('get_artist_top_tracks', {
@@ -164,21 +166,20 @@ export default function ArtistDashboard() {
             .eq("artist_id", artist.id)
         ]);
 
-        if (statsResult.data && statsResult.data[0]) {
-          const s = statsResult.data[0];
-          setStats({
-            totalRevenue: availableBalance,
-            totalTracks: parseInt(String(s.total_tracks || 0), 10),
-            totalStreams: parseInt(String(s.total_streams || 0), 10),
-          });
-        } else {
-          const royalties = royaltiesResult.data || [];
-          setStats({
-            totalRevenue: availableBalance,
-            totalTracks: 0,
-            totalStreams: royalties.reduce((sum, r) => sum + Number(r.usage_count || 0), 0),
-          });
-        }
+        // Prefer canonical tracks count; fall back to RPC value only if count unavailable
+        const rpcTotalTracks = statsResult.data && statsResult.data[0]
+          ? parseInt(String(statsResult.data[0].total_tracks || 0), 10)
+          : 0;
+
+        const rpcTotalStreams = statsResult.data && statsResult.data[0]
+          ? parseInt(String(statsResult.data[0].total_streams || 0), 10)
+          : 0;
+
+        setStats({
+          totalRevenue: availableBalance,
+          totalTracks: typeof tracksCountExact === 'number' ? tracksCountExact : rpcTotalTracks,
+          totalStreams: rpcTotalStreams,
+        });
 
         const royalties = royaltiesResult.data;
 
