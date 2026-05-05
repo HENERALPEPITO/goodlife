@@ -158,7 +158,7 @@ export interface AdminRoyaltiesTotals {
  * Aggregated data for a single track during CSV processing
  */
 export interface TrackAggregation {
-  track_id: string;
+  track_id: string | null;
   track_title: string;
   total_streams: number;
   total_revenue: string;  // String for Big.js precision

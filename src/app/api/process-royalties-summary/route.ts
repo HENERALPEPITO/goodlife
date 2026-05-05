@@ -20,8 +20,6 @@ import { cookies } from 'next/headers';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { downloadCsvFromStorage } from '@/lib/royalty-storage';
 import { processRoyaltySummary, generateFailedRowsCsv } from '@/lib/royalty-summary-processor';
-import { sendRoyaltyUploadEmailToArtist } from '@/lib/emailService';
-import { notifyRoyaltyUpload } from '@/lib/notificationService';
 import type { ProcessSummaryResponse } from '@/types/royalty-summary';
 
 // Request body type
@@ -87,64 +85,8 @@ async function verifyAdminAccess(): Promise<{ isAdmin: boolean; userId?: string;
   }
 }
 
-/**
- * Create CSV upload record in database
- */
-async function createUploadRecord(
-  data: {
-    filename: string;
-    storage_path: string;
-    year: number;
-    quarter: number;
-    uploaded_by: string;
-    artist_id: string;
-    file_size?: number;
-  }
-): Promise<{ id: string | null; error: string | null }> {
-  const supabaseAdmin = getSupabaseAdmin();
-  
-  const { data: record, error } = await supabaseAdmin
-    .from('csv_uploads')
-    .insert({
-      ...data,
-      processing_status: 'processing',
-    })
-    .select('id')
-    .single();
-
-  if (error) {
-    console.error('Error creating upload record:', error);
-    return { id: null, error: error.message };
-  }
-
-  return { id: record.id, error: null };
-}
-
-/**
- * Update CSV upload record status
- */
-async function updateUploadStatus(
-  id: string,
-  status: 'completed' | 'failed',
-  rowCount?: number,
-  errorMessage?: string
-): Promise<void> {
-  const supabaseAdmin = getSupabaseAdmin();
-  
-  await supabaseAdmin
-    .from('csv_uploads')
-    .update({
-      processing_status: status,
-      row_count: rowCount,
-      processing_error: errorMessage,
-      processed_at: new Date().toISOString(),
-    })
-    .eq('id', id);
-}
-
 export async function POST(request: NextRequest): Promise<NextResponse<ProcessSummaryResponse & { failedRowsCsv?: string }>> {
   const startTime = Date.now();
-  let uploadId: string | null = null;
 
   try {
     // Verify admin access
@@ -192,23 +134,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<ProcessSu
     console.log(`📥 Processing royalty summary for artist ${artistId}, Q${quarter} ${year}`);
     console.log(`   File: ${filename} (${storagePath})`);
 
-    // Step 1: Create upload record
-    const { id: recordId, error: recordError } = await createUploadRecord({
-      filename: filename || 'unknown.csv',
-      storage_path: storagePath,
-      year,
-      quarter,
-      uploaded_by: authCheck.userId!,
-      artist_id: artistId,
-      file_size: fileSize,
-    });
-
-    if (recordError) {
-      console.error('Failed to create upload record:', recordError);
-      // Continue processing even if record creation fails
-    } else {
-      uploadId = recordId;
-    }
+    console.log('[Royalties Upload Guard] Upload flow write scope: royalties_summary only');
 
     // Step 2: Download CSV from storage
     console.log('📂 Downloading CSV from storage...');
@@ -216,9 +142,6 @@ export async function POST(request: NextRequest): Promise<NextResponse<ProcessSu
 
     if (!downloadResult.success || !downloadResult.data) {
       const errorMsg = `Failed to download CSV: ${downloadResult.error}`;
-      if (uploadId) {
-        await updateUploadStatus(uploadId, 'failed', 0, errorMsg);
-      }
       return NextResponse.json(
         { success: false, error: errorMsg },
         { status: 500 }
@@ -235,18 +158,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<ProcessSu
       year,
       quarter,
       csvContent,
-      uploadId: uploadId || undefined,
+      uploadId: undefined,
     });
-
-    // Step 4: Update upload record
-    if (uploadId) {
-      await updateUploadStatus(
-        uploadId,
-        result.success ? 'completed' : 'failed',
-        result.totalRows,
-        result.errors.length > 0 ? result.errors.join('; ') : undefined
-      );
-    }
 
     // Step 5: Generate failed rows CSV if there are failures
     let failedRowsCsv: string | undefined;
@@ -261,53 +174,10 @@ export async function POST(request: NextRequest): Promise<NextResponse<ProcessSu
     console.log(`   Summaries updated: ${result.summariesUpdated}`);
     console.log(`   Total rows processed: ${result.totalRows}`);
 
-    // Step 6: Send email and create notification for the artist
-    if (result.success) {
-      try {
-        const supabaseAdmin = getSupabaseAdmin();
-        
-        // Get artist info for email
-        const { data: artist } = await supabaseAdmin
-          .from('artists')
-          .select('id, name, user_id')
-          .eq('id', artistId)
-          .single();
-
-        if (artist) {
-          // Get artist email from user_profiles
-          const { data: profile } = await supabaseAdmin
-            .from('user_profiles')
-            .select('email')
-            .eq('id', artist.user_id)
-            .single();
-
-          const artistEmail = profile?.email;
-
-          // Send email notification
-          if (artistEmail) {
-            const emailResult = await sendRoyaltyUploadEmailToArtist({
-              artistName: artist.name || 'Artist',
-              artistEmail: artistEmail,
-              quarter: quarter,
-              year: year,
-            });
-            console.log(`📧 Royalty upload email to ${artistEmail}:`, emailResult.success ? 'sent' : emailResult.error);
-          }
-
-          // Create in-app notification
-          const notifResult = await notifyRoyaltyUpload(artist.id, quarter, year);
-          console.log(`🔔 Royalty upload notification:`, notifResult.success ? 'created' : notifResult.error);
-        }
-      } catch (notifyError) {
-        console.error('Error sending royalty upload notifications:', notifyError);
-        // Don't fail the request if notification fails
-      }
-    }
-
     return NextResponse.json(
       {
         success: result.success,
-        upload_id: uploadId || undefined,
+        upload_id: undefined,
         computation: {
           success: result.success,
           summariesCreated: result.summariesCreated,
@@ -322,11 +192,6 @@ export async function POST(request: NextRequest): Promise<NextResponse<ProcessSu
 
   } catch (error: any) {
     console.error('❌ Process royalties summary error:', error);
-    
-    // Update upload record if it exists
-    if (uploadId) {
-      await updateUploadStatus(uploadId, 'failed', 0, error?.message || 'Unknown error');
-    }
 
     return NextResponse.json(
       { success: false, error: error?.message || 'Internal server error' },

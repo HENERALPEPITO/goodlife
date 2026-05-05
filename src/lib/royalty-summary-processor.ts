@@ -172,6 +172,17 @@ interface ParsedCSVResult {
   totalRows: number;
 }
 
+const ROYALTIES_ALLOWED_WRITE_TABLE = 'royalties_summary';
+
+function assertRoyaltiesWriteTable(table: string): void {
+  if (table !== ROYALTIES_ALLOWED_WRITE_TABLE) {
+    throw new Error(
+      `[Royalties Upload Guard] Blocked write to non-royalties table "${table}". ` +
+      `Only "${ROYALTIES_ALLOWED_WRITE_TABLE}" writes are allowed during royalties upload.`
+    );
+  }
+}
+
 /**
  * Parse CSV content using PapaParse
  */
@@ -201,7 +212,7 @@ async function aggregateByTrack(
 ): Promise<{
   aggregations: Map<string, TrackAggregation>;
   failedRows: FailedRowRecord[];
-  trackTitleToId: Map<string, string>;
+  trackTitleToId: Map<string, string | null>;
 }> {
   const supabaseAdmin = getSupabaseAdmin();
   const aggregations = new Map<string, TrackAggregation>();
@@ -217,15 +228,19 @@ async function aggregateByTrack(
   });
 
   // Get or create tracks for all titles
-  const trackTitleToId = new Map<string, string>();
+  const trackTitleToId = new Map<string, string | null>();
   
   if (trackTitles.size > 0) {
-    // Fetch existing tracks
-    const { data: existingTracks } = await supabaseAdmin
+    // READ-ONLY song matching. This flow must never create catalog entities.
+    const { data: existingTracks, error: trackReadError } = await supabaseAdmin
       .from('tracks')
       .select('id, title')
       .eq('artist_id', artistId)
       .in('title', Array.from(trackTitles));
+
+    if (trackReadError) {
+      throw new Error(`Failed to read track matches: ${trackReadError.message}`);
+    }
 
     if (existingTracks) {
       existingTracks.forEach(track => {
@@ -233,38 +248,9 @@ async function aggregateByTrack(
       });
     }
 
-    // Create missing tracks
-    const missingTitles = Array.from(trackTitles).filter(title => !trackTitleToId.has(title));
-    
-    if (missingTitles.length > 0) {
-      // Get artist name for new tracks
-      const { data: artist } = await supabaseAdmin
-        .from('artists')
-        .select('name')
-        .eq('id', artistId)
-        .single();
-
-      const newTracks = missingTitles.map(title => ({
-        artist_id: artistId,
-        title: title,
-        song_title: title,
-        artist_name: artist?.name || 'Unknown',
-        split: '100',
-      }));
-
-      const { data: createdTracks, error } = await supabaseAdmin
-        .from('tracks')
-        .insert(newTracks)
-        .select('id, title');
-
-      if (createdTracks) {
-        createdTracks.forEach(track => {
-          trackTitleToId.set(track.title, track.id);
-        });
-      }
-
-      if (error) {
-        console.error('Error creating tracks:', error);
+    for (const title of trackTitles) {
+      if (!trackTitleToId.has(title)) {
+        trackTitleToId.set(title, null);
       }
     }
   }
@@ -284,16 +270,7 @@ async function aggregateByTrack(
         return;
       }
 
-      const trackId = trackTitleToId.get(songTitle);
-      if (!trackId) {
-        failedRows.push({
-          rowIndex: index + 2,
-          originalData: row,
-          errorMessage: `Track not found: ${songTitle}`,
-          timestamp: new Date().toISOString(),
-        });
-        return;
-      }
+      const trackId = trackTitleToId.get(songTitle) ?? null;
 
       const territory = mapping.territory ? (row[mapping.territory] || 'Unknown').trim() : 'Unknown';
       const source = mapping.source ? (row[mapping.source] || 'Unknown').trim() : 'Unknown';
@@ -304,8 +281,9 @@ async function aggregateByTrack(
 
       const month = getMonthFromDate(dateStr) || 'Unknown';
 
-      // Get or create aggregation for this track
-      let agg = aggregations.get(trackId);
+      // Keep unmatched tracks as nullable summaries instead of creating catalog entries.
+      const aggregationKey = trackId ?? `unmatched:${songTitle.toLowerCase()}`;
+      let agg = aggregations.get(aggregationKey);
       if (!agg) {
         agg = {
           track_id: trackId,
@@ -319,7 +297,7 @@ async function aggregateByTrack(
           months: new Map(),
           record_count: 0,
         };
-        aggregations.set(trackId, agg);
+        aggregations.set(aggregationKey, agg);
       }
 
       // Update aggregation
@@ -432,7 +410,7 @@ async function upsertSummaries(
   // Prepare all records for batch upsert
   const records: any[] = [];
   
-  for (const [trackId, agg] of aggregations) {
+  for (const [aggregationKey, agg] of aggregations) {
     try {
       const totalNet = new Big(agg.total_net);
       const totalGross = new Big(agg.total_gross);
@@ -448,7 +426,7 @@ async function upsertSummaries(
       // Debug: Log first record's distribution data and stream metrics
       if (records.length === 0) {
         console.log('[CSV Processor Debug] First track data:', {
-          trackId,
+          trackId: agg.track_id,
           trackTitle: agg.track_title,
           total_streams: agg.total_streams,
           total_net: totalNet.toString(),
@@ -464,7 +442,7 @@ async function upsertSummaries(
 
       records.push({
         artist_id: artistId,
-        track_id: trackId,
+        track_id: agg.track_id,
         year: year,
         quarter: quarter,
         total_streams: agg.total_streams,
@@ -487,7 +465,7 @@ async function upsertSummaries(
         updated_at: new Date().toISOString(),
       });
     } catch (error: any) {
-      errors.push(`Error preparing track ${trackId}: ${error?.message || 'Unknown'}`);
+      errors.push(`Error preparing aggregation ${aggregationKey}: ${error?.message || 'Unknown'}`);
     }
   }
 
@@ -506,7 +484,9 @@ async function upsertSummaries(
     
     console.log(`   Upserting batch ${batchNum}/${totalBatches} (${batch.length} records)...`);
 
-    const { error, count } = await supabaseAdmin
+    assertRoyaltiesWriteTable('royalties_summary');
+    console.log(`[Royalties Upload] Writing batch ${batchNum}/${totalBatches} to table: royalties_summary`);
+    const { error } = await supabaseAdmin
       .from('royalties_summary')
       .upsert(batch, {
         onConflict: 'artist_id,track_id,year,quarter',
@@ -599,7 +579,7 @@ export async function processRoyaltySummary(
       year,
       quarter
     );
-    console.log(`   Created ${aggregations.size} track aggregations, ${failedRows.length} failed rows`);
+    console.log(`   Created ${aggregations.size} matched track aggregations, ${failedRows.length} unmatched/failed rows`);
 
     // Upsert summaries
     console.log('💾 Upserting summaries...');
