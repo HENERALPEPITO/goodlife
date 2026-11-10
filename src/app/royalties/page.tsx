@@ -443,48 +443,6 @@ export default function RoyaltiesPage() {
     }
   };
 
-  // Export current quarter data as CSV
-  const handleExportCSV = () => {
-    if (!selectedQuarter || allQuarterRecords.length === 0) return;
-
-    const headers = [
-      "Track Title",
-      "Total Streams",
-      "Total Revenue",
-      "Total Net",
-      "Total Gross",
-      "Avg Per Stream",
-      "Top Platform",
-      "Top Territory",
-    ];
-
-    const rows = allQuarterRecords.map((r: ArtistRoyaltiesSummaryResponse) => [
-      r.track_title,
-      r.total_streams.toString(),
-      r.total_revenue.toFixed(2),
-      r.total_net.toFixed(2),
-      r.total_gross.toFixed(2),
-      r.avg_per_stream.toFixed(6),
-      r.top_platform || "N/A",
-      r.top_territory || "N/A",
-    ]);
-
-    const csvContent = [headers, ...rows]
-      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
-      .join("\n");
-
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    const quarterLabel = selectedQuarter.label.replace(/\s+/g, "-");
-    a.download = `royalties-summary-${quarterLabel}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
   // Quarter List View
   if (viewMode === "quarters") {
     return (
@@ -965,13 +923,13 @@ export default function RoyaltiesPage() {
               <ArrowLeft className="w-4 h-4" />
               <span>Back to Quarters</span>
             </button>
-            {selectedQuarter && quarterRecords.length > 0 && (
+            {selectedQuarter?.storage_path && (
               <button
-                onClick={handleExportCSV}
+                onClick={() => handleDownloadCSV(selectedQuarter.storage_path)}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 transition-all duration-200 ease-in-out"
               >
                 <Download className="w-4 h-4" />
-                <span>Export Summary CSV</span>
+                <span>Download CSV</span>
               </button>
             )}
           </div>

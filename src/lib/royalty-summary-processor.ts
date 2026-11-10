@@ -34,14 +34,18 @@ const COLUMN_VARIATIONS_MAP: Record<keyof ColumnMapping, string[]> = {
   songTitle: ["Song Title", "song title", "title", "Title", "SongTitle", "song_title"],
   iswc: ["ISWC", "iswc", "Iswc", "ISWC Code", "iswc_code"],
   composer: ["Composer", "composer", "Composer Name", "Song Composer(s)", "Song Composers", "composer_name"],
-  date: ["Date", "date", "Broadcast Date", "broadcast_date", "BroadcastDate"],
+  date: ["Date", "date", "Broadcast Date", "broadcast_date", "BroadcastDate", "Date From"],
   territory: ["Territory", "territory", "Country", "country", "Region"],
-  source: ["Source", "source", "Platform", "platform", "Exploitation Source", "exploitation_source"],
+  source: ["Source", "source", "Platform", "platform", "Exploitation Source", "exploitation_source", "Exploitation Source Name"],
   usageCount: ["Usage Count", "usage count", "Usage Cou", "Usage", "usage", "usage_count", "UsageCount", "Streams", "streams", "Stream Count", "stream_count", "Play Count", "play_count", "Plays", "plays", "Quantity", "quantity", "Count", "count", "Units", "units"],
   gross: ["Gross", "gross", "Gross Amount", "gross_amount", "GrossAmount"],
   adminPercent: ["Admin %", "admin %", "Admin Percent", "admin_percent", "AdminPercent", "Admin"],
-  net: ["Net", "net", "Net Amount", "net_amount", "NetAmount"],
+  // "Amount" = final net column in distributor statements (after "Administration Amount")
+  net: ["Net", "net", "Net Amount", "net_amount", "NetAmount", "Amount"],
 };
+
+// Headers whose slash dates are DD/MM/YYYY (distributor statements), not US MM/DD/YYYY
+const DAY_FIRST_DATE_HEADERS = new Set(["date from"]);
 
 /**
  * Clean header string by removing BOM and trimming
@@ -148,14 +152,23 @@ function parseIntSafe(value: string): number {
 /**
  * Get month name from date
  */
-function getMonthFromDate(dateStr: string): string | null {
+function getMonthFromDate(dateStr: string, dayFirst = false): string | null {
   if (!dateStr) return null;
-  
+
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  if (dayFirst) {
+    const m = dateStr.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/);
+    if (m) {
+      const month = parseInt(m[2], 10);
+      return month >= 1 && month <= 12 ? months[month - 1] : null;
+    }
+  }
+
   try {
     const date = new Date(dateStr);
     if (isNaN(date.getTime())) return null;
-    
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
     return months[date.getMonth()];
   } catch {
     return null;
@@ -218,6 +231,9 @@ async function aggregateByTrack(
   const aggregations = new Map<string, TrackAggregation>();
   const failedRows: FailedRowRecord[] = [];
   const trackTitles = new Set<string>();
+  const dateIsDayFirst = mapping.date
+    ? DAY_FIRST_DATE_HEADERS.has(cleanHeader(mapping.date).toLowerCase())
+    : false;
 
   // First pass: collect all unique track titles
   rows.forEach((row, index) => {
@@ -279,7 +295,7 @@ async function aggregateByTrack(
       const gross = mapping.gross ? parseBig(row[mapping.gross] || '0') : new Big(0);
       const net = mapping.net ? parseBig(row[mapping.net] || '0') : new Big(0);
 
-      const month = getMonthFromDate(dateStr) || 'Unknown';
+      const month = getMonthFromDate(dateStr, dateIsDayFirst) || 'Unknown';
 
       // Keep unmatched tracks as nullable summaries instead of creating catalog entries.
       const aggregationKey = trackId ?? `unmatched:${songTitle.toLowerCase()}`;
