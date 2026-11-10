@@ -17,11 +17,11 @@ const REQUIRED_COLUMNS = [
   { key: "iswc", label: "ISWC", variations: ["ISWC", "iswc", "Iswc", "ISWC Code", "iswc_code"] },
   { key: "composer", label: "Composer", variations: ["Composer", "composer", "Composer Name", "Song Composer(s)", "Song Composers", "composer_name"] },
   { key: "territory", label: "Territory", variations: ["Territory", "territory", "Country", "country", "Region"] },
-  { key: "source", label: "Source", variations: ["Source", "source", "Platform", "platform", "Exploitation Source", "exploitation_source"] },
+  { key: "source", label: "Source", variations: ["Source", "source", "Platform", "platform", "Exploitation Source", "exploitation_source", "Exploitation Source Name"] },
   { key: "usageCount", label: "Usage Count", variations: ["Usage Count", "usage count", "Usage Cou", "Usage", "usage", "usage_count", "UsageCount"] },
   { key: "gross", label: "Gross", variations: ["Gross", "gross", "Gross Amount", "gross_amount", "GrossAmount"] },
-  { key: "adminPercent", label: "Admin %", variations: ["Admin %", "admin %", "Admin Percent", "admin_percent", "AdminPercent", "Admin"] },
-  { key: "net", label: "Net", variations: ["Net", "net", "Net Amount", "net_amount", "NetAmount"] },
+  { key: "adminPercent", label: "Admin %", variations: ["Admin %", "admin %", "Admin Percent", "admin_percent", "AdminPercent", "Admin", "Administration Amount"] },
+  { key: "net", label: "Net", variations: ["Net", "net", "Net Amount", "net_amount", "NetAmount", "Amount"] },
 ];
 
 interface ColumnValidationResult {
@@ -129,18 +129,20 @@ export default function RoyaltyUploaderPage() {
         try {
           const text = e.target?.result as string;
           // Get just the first line (headers)
-          const firstLine = text.split('\n')[0];
-          
-          // Parse headers - handle both comma and quoted values
-          let csvHeaders: string[] = [];
-          
-          // Simple CSV header parsing that handles quotes
-          const headerMatch = firstLine.match(/(?:"[^"]*"|[^,]+)/g);
-          if (headerMatch) {
-            csvHeaders = headerMatch.map(h => h.replace(/^"|"$/g, '').trim());
-          } else {
-            csvHeaders = firstLine.split(',').map(h => h.trim());
-          }
+          const firstLine = text.split(/\r?\n/)[0].replace(/^﻿/, '');
+
+          // Detect delimiter (comma, semicolon or tab) by which appears most in the header line
+          const delimiter = [',', ';', '\t'].reduce((best, d) =>
+            firstLine.split(d).length > firstLine.split(best).length ? d : best
+          , ',');
+
+          // Simple CSV header parsing that handles quoted values
+          const escaped = delimiter === '\t' ? '\\t' : delimiter;
+          const headerRegex = new RegExp(`(?:"[^"]*"|[^${escaped}]+)`, 'g');
+          const headerMatch = firstLine.match(headerRegex);
+          const csvHeaders: string[] = headerMatch
+            ? headerMatch.map(h => h.replace(/^"|"$/g, '').trim())
+            : firstLine.split(delimiter).map(h => h.trim());
           
           const headerLowerSet = new Set(csvHeaders.map(h => h.toLowerCase()));
           
