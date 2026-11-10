@@ -85,8 +85,59 @@ async function verifyAdminAccess(): Promise<{ isAdmin: boolean; userId?: string;
   }
 }
 
+/**
+ * Record the uploaded CSV in csv_uploads so the artist's royalties page can
+ * offer the original file for download. Writes only to csv_uploads: never
+ * creates or edits tracks/catalog entries.
+ */
+async function createUploadRecord(data: {
+  filename: string;
+  storage_path: string;
+  year: number;
+  quarter: number;
+  uploaded_by: string;
+  artist_id: string;
+  file_size?: number;
+}): Promise<string | null> {
+  const supabaseAdmin = getSupabaseAdmin();
+  const { data: record, error } = await supabaseAdmin
+    .from('csv_uploads')
+    .insert({ ...data, processing_status: 'processing' })
+    .select('id')
+    .single();
+
+  if (error) {
+    console.error('Failed to create csv_uploads record (download link will be missing):', error.message);
+    return null;
+  }
+  return record.id;
+}
+
+async function updateUploadStatus(
+  id: string,
+  status: 'completed' | 'failed',
+  rowCount?: number,
+  errorMessage?: string
+): Promise<void> {
+  const supabaseAdmin = getSupabaseAdmin();
+  const { error } = await supabaseAdmin
+    .from('csv_uploads')
+    .update({
+      processing_status: status,
+      row_count: rowCount,
+      processing_error: errorMessage,
+      processed_at: new Date().toISOString(),
+    })
+    .eq('id', id);
+
+  if (error) {
+    console.error('Failed to update csv_uploads status:', error.message);
+  }
+}
+
 export async function POST(request: NextRequest): Promise<NextResponse<ProcessSummaryResponse & { failedRowsCsv?: string }>> {
   const startTime = Date.now();
+  let uploadId: string | null = null;
 
   try {
     // Verify admin access
@@ -134,7 +185,18 @@ export async function POST(request: NextRequest): Promise<NextResponse<ProcessSu
     console.log(`📥 Processing royalty summary for artist ${artistId}, Q${quarter} ${year}`);
     console.log(`   File: ${filename} (${storagePath})`);
 
-    console.log('[Royalties Upload Guard] Upload flow write scope: royalties_summary only');
+    console.log('[Royalties Upload Guard] Upload flow write scope: royalties_summary + csv_uploads (no catalog writes)');
+
+    // Step 1: Record the upload (needed for the artist's "Download CSV")
+    uploadId = await createUploadRecord({
+      filename: filename || 'unknown.csv',
+      storage_path: storagePath,
+      year,
+      quarter,
+      uploaded_by: authCheck.userId!,
+      artist_id: artistId,
+      file_size: fileSize,
+    });
 
     // Step 2: Download CSV from storage
     console.log('📂 Downloading CSV from storage...');
@@ -142,6 +204,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<ProcessSu
 
     if (!downloadResult.success || !downloadResult.data) {
       const errorMsg = `Failed to download CSV: ${downloadResult.error}`;
+      if (uploadId) {
+        await updateUploadStatus(uploadId, 'failed', 0, errorMsg);
+      }
       return NextResponse.json(
         { success: false, error: errorMsg },
         { status: 500 }
@@ -158,8 +223,18 @@ export async function POST(request: NextRequest): Promise<NextResponse<ProcessSu
       year,
       quarter,
       csvContent,
-      uploadId: undefined,
+      uploadId: uploadId || undefined,
     });
+
+    // Step 4: Mark the upload record so the artist can download the CSV
+    if (uploadId) {
+      await updateUploadStatus(
+        uploadId,
+        result.success ? 'completed' : 'failed',
+        result.totalRows,
+        result.errors.length > 0 ? result.errors.join('; ') : undefined
+      );
+    }
 
     // Step 5: Generate failed rows CSV if there are failures
     let failedRowsCsv: string | undefined;
@@ -177,7 +252,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<ProcessSu
     return NextResponse.json(
       {
         success: result.success,
-        upload_id: undefined,
+        upload_id: uploadId || undefined,
         computation: {
           success: result.success,
           summariesCreated: result.summariesCreated,
@@ -192,6 +267,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<ProcessSu
 
   } catch (error: any) {
     console.error('❌ Process royalties summary error:', error);
+    if (uploadId) {
+      await updateUploadStatus(uploadId, 'failed', 0, error?.message || 'Internal server error');
+    }
 
     return NextResponse.json(
       { success: false, error: error?.message || 'Internal server error' },
