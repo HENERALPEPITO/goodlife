@@ -456,6 +456,78 @@ export async function sendRoyaltyUploadEmailToArtist(data: {
   }
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function getRoyaltyReportsAvailableEmailForArtist(artistName: string): string {
+  return `
+    <div style="font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width:600px; margin:auto; padding:20px;">
+      <div style="background-color: #2563EB; padding: 30px; border-radius: 8px 8px 0 0; color: white;">
+        <h2 style="margin: 0; font-size: 24px;">📊 Your Royalty Reports Are Available</h2>
+      </div>
+      <div style="background-color: white; border: 1px solid #e5e7eb; border-top: none; padding: 30px; border-radius: 0 0 8px 8px;">
+        <p style="color: #374151; margin-top: 0;">Hi ${escapeHtml(artistName)},</p>
+        <p style="color: #374151; font-size: 16px;">Your latest royalty reports are now available in the Good Life Music client portal.</p>
+        <p style="color: #374151;">Log in to review your royalties and download your reports.</p>
+
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="https://clientportal.goodlife-publishing.com/login"
+             style="background-color: #2563EB; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 500;">
+            View Your Reports
+          </a>
+        </div>
+
+        <p style="color: #6b7280; font-size: 14px; margin-top: 20px;">Thank you for being part of Good Life Music!</p>
+      </div>
+      <div style="background-color: #f9fafb; padding: 20px; margin-top: 20px; border-radius: 4px; text-align: center;">
+        <p style="color: #6b7280; font-size: 12px; margin: 0;">
+          Automated message — do not reply<br/>
+          Good Life Music S.L | Profesor Hermida 6, 3-3C, 36960 Sanxenxo (Spain)
+        </p>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Send "royalty reports available" notification email to artist
+ * (triggered manually by an admin from Royalties Management)
+ */
+export async function sendRoyaltyReportsAvailableEmailToArtist(data: {
+  artistName: string;
+  artistEmail: string;
+}): Promise<{ success: boolean; error?: string; messageId?: string }> {
+  try {
+    console.log("[Email] Sending royalty reports available notification to:", data.artistEmail);
+
+    const response = await resend.emails.send({
+      from: EMAIL_FROM,
+      to: data.artistEmail,
+      subject: "📊 Your Royalty Reports Are Available",
+      html: getRoyaltyReportsAvailableEmailForArtist(data.artistName),
+    });
+
+    if (response.error) {
+      console.error("[Email] Error sending royalty reports email:", response.error);
+      return { success: false, error: response.error.message };
+    }
+
+    return { success: true, messageId: response.data?.id };
+  } catch (error) {
+    console.error("[Email] Error in sendRoyaltyReportsAvailableEmailToArtist:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
 /**
  * Send catalog deleted notification email to artist
  */
