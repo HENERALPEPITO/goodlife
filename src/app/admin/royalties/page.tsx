@@ -6,8 +6,9 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Loader } from "lucide-react";
+import { ArrowRight, Loader, Mail } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
+import { ConfirmModal } from "@/components/ConfirmModal";
 
 interface Artist {
   id: string;
@@ -23,6 +24,47 @@ export default function AdminRoyaltiesPage() {
   const [artists, setArtists] = useState<Artist[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notifyTarget, setNotifyTarget] = useState<Artist | null>(null);
+  const [isNotifying, setIsNotifying] = useState(false);
+
+  const sendReportsEmail = useCallback(async () => {
+    if (!notifyTarget) return;
+    setIsNotifying(true);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const accessToken = session?.access_token;
+
+      const response = await fetch(`/api/admin/royalties/notify/${notifyTarget.id}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(accessToken && { Authorization: `Bearer ${accessToken}` }),
+        },
+        credentials: "include",
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || `Failed to send email (HTTP ${response.status})`);
+      }
+
+      toast({
+        title: "Email sent",
+        description: `${notifyTarget.email} has been notified at ${data.email}.`,
+      });
+      setNotifyTarget(null);
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: err instanceof Error ? err.message : "Failed to send email",
+        variant: "destructive",
+      });
+    } finally {
+      setIsNotifying(false);
+    }
+  }, [notifyTarget, toast]);
 
   // Check authorization
   useEffect(() => {
@@ -129,21 +171,36 @@ export default function AdminRoyaltiesPage() {
         {!isLoading && artists.length > 0 && (
           <div className="space-y-3">
             {artists.map((artist) => (
-              <Link key={artist.id} href={`/admin/royalties/${artist.id}`}>
-                <div className="bg-white border border-slate-200 rounded-lg p-6 hover:shadow-md hover:border-slate-300 transition-all cursor-pointer group">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <h2 className="text-lg font-semibold text-slate-900 group-hover:text-blue-600 transition-colors">
-                        {artist.email}
-                      </h2>
-                      <p className="text-sm text-slate-600 mt-1">
-                        {artist.record_count} royalty {artist.record_count === 1 ? "record" : "records"}
-                      </p>
-                    </div>
-                    <ArrowRight className="w-5 h-5 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
+              <div
+                key={artist.id}
+                className="bg-white border border-slate-200 rounded-lg hover:shadow-md hover:border-slate-300 transition-all flex flex-col sm:flex-row sm:items-center"
+              >
+                <Link
+                  href={`/admin/royalties/${artist.id}`}
+                  className="flex-1 min-w-0 p-6 flex items-center justify-between group"
+                >
+                  <div className="flex-1 min-w-0">
+                    <h2 className="text-lg font-semibold text-slate-900 group-hover:text-blue-600 transition-colors truncate">
+                      {artist.email}
+                    </h2>
+                    <p className="text-sm text-slate-600 mt-1">
+                      {artist.record_count} royalty {artist.record_count === 1 ? "record" : "records"}
+                    </p>
                   </div>
+                  <ArrowRight className="w-5 h-5 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
+                </Link>
+                <div className="px-6 pb-6 sm:pb-0 sm:pl-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setNotifyTarget(artist)}
+                    className="gap-2 w-full sm:w-auto"
+                  >
+                    <Mail className="w-4 h-4" />
+                    Notify reports
+                  </Button>
                 </div>
-              </Link>
+              </div>
             ))}
           </div>
         )}
@@ -165,6 +222,18 @@ export default function AdminRoyaltiesPage() {
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        open={notifyTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !isNotifying) setNotifyTarget(null);
+        }}
+        onConfirm={sendReportsEmail}
+        title="Send reports notification"
+        description={`${notifyTarget?.email ?? "This artist"} will receive an email saying their royalty reports are available in the portal.`}
+        confirmText="Send email"
+        loading={isNotifying}
+      />
     </div>
   );
 }
