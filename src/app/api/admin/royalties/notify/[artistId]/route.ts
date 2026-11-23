@@ -7,7 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/authHelpers";
+import { requireAdmin, requireAdminFromCookies } from "@/lib/authHelpers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendRoyaltyReportsAvailableEmailToArtist } from "@/lib/emailService";
 
@@ -16,7 +16,8 @@ export async function POST(
   { params }: { params: Promise<{ artistId: string }> }
 ): Promise<NextResponse> {
   try {
-    const admin = await requireAdmin(request.headers);
+    // The browser session lives in cookies, so the Bearer header may be absent.
+    const admin = (await requireAdmin(request.headers)) ?? (await requireAdminFromCookies());
     if (!admin) {
       return NextResponse.json(
         { success: false, error: "Unauthorized. Admin access required." },
